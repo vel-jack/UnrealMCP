@@ -3,6 +3,7 @@
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "UnrealMCPSettings.h"
 
 using namespace UnrealMCP;
 
@@ -25,6 +26,23 @@ FMCPResponse FMCPServer::HandleRequest(const FMCPRequest& Request) const
         return BuildErrorResponse(Request.Id, EMCPErrorCode::InvalidRequest, TEXT("Request method is required."));
     }
 
+    if (Request.Method == TEXT("initialize"))
+    {
+        FMCPResponse Response;
+        Response.Id = Request.Id;
+        Response.Result = BuildInitializeResult();
+        return Response;
+    }
+
+    if (Request.Method == TEXT("ping"))
+    {
+        FMCPResponse Response;
+        Response.Id = Request.Id;
+        Response.Result = MakeShared<FJsonObject>();
+        Response.Result->SetBoolField(JsonKeys::Success, true);
+        return Response;
+    }
+
     if (Request.Method == TEXT("tools/list"))
     {
         FMCPResponse Response;
@@ -41,10 +59,29 @@ FMCPResponse FMCPServer::HandleRequest(const FMCPRequest& Request) const
     return BuildErrorResponse(Request.Id, EMCPErrorCode::MethodNotFound, FString::Printf(TEXT("Unknown method '%s'."), *Request.Method));
 }
 
+FString FMCPServer::HandleJsonRequest(const FString& InboundJson) const
+{
+    FMCPRequest Request;
+    FMCPResponse ErrorResponse;
+    if (!ParseJsonRequest(InboundJson, Request, ErrorResponse))
+    {
+        return SerializeResponse(ErrorResponse);
+    }
+
+    return SerializeResponse(HandleRequest(Request));
+}
+
 bool FMCPServer::ParseJsonRequest(const FString& InboundJson, FMCPRequest& OutRequest, FMCPResponse& OutErrorResponse) const
 {
+    FString SanitizedJson = InboundJson;
+    SanitizedJson.TrimStartAndEndInline();
+    if (!SanitizedJson.IsEmpty() && SanitizedJson[0] == 0xFEFF)
+    {
+        SanitizedJson.RightChopInline(1, EAllowShrinking::No);
+    }
+
     TSharedPtr<FJsonObject> RootObject;
-    const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(InboundJson);
+    const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(SanitizedJson);
     if (!FJsonSerializer::Deserialize(Reader, RootObject) || !RootObject.IsValid())
     {
         OutErrorResponse = BuildErrorResponse(TEXT(""), EMCPErrorCode::ParseError, TEXT("Invalid JSON request payload."));
@@ -97,7 +134,8 @@ FString FMCPServer::SerializeResponse(const FMCPResponse& Response) const
     }
 
     FString Serialized;
-    const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Serialized);
+    const TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
+        TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Serialized);
     FJsonSerializer::Serialize(RootObject, Writer);
     return Serialized;
 }
@@ -114,6 +152,28 @@ FMCPResponse FMCPServer::BuildErrorResponse(const FString& RequestId, EMCPErrorC
 
     Response.Error = Error;
     return Response;
+}
+
+TSharedPtr<FJsonObject> FMCPServer::BuildInitializeResult() const
+{
+    const UUnrealMCPSettings* Settings = GetDefault<UUnrealMCPSettings>();
+
+    TSharedRef<FJsonObject> ResultObject = MakeShared<FJsonObject>();
+    TSharedRef<FJsonObject> ServerInfoObject = MakeShared<FJsonObject>();
+    ServerInfoObject->SetStringField(JsonKeys::Name, Settings->ServerName);
+    ServerInfoObject->SetStringField(JsonKeys::Version, Settings->ServerVersion);
+
+    TSharedRef<FJsonObject> CapabilitiesObject = MakeShared<FJsonObject>();
+    TSharedRef<FJsonObject> ToolsObject = MakeShared<FJsonObject>();
+    ToolsObject->SetBoolField(JsonKeys::ListChanged, false);
+    CapabilitiesObject->SetObjectField(JsonKeys::Tools, ToolsObject);
+
+    ResultObject->SetBoolField(JsonKeys::Success, true);
+    ResultObject->SetStringField(JsonKeys::ProtocolVersion, Settings->ProtocolVersion);
+    ResultObject->SetObjectField(JsonKeys::ServerInfo, ServerInfoObject);
+    ResultObject->SetObjectField(JsonKeys::Capabilities, CapabilitiesObject);
+
+    return ResultObject;
 }
 
 TSharedPtr<FJsonObject> FMCPServer::SerializeToolDefinitions() const

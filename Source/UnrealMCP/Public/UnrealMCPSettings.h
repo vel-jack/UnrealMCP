@@ -29,6 +29,12 @@ public:
     UPROPERTY(Config, EditAnywhere, Category="Transport")
     bool bEnableStdIOTransport = false;
 
+    UPROPERTY(Config, EditAnywhere, Category="Transport")
+    bool bEnableNamedPipeTransport = true;
+
+    UPROPERTY(Config, EditAnywhere, Category="Transport")
+    FString NamedPipeName = TEXT("UnrealMCP");
+
     UPROPERTY(Config, EditAnywhere, Category="Python")
     bool bEnablePythonFallback = false;
 };

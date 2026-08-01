@@ -4,6 +4,8 @@
 Binaries/
 Build/
 Intermediate/
+Adapter/**/bin/
+Adapter/**/obj/
 
 # IDE / local tooling
 .vs/

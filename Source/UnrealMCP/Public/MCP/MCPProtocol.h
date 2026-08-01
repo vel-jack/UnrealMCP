@@ -22,6 +22,11 @@ namespace UnrealMCP
         inline constexpr TCHAR InputSchema[] = TEXT("inputSchema");
         inline constexpr TCHAR Tools[] = TEXT("tools");
         inline constexpr TCHAR Success[] = TEXT("success");
+        inline constexpr TCHAR Capabilities[] = TEXT("capabilities");
+        inline constexpr TCHAR ServerInfo[] = TEXT("serverInfo");
+        inline constexpr TCHAR Version[] = TEXT("version");
+        inline constexpr TCHAR ProtocolVersion[] = TEXT("protocolVersion");
+        inline constexpr TCHAR ListChanged[] = TEXT("listChanged");
     }
 
     enum class EMCPErrorCode : int32

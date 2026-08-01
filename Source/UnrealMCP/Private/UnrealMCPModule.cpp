@@ -2,10 +2,25 @@
 
 #include "MCP/MCPServer.h"
 #include "Tools/AssetExistsTool.h"
+#include "Tools/FindAssetsByClassTool.h"
+#include "Tools/FindAssetsByPathTool.h"
+#include "Tools/GetBlueprintInfoTool.h"
+#include "Tools/GetBlueprintInterfacesTool.h"
+#include "Tools/GetParentBlueprintTool.h"
+#include "Tools/GetAssetInfoTool.h"
+#include "Tools/GetDependenciesTool.h"
+#include "Tools/GetReferencersTool.h"
 #include "Tools/GetServerInfoTool.h"
 #include "Tools/HealthCheckTool.h"
+#include "Tools/ListBlueprintComponentsTool.h"
+#include "Tools/ListBlueprintFunctionsTool.h"
+#include "Tools/ListBlueprintVariablesTool.h"
+#include "Tools/ListChildBlueprintsTool.h"
+#include "Tools/ListAssetsTool.h"
+#include "Tools/ListFoldersTool.h"
 #include "Tools/ListToolsTool.h"
 #include "Tools/SearchAssetsTool.h"
+#include "Transport/NamedPipeMCPTransport.h"
 #include "UnrealMCPLog.h"
 #include "UnrealMCPSettings.h"
 
@@ -40,10 +55,13 @@ void FUnrealMCPModule::StartupModule()
         *Settings->ServerName,
         *Settings->ServerVersion,
         *FEngineVersion::Current().ToString());
+
+    StartConfiguredTransport();
 }
 
 void FUnrealMCPModule::ShutdownModule()
 {
+    StopTransport();
     UnregisterTestCommands();
     Server.Reset();
     UE_LOG(LogUnrealMCP, Log, TEXT("UnrealMCP shut down."));
@@ -68,7 +86,61 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FGetServerInfoTool>());
     Registry.RegisterTool(MakeShared<FSearchAssetsTool>());
     Registry.RegisterTool(MakeShared<FAssetExistsTool>());
+    Registry.RegisterTool(MakeShared<FGetAssetInfoTool>());
+    Registry.RegisterTool(MakeShared<FListAssetsTool>());
+    Registry.RegisterTool(MakeShared<FListFoldersTool>());
+    Registry.RegisterTool(MakeShared<FGetDependenciesTool>());
+    Registry.RegisterTool(MakeShared<FGetReferencersTool>());
+    Registry.RegisterTool(MakeShared<FFindAssetsByClassTool>());
+    Registry.RegisterTool(MakeShared<FFindAssetsByPathTool>());
+    Registry.RegisterTool(MakeShared<FGetBlueprintInfoTool>());
+    Registry.RegisterTool(MakeShared<FListBlueprintVariablesTool>());
+    Registry.RegisterTool(MakeShared<FListBlueprintFunctionsTool>());
+    Registry.RegisterTool(MakeShared<FListBlueprintComponentsTool>());
+    Registry.RegisterTool(MakeShared<FGetParentBlueprintTool>());
+    Registry.RegisterTool(MakeShared<FGetBlueprintInterfacesTool>());
+    Registry.RegisterTool(MakeShared<FListChildBlueprintsTool>());
     Registry.RegisterTool(MakeShared<FListToolsTool>(Registry));
+}
+
+void FUnrealMCPModule::StartConfiguredTransport()
+{
+    const UUnrealMCPSettings* Settings = GetDefault<UUnrealMCPSettings>();
+    if (!Settings->bEnableServer)
+    {
+        UE_LOG(LogUnrealMCP, Log, TEXT("UnrealMCP transport startup skipped because the server is disabled."));
+        return;
+    }
+
+#if PLATFORM_WINDOWS
+    if (Settings->bEnableNamedPipeTransport)
+    {
+        Transport = MakeUnique<FNamedPipeMCPTransport>(Settings->NamedPipeName);
+        if (Transport->Start(GetServer()))
+        {
+            UE_LOG(LogUnrealMCP, Log, TEXT("Started %s transport."), *Transport->GetTransportName());
+            return;
+        }
+
+        UE_LOG(LogUnrealMCP, Warning, TEXT("Failed to start named pipe transport '%s'."), *Settings->NamedPipeName);
+        Transport.Reset();
+    }
+#endif
+
+    if (Settings->bEnableStdIOTransport)
+    {
+        UE_LOG(LogUnrealMCP, Warning, TEXT("StdIO transport is enabled in settings but not implemented yet."));
+    }
+}
+
+void FUnrealMCPModule::StopTransport()
+{
+    if (Transport.IsValid())
+    {
+        Transport->Stop();
+        UE_LOG(LogUnrealMCP, Log, TEXT("Stopped %s transport."), *Transport->GetTransportName());
+        Transport.Reset();
+    }
 }
 
 void FUnrealMCPModule::RegisterTestCommands()

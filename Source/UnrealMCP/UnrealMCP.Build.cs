@@ -24,6 +24,7 @@ public class UnrealMCP : ModuleRules
                 "Json",
                 "JsonUtilities",
                 "Projects",
+                "Sockets",
                 "UnrealEd"
             });
     }

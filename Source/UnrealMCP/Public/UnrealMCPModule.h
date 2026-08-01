@@ -5,6 +5,7 @@
 
 class FMCPServer;
 class IConsoleObject;
+class IMCPTransport;
 
 class FUnrealMCPModule final : public IModuleInterface
 {
@@ -20,11 +21,14 @@ public:
 
 private:
     void RegisterCoreTools();
+    void StartConfiguredTransport();
+    void StopTransport();
     void RegisterTestCommands();
     void UnregisterTestCommands();
     void RunTestCommand(const FString& Method, TSharedPtr<class FJsonObject> Params = nullptr) const;
     void HandleSearchAssetsCommand(const TArray<FString>& Args) const;
 
     TUniquePtr<FMCPServer> Server;
+    TUniquePtr<IMCPTransport> Transport;
     TArray<IConsoleObject*> RegisteredConsoleCommands;
 };
