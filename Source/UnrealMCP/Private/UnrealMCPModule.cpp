@@ -7,6 +7,7 @@
 #include "Tools/CompileAllBlueprintsTool.h"
 #include "Tools/CompileBlueprintTool.h"
 #include "Tools/ExplainBlueprintRoleTool.h"
+#include "Tools/ExplainFeatureWorkflowTool.h"
 #include "Tools/FindAssetsByClassTool.h"
 #include "Tools/FindAssetsByPathTool.h"
 #include "Tools/FindFeatureEntryPointsTool.h"
@@ -117,6 +118,7 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FGetAssetReferencesTool>());
     Registry.RegisterTool(MakeShared<FGetAssetReferencersTool>());
     Registry.RegisterTool(MakeShared<FExplainBlueprintRoleTool>());
+    Registry.RegisterTool(MakeShared<FExplainFeatureWorkflowTool>());
     Registry.RegisterTool(MakeShared<FFindFeatureEntryPointsTool>());
     Registry.RegisterTool(MakeShared<FSummarizeBlueprintClusterTool>());
     Registry.RegisterTool(MakeShared<FTraceFeatureFlowTool>());
