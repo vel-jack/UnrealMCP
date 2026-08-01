@@ -8,6 +8,7 @@ This plugin embeds a minimal Model Context Protocol server directly into the Unr
 - Structured MCP request/response types
 - Named pipe transport inside Unreal Editor
 - External adapter MCP entry point
+- Local SQLite project index inside Unreal Editor
 - Tool registry and dispatcher
 - Safe capability discovery tools
 - Asset Registry search and existence checks
@@ -33,7 +34,31 @@ This plugin embeds a minimal Model Context Protocol server directly into the Unr
 - `GetParentBlueprint`
 - `GetImplementedInterfaces`
 - `ListChildBlueprints`
+- `CompileBlueprint`
+- `CompileAllBlueprints`
+- `GetIndexStatus`
+- `BuildProjectIndex`
 - `tools/list` JSON-RPC method
+
+## Project Index
+
+The plugin now includes a local SQLite index stored under `Saved/UnrealMCP/ProjectIndex.sqlite3`.
+
+Current indexed data:
+
+- asset identity and package location
+- Blueprint summary fields
+- Blueprint variable names and pin-type summaries
+- Blueprint function names
+- Blueprint SCS component hierarchy summaries
+- package dependency edges
+
+Current index lifecycle:
+
+- `BuildProjectIndex` performs a full rebuild
+- `GetIndexStatus` reports readiness, counts, dirtiness, and DB path
+- asset add, update, remove, and rename events attempt incremental sync
+- Blueprint compile marks the index dirty so agents know live state changed
 
 ## Adapter
 
@@ -217,6 +242,7 @@ When Unreal Editor is open with the selected project:
 
 ## Next Steps
 
-- Expand Asset Registry coverage
-- Add Blueprint, PIE, and build tools
-- Expose progress reporting for long-running operations
+- Add richer index-backed query tools for feature tracing
+- Expand dependency and referencer graph coverage
+- Add map, actor, and world relationships into the index
+- Expose higher-level understanding tools before edit/write flows

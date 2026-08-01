@@ -12,6 +12,27 @@
 
 namespace UnrealMCP::BlueprintToolUtils
 {
+    inline FString GetBlueprintStatusString(EBlueprintStatus Status)
+    {
+        switch (Status)
+        {
+        case BS_Unknown:
+            return TEXT("unknown");
+        case BS_Dirty:
+            return TEXT("dirty");
+        case BS_Error:
+            return TEXT("error");
+        case BS_UpToDate:
+            return TEXT("up_to_date");
+        case BS_BeingCreated:
+            return TEXT("being_created");
+        case BS_UpToDateWithWarnings:
+            return TEXT("up_to_date_with_warnings");
+        default:
+            return TEXT("unknown");
+        }
+    }
+
     inline UBlueprint* LoadBlueprintFromObjectPath(const FString& ObjectPath)
     {
         if (ObjectPath.IsEmpty())

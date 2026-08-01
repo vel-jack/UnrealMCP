@@ -1,11 +1,22 @@
 #include "UnrealMCPModule.h"
 
+#include "Index/UnrealMCPProjectIndex.h"
 #include "MCP/MCPServer.h"
 #include "Tools/AssetExistsTool.h"
+#include "Tools/BuildProjectIndexTool.h"
+#include "Tools/CompileAllBlueprintsTool.h"
+#include "Tools/CompileBlueprintTool.h"
+#include "Tools/ExplainBlueprintRoleTool.h"
 #include "Tools/FindAssetsByClassTool.h"
 #include "Tools/FindAssetsByPathTool.h"
+#include "Tools/FindFeatureEntryPointsTool.h"
+#include "Tools/GetAssetReferencesTool.h"
+#include "Tools/GetAssetReferencersTool.h"
 #include "Tools/GetBlueprintInfoTool.h"
+#include "Tools/GetBlueprintDependenciesTool.h"
+#include "Tools/GetBlueprintComponentHierarchyTool.h"
 #include "Tools/GetBlueprintInterfacesTool.h"
+#include "Tools/GetIndexStatusTool.h"
 #include "Tools/GetParentBlueprintTool.h"
 #include "Tools/GetAssetInfoTool.h"
 #include "Tools/GetDependenciesTool.h"
@@ -20,6 +31,8 @@
 #include "Tools/ListFoldersTool.h"
 #include "Tools/ListToolsTool.h"
 #include "Tools/SearchAssetsTool.h"
+#include "Tools/SummarizeBlueprintClusterTool.h"
+#include "Tools/TraceFeatureFlowTool.h"
 #include "Transport/NamedPipeMCPTransport.h"
 #include "UnrealMCPLog.h"
 #include "UnrealMCPSettings.h"
@@ -45,6 +58,8 @@ bool FUnrealMCPModule::IsAvailable()
 void FUnrealMCPModule::StartupModule()
 {
     Server = MakeUnique<FMCPServer>();
+    ProjectIndex = MakeUnique<FUnrealMCPProjectIndex>();
+    ProjectIndex->Initialize();
     RegisterCoreTools();
     RegisterTestCommands();
 
@@ -63,6 +78,7 @@ void FUnrealMCPModule::ShutdownModule()
 {
     StopTransport();
     UnregisterTestCommands();
+    ProjectIndex.Reset();
     Server.Reset();
     UE_LOG(LogUnrealMCP, Log, TEXT("UnrealMCP shut down."));
 }
@@ -79,11 +95,31 @@ const FMCPServer& FUnrealMCPModule::GetServer() const
     return *Server;
 }
 
+FUnrealMCPProjectIndex& FUnrealMCPModule::GetProjectIndex()
+{
+    check(ProjectIndex.IsValid());
+    return *ProjectIndex;
+}
+
+const FUnrealMCPProjectIndex& FUnrealMCPModule::GetProjectIndex() const
+{
+    check(ProjectIndex.IsValid());
+    return *ProjectIndex;
+}
+
 void FUnrealMCPModule::RegisterCoreTools()
 {
     FMCPToolRegistry& Registry = GetServer().GetToolRegistry();
     Registry.RegisterTool(MakeShared<FHealthCheckTool>());
     Registry.RegisterTool(MakeShared<FGetServerInfoTool>());
+    Registry.RegisterTool(MakeShared<FGetIndexStatusTool>());
+    Registry.RegisterTool(MakeShared<FBuildProjectIndexTool>());
+    Registry.RegisterTool(MakeShared<FGetAssetReferencesTool>());
+    Registry.RegisterTool(MakeShared<FGetAssetReferencersTool>());
+    Registry.RegisterTool(MakeShared<FExplainBlueprintRoleTool>());
+    Registry.RegisterTool(MakeShared<FFindFeatureEntryPointsTool>());
+    Registry.RegisterTool(MakeShared<FSummarizeBlueprintClusterTool>());
+    Registry.RegisterTool(MakeShared<FTraceFeatureFlowTool>());
     Registry.RegisterTool(MakeShared<FSearchAssetsTool>());
     Registry.RegisterTool(MakeShared<FAssetExistsTool>());
     Registry.RegisterTool(MakeShared<FGetAssetInfoTool>());
@@ -94,12 +130,16 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FFindAssetsByClassTool>());
     Registry.RegisterTool(MakeShared<FFindAssetsByPathTool>());
     Registry.RegisterTool(MakeShared<FGetBlueprintInfoTool>());
+    Registry.RegisterTool(MakeShared<FGetBlueprintDependenciesTool>());
+    Registry.RegisterTool(MakeShared<FGetBlueprintComponentHierarchyTool>());
     Registry.RegisterTool(MakeShared<FListBlueprintVariablesTool>());
     Registry.RegisterTool(MakeShared<FListBlueprintFunctionsTool>());
     Registry.RegisterTool(MakeShared<FListBlueprintComponentsTool>());
     Registry.RegisterTool(MakeShared<FGetParentBlueprintTool>());
     Registry.RegisterTool(MakeShared<FGetBlueprintInterfacesTool>());
     Registry.RegisterTool(MakeShared<FListChildBlueprintsTool>());
+    Registry.RegisterTool(MakeShared<FCompileBlueprintTool>());
+    Registry.RegisterTool(MakeShared<FCompileAllBlueprintsTool>());
     Registry.RegisterTool(MakeShared<FListToolsTool>(Registry));
 }
 

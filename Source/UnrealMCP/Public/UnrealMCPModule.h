@@ -6,6 +6,7 @@
 class FMCPServer;
 class IConsoleObject;
 class IMCPTransport;
+class FUnrealMCPProjectIndex;
 
 class FUnrealMCPModule final : public IModuleInterface
 {
@@ -18,6 +19,8 @@ public:
 
     FMCPServer& GetServer();
     const FMCPServer& GetServer() const;
+    FUnrealMCPProjectIndex& GetProjectIndex();
+    const FUnrealMCPProjectIndex& GetProjectIndex() const;
 
 private:
     void RegisterCoreTools();
@@ -29,6 +32,7 @@ private:
     void HandleSearchAssetsCommand(const TArray<FString>& Args) const;
 
     TUniquePtr<FMCPServer> Server;
+    TUniquePtr<FUnrealMCPProjectIndex> ProjectIndex;
     TUniquePtr<IMCPTransport> Transport;
     TArray<IConsoleObject*> RegisteredConsoleCommands;
 };
