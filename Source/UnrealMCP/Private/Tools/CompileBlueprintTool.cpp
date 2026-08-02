@@ -44,35 +44,57 @@ UnrealMCP::FMCPResponse FCompileBlueprintTool::Execute(const UnrealMCP::FMCPRequ
         return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, TEXT("CompileBlueprint requires a non-empty params.objectPath."));
     }
 
-    FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
-    UBlueprint* Blueprint = nullptr;
-    FAssetData AssetData;
-    if (!UnrealMCP::BlueprintToolUtils::ResolveBlueprintAssetData(AssetRegistryModule.Get(), ObjectPath, Blueprint, AssetData))
-    {
-        return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, TEXT("CompileBlueprint could not load a Blueprint from params.objectPath."));
-    }
-
-    const FString StatusBefore = UnrealMCP::BlueprintToolUtils::GetBlueprintStatusString(Blueprint->Status);
-
-    FCompilerResultsLog CompilerResults;
-    CompilerResults.bSilentMode = true;
-    FKismetEditorUtilities::CompileBlueprint(
-        Blueprint,
-        EBlueprintCompileOptions::SkipSave | EBlueprintCompileOptions::SkipGarbageCollection,
-        &CompilerResults);
-
+    FString StatusBefore;
+    FString StatusAfter;
+    bool bCompiledSuccessfully = false;
+    int32 ErrorCount = 0;
+    int32 WarningCount = 0;
     TArray<TSharedPtr<FJsonValue>> Messages;
-    Messages.Reserve(CompilerResults.Messages.Num());
-    for (const TSharedRef<FTokenizedMessage>& Message : CompilerResults.Messages)
-    {
-        TSharedRef<FJsonObject> MessageObject = MakeShared<FJsonObject>();
-        MessageObject->SetStringField(TEXT("severity"), GetCompileBlueprintSeverityString(Message->GetSeverity()));
-        MessageObject->SetStringField(TEXT("text"), Message->ToText().ToString());
-        Messages.Add(MakeShared<FJsonValueObject>(MessageObject));
-    }
+    FString ExecutionError;
 
-    const FString StatusAfter = UnrealMCP::BlueprintToolUtils::GetBlueprintStatusString(Blueprint->Status);
-    const bool bCompiledSuccessfully = Blueprint->Status == BS_UpToDate || Blueprint->Status == BS_UpToDateWithWarnings;
+    const bool bSucceeded = UnrealMCP::BlueprintToolUtils::ExecuteOnGameThreadSync(
+        [&](FString& OutError)
+        {
+            FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+            UBlueprint* Blueprint = nullptr;
+            FAssetData AssetData;
+            if (!UnrealMCP::BlueprintToolUtils::ResolveBlueprintAssetData(AssetRegistryModule.Get(), ObjectPath, Blueprint, AssetData))
+            {
+                OutError = TEXT("CompileBlueprint could not load a Blueprint from params.objectPath.");
+                return false;
+            }
+
+            StatusBefore = UnrealMCP::BlueprintToolUtils::GetBlueprintStatusString(Blueprint->Status);
+
+            FCompilerResultsLog CompilerResults;
+            CompilerResults.bSilentMode = true;
+            FKismetEditorUtilities::CompileBlueprint(
+                Blueprint,
+                EBlueprintCompileOptions::SkipSave | EBlueprintCompileOptions::SkipGarbageCollection,
+                &CompilerResults);
+
+            Messages.Reset();
+            Messages.Reserve(CompilerResults.Messages.Num());
+            for (const TSharedRef<FTokenizedMessage>& Message : CompilerResults.Messages)
+            {
+                TSharedRef<FJsonObject> MessageObject = MakeShared<FJsonObject>();
+                MessageObject->SetStringField(TEXT("severity"), GetCompileBlueprintSeverityString(Message->GetSeverity()));
+                MessageObject->SetStringField(TEXT("text"), Message->ToText().ToString());
+                Messages.Add(MakeShared<FJsonValueObject>(MessageObject));
+            }
+
+            ErrorCount = CompilerResults.NumErrors;
+            WarningCount = CompilerResults.NumWarnings;
+            StatusAfter = UnrealMCP::BlueprintToolUtils::GetBlueprintStatusString(Blueprint->Status);
+            bCompiledSuccessfully = Blueprint->Status == BS_UpToDate || Blueprint->Status == BS_UpToDateWithWarnings;
+            return true;
+        },
+        ExecutionError);
+
+    if (!bSucceeded)
+    {
+        return BuildError(Request, UnrealMCP::EMCPErrorCode::InternalError, ExecutionError.IsEmpty() ? TEXT("CompileBlueprint failed on the game thread.") : ExecutionError);
+    }
 
     UnrealMCP::FMCPResponse Response;
     Response.Id = Request.Id;
@@ -81,8 +103,8 @@ UnrealMCP::FMCPResponse FCompileBlueprintTool::Execute(const UnrealMCP::FMCPRequ
     Result->SetStringField(TEXT("objectPath"), ObjectPath);
     Result->SetStringField(TEXT("statusBefore"), StatusBefore);
     Result->SetStringField(TEXT("statusAfter"), StatusAfter);
-    Result->SetNumberField(TEXT("errorCount"), CompilerResults.NumErrors);
-    Result->SetNumberField(TEXT("warningCount"), CompilerResults.NumWarnings);
+    Result->SetNumberField(TEXT("errorCount"), ErrorCount);
+    Result->SetNumberField(TEXT("warningCount"), WarningCount);
     Result->SetArrayField(TEXT("messages"), Messages);
     Response.Result = Result;
     return Response;

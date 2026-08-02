@@ -1,0 +1,48 @@
+Example prompts for the coding agent
+
+Understand a feature
+- Find the entry point for the Viewshed feature.
+- Explain how the Viewshed feature is wired in this project.
+- Use FindFeatureEntryPoints for query "Viewshed", then summarize the best candidate and trace the flow.
+
+Inspect a Blueprint
+- Get Blueprint info for /Game/Path/MyBlueprint.MyBlueprint.
+- List Blueprint variables, functions, and components for this asset.
+- Show the parent Blueprint and implemented interfaces for this asset.
+
+Read the current level or selection
+- List actors in the active editor world.
+- List selected actors and tell me which Blueprint actor is currently selected.
+- Get actor info for the selected actor.
+- Explain which Blueprint asset created this placed actor.
+- Get level actor dependencies for the selected actor.
+- Find all actors in the current level using /Game/SomeBlueprint.SomeBlueprint.
+
+Trace relationships
+- What assets reference this Blueprint?
+- What does this asset depend on?
+- Summarize the Blueprint cluster around this asset.
+- Trace feature flow for this asset with maxDepth 2 and maxNodes 20.
+
+Project index
+- Check the project index health.
+- Tell me if the index is usable and whether a manual rebuild is recommended.
+- Rebuild the index only if the user confirms or if manual maintenance is needed.
+
+Good prompt pattern
+- Find likely entry points for feature X, choose the strongest project-content candidate, summarize the nearby cluster, and trace the likely workflow.
+
+Viewshed walkthrough example
+1. Run FindFeatureEntryPoints for query "Viewshed" with blueprintsOnly=true.
+2. Pick the best candidate.
+3. Run SummarizeBlueprintCluster on that candidate.
+4. Run TraceFeatureFlow on that candidate with maxDepth=2 and maxNodes=20.
+5. Return the likely entry asset, nearby assets, and overall feature flow.
+
+Placed actor walkthrough example
+1. Run ListSelectedActors.
+2. Take the selected actor.
+3. Run GetActorInfo on that actor.
+4. Run GetLevelActorDependencies on that actor.
+5. If the actor came from a Blueprint asset, run FindActorsUsingBlueprint for that Blueprint too.
+6. Return the selected actor, its Blueprint source, its dependencies, and whether there are other placed instances.

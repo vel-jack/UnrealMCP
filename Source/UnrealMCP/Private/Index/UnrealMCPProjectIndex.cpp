@@ -17,6 +17,7 @@
 #include "SQLitePreparedStatement.h"
 #include "Tools/BlueprintToolUtils.h"
 #include "UnrealMCPLog.h"
+#include "UnrealMCPSettings.h"
 
 namespace
 {
@@ -130,18 +131,28 @@ bool FUnrealMCPProjectIndex::Initialize()
     LastUpdateUtc = GetMetadataValue(TEXT("last_update_utc"));
     bHasUsableIndex = IndexedAssetCount > 0 || !LastFullBuildUtc.IsEmpty();
     bIndexDirty = GetMetadataValue(TEXT("is_dirty")) != TEXT("0");
-    RegisterAssetRegistryDelegates();
+    bAssetRegistryLoaded = QueryAssetRegistryLoaded();
+    const UUnrealMCPSettings* Settings = GetDefault<UUnrealMCPSettings>();
+    if (Settings->bEnableLiveIndexTracking)
+    {
+        RegisterAssetRegistryDelegates();
+    }
+    else
+    {
+        UE_LOG(LogUnrealMCP, Log, TEXT("Project index live tracking is disabled by settings."));
+    }
 
-    if (GEditor != nullptr)
+    if (Settings->bEnableLiveIndexTracking && GEditor != nullptr)
     {
         BlueprintCompiledHandle = GEditor->OnBlueprintCompiled().AddRaw(this, &FUnrealMCPProjectIndex::HandleBlueprintCompiled);
     }
 
     bInitialized = true;
-    UE_LOG(LogUnrealMCP, Log, TEXT("Project index initialized. Database=%s Assets=%lld Blueprints=%lld"),
+    UE_LOG(LogUnrealMCP, Log, TEXT("Project index initialized. Database=%s Assets=%lld Blueprints=%lld LiveTracking=%s"),
         *DatabasePath,
         IndexedAssetCount,
-        IndexedBlueprintCount);
+        IndexedBlueprintCount,
+        Settings->bEnableLiveIndexTracking ? TEXT("true") : TEXT("false"));
     return true;
 }
 
@@ -172,7 +183,8 @@ FUnrealMCPProjectIndex::FStatusSnapshot FUnrealMCPProjectIndex::GetStatusSnapsho
     FStatusSnapshot Snapshot;
     Snapshot.bDatabaseOpen = Database.IsValid();
     Snapshot.bSchemaReady = bSchemaReady;
-    Snapshot.bAssetRegistryLoaded = bAssetRegistryLoaded;
+    Snapshot.bAssetRegistryLoaded = QueryAssetRegistryLoaded();
+    Snapshot.bLiveTrackingEnabled = GetDefault<UUnrealMCPSettings>()->bEnableLiveIndexTracking;
     Snapshot.bHasUsableIndex = bHasUsableIndex;
     Snapshot.bIndexDirty = bIndexDirty;
     Snapshot.SchemaVersion = CurrentSchemaVersion;
@@ -189,6 +201,9 @@ FUnrealMCPProjectIndex::FStatusSnapshot FUnrealMCPProjectIndex::GetStatusSnapsho
     Snapshot.LastFullBuildUtc = LastFullBuildUtc;
     Snapshot.LastUpdateUtc = LastUpdateUtc;
     Snapshot.LastError = LastError;
+    Snapshot.bManualRebuildPreferred = true;
+    Snapshot.RebuildCadenceHint = TEXT("manual_daily");
+    Snapshot.bRebuildRecommended = !Snapshot.bHasUsableIndex || (Snapshot.bIndexDirty && !IsUtcDateToday(Snapshot.LastFullBuildUtc));
 
     for (const FString& ObjectPath : DirtyAssetSet)
     {
@@ -202,7 +217,7 @@ FUnrealMCPProjectIndex::FStatusSnapshot FUnrealMCPProjectIndex::GetStatusSnapsho
     return Snapshot;
 }
 
-bool FUnrealMCPProjectIndex::BuildFullIndex(FString& OutError)
+bool FUnrealMCPProjectIndex::BuildFullIndex(FString& OutError, const TFunction<void(int32, int32, const FString&)>& ProgressCallback)
 {
     if (!Database.IsValid())
     {
@@ -223,6 +238,11 @@ bool FUnrealMCPProjectIndex::BuildFullIndex(FString& OutError)
     {
         return Left.GetObjectPathString() < Right.GetObjectPathString();
     });
+
+    if (ProgressCallback)
+    {
+        ProgressCallback(0, Assets.Num(), TEXT("Preparing UnrealMCP project index rebuild..."));
+    }
 
     if (!ExecuteStatement(Database, TEXT("BEGIN TRANSACTION;"), &OutError))
     {
@@ -247,8 +267,14 @@ bool FUnrealMCPProjectIndex::BuildFullIndex(FString& OutError)
         return false;
     }
 
-    for (const FAssetData& AssetData : Assets)
+    for (int32 AssetIndex = 0; AssetIndex < Assets.Num(); ++AssetIndex)
     {
+        const FAssetData& AssetData = Assets[AssetIndex];
+        if (ProgressCallback && (AssetIndex == 0 || (AssetIndex % 50) == 0 || AssetIndex + 1 == Assets.Num()))
+        {
+            ProgressCallback(AssetIndex, Assets.Num(), FString::Printf(TEXT("Indexing %s"), *AssetData.AssetName.ToString()));
+        }
+
         if (!UpsertAsset(AssetData, &OutError))
         {
             Rollback();
@@ -282,6 +308,11 @@ bool FUnrealMCPProjectIndex::BuildFullIndex(FString& OutError)
     UE_LOG(LogUnrealMCP, Log, TEXT("Project index full rebuild completed. Assets=%lld Blueprints=%lld"),
         IndexedAssetCount,
         IndexedBlueprintCount);
+
+    if (ProgressCallback)
+    {
+        ProgressCallback(Assets.Num(), Assets.Num(), TEXT("UnrealMCP index rebuild complete."));
+    }
     return true;
 }
 
@@ -709,7 +740,7 @@ void FUnrealMCPProjectIndex::RegisterAssetRegistryDelegates()
     AssetRenamedHandle = AssetRegistry.OnAssetRenamed().AddRaw(this, &FUnrealMCPProjectIndex::HandleAssetRenamed);
     AssetUpdatedHandle = AssetRegistry.OnAssetUpdated().AddRaw(this, &FUnrealMCPProjectIndex::HandleAssetUpdated);
 
-    bAssetRegistryLoaded = AssetRegistry.IsLoadingAssets() == false;
+    bAssetRegistryLoaded = QueryAssetRegistryLoaded();
 }
 
 void FUnrealMCPProjectIndex::UnregisterAssetRegistryDelegates()
@@ -756,6 +787,17 @@ void FUnrealMCPProjectIndex::UnregisterAssetRegistryDelegates()
 void FUnrealMCPProjectIndex::HandleFilesLoaded()
 {
     bAssetRegistryLoaded = true;
+}
+
+bool FUnrealMCPProjectIndex::QueryAssetRegistryLoaded()
+{
+    if (!FModuleManager::Get().IsModuleLoaded(TEXT("AssetRegistry")))
+    {
+        return false;
+    }
+
+    FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+    return !AssetRegistryModule.Get().IsLoadingAssets();
 }
 
 void FUnrealMCPProjectIndex::HandleAssetAdded(const FAssetData& AssetData)
@@ -932,10 +974,26 @@ FString FUnrealMCPProjectIndex::ToUtcString(const FDateTime& Value)
     return Value.ToIso8601();
 }
 
+bool FUnrealMCPProjectIndex::IsUtcDateToday(const FString& Iso8601Utc)
+{
+    if (Iso8601Utc.IsEmpty())
+    {
+        return false;
+    }
+
+    FDateTime Parsed;
+    if (!FDateTime::ParseIso8601(*Iso8601Utc, Parsed))
+    {
+        return false;
+    }
+
+    const FDateTime TodayUtc = FDateTime::UtcNow().GetDate();
+    return Parsed.GetDate() == TodayUtc;
+}
+
 bool FUnrealMCPProjectIndex::IsBlueprintAsset(const FAssetData& AssetData)
 {
-    return !AssetData.GetTagValueRef<FString>(FBlueprintTags::GeneratedClassPath).IsEmpty()
-        || !AssetData.GetTagValueRef<FString>(FBlueprintTags::ParentClassPath).IsEmpty();
+    return AssetData.AssetClassPath.ToString().Contains(TEXT("Blueprint"));
 }
 
 FString FUnrealMCPProjectIndex::GetContentScope(const FAssetData& AssetData)

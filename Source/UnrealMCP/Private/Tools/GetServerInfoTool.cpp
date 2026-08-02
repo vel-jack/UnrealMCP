@@ -3,6 +3,7 @@
 #include "Dom/JsonObject.h"
 #include "Misc/App.h"
 #include "Misc/EngineVersion.h"
+#include "UnrealMCPModule.h"
 #include "UnrealMCPSettings.h"
 
 FGetServerInfoTool::FGetServerInfoTool()
@@ -23,6 +24,7 @@ UnrealMCP::FMCPResponse FGetServerInfoTool::Execute(const UnrealMCP::FMCPRequest
     Result->SetStringField(TEXT("protocolVersion"), Settings->ProtocolVersion);
     Result->SetStringField(TEXT("engineVersion"), FEngineVersion::Current().ToString());
     Result->SetStringField(TEXT("projectName"), FApp::GetProjectName());
+    Result->SetStringField(TEXT("namedPipeName"), FUnrealMCPModule::Get().GetEffectiveNamedPipeName());
     Result->SetBoolField(TEXT("pythonFallbackEnabled"), Settings->bEnablePythonFallback);
 
     Response.Result = Result;

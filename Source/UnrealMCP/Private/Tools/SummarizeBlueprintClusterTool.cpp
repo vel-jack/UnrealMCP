@@ -12,6 +12,13 @@ namespace
     {
         return UnrealMCP::IndexedQueryToolUtils::ResolvePackageName(Params, OutObjectPath, OutPackageName);
     }
+
+    void IncrementScopeCount(TMap<FString, int32>& ScopeCounts, const FString& Scope)
+    {
+        const FString Key = Scope.IsEmpty() ? TEXT("unknown") : Scope.ToLower();
+        int32& Count = ScopeCounts.FindOrAdd(Key);
+        ++Count;
+    }
 }
 
 FSummarizeBlueprintClusterTool::FSummarizeBlueprintClusterTool()
@@ -49,8 +56,13 @@ UnrealMCP::FMCPResponse FSummarizeBlueprintClusterTool::Execute(const UnrealMCP:
 
     TSharedPtr<FJsonObject> StartAsset;
     TArray<TSharedPtr<FJsonValue>> NeighborAssets;
+    TArray<TSharedPtr<FJsonValue>> DependencyPreview;
+    TArray<TSharedPtr<FJsonValue>> ReferencerPreview;
     int32 BlueprintNeighborCount = 0;
     int32 NonBlueprintNeighborCount = 0;
+    int32 DirectDependencyCount = 0;
+    int32 DirectReferencerCount = 0;
+    TMap<FString, int32> ScopeCounts;
     FString Error;
     const bool bQuerySucceeded = UnrealMCP::IndexedQueryToolUtils::ExecuteWithProjectIndex(
         [&](FSQLiteDatabase& Database, FString& OutExecError)
@@ -59,6 +71,8 @@ UnrealMCP::FMCPResponse FSummarizeBlueprintClusterTool::Execute(const UnrealMCP:
             {
                 return false;
             }
+
+            IncrementScopeCount(ScopeCounts, StartAsset->GetStringField(TEXT("contentScope")));
 
             auto CollectPackages = [&Database, &PackageName, &AddNeighbor](const TCHAR* Sql) -> bool
             {
@@ -81,8 +95,68 @@ UnrealMCP::FMCPResponse FSummarizeBlueprintClusterTool::Execute(const UnrealMCP:
                 }) != INDEX_NONE;
             };
 
+            auto CollectPreview = [&Database, &PackageName, Limit](const TCHAR* Sql, TArray<TSharedPtr<FJsonValue>>& OutPreview, int32& OutCount) -> bool
+            {
+                FSQLitePreparedStatement Statement(Database, Sql, ESQLitePreparedStatementFlags::None);
+                if (!Statement.IsValid() || !Statement.SetBindingValueByIndex(1, PackageName.ToString()))
+                {
+                    return false;
+                }
+
+                return Statement.Execute([&](const FSQLitePreparedStatement& Row)
+                {
+                    FString RelatedPackageName;
+                    FString RelatedObjectPath;
+                    FString RelatedAssetName;
+                    FString RelatedClassPath;
+                    FString RelatedContentScope;
+                    int32 bRelatedIsBlueprint = 0;
+
+                    if (!Row.GetColumnValueByIndex(0, RelatedPackageName)
+                        || !Row.GetColumnValueByIndex(1, RelatedObjectPath)
+                        || !Row.GetColumnValueByIndex(2, RelatedAssetName)
+                        || !Row.GetColumnValueByIndex(3, RelatedClassPath)
+                        || !Row.GetColumnValueByIndex(4, RelatedContentScope)
+                        || !Row.GetColumnValueByIndex(5, bRelatedIsBlueprint))
+                    {
+                        return ESQLitePreparedStatementExecuteRowResult::Error;
+                    }
+
+                    ++OutCount;
+                    if (OutPreview.Num() < Limit)
+                    {
+                        TSharedRef<FJsonObject> ItemObject = MakeShared<FJsonObject>();
+                        ItemObject->SetStringField(TEXT("packageName"), RelatedPackageName);
+                        ItemObject->SetStringField(TEXT("objectPath"), RelatedObjectPath);
+                        ItemObject->SetStringField(TEXT("assetName"), RelatedAssetName);
+                        ItemObject->SetStringField(TEXT("classPath"), RelatedClassPath);
+                        ItemObject->SetStringField(TEXT("contentScope"), RelatedContentScope);
+                        ItemObject->SetBoolField(TEXT("isBlueprint"), bRelatedIsBlueprint != 0);
+                        OutPreview.Add(MakeShared<FJsonValueObject>(ItemObject));
+                    }
+
+                    return ESQLitePreparedStatementExecuteRowResult::Continue;
+                }) != INDEX_NONE;
+            };
+
             if (!CollectPackages(TEXT("SELECT target_package_name FROM asset_dependencies WHERE source_package_name = ?1 ORDER BY target_package_name ASC;"))
-                || !CollectPackages(TEXT("SELECT source_package_name FROM asset_dependencies WHERE target_package_name = ?1 ORDER BY source_package_name ASC;")))
+                || !CollectPackages(TEXT("SELECT source_package_name FROM asset_dependencies WHERE target_package_name = ?1 ORDER BY source_package_name ASC;"))
+                || !CollectPreview(
+                    TEXT("SELECT d.target_package_name, COALESCE(a.object_path, ''), COALESCE(a.asset_name, ''), COALESCE(a.class_path, ''), COALESCE(a.content_scope, ''), COALESCE(a.is_blueprint, 0) "
+                         "FROM asset_dependencies d "
+                         "LEFT JOIN assets a ON a.package_name = d.target_package_name "
+                         "WHERE d.source_package_name = ?1 "
+                         "ORDER BY d.target_package_name ASC;"),
+                    DependencyPreview,
+                    DirectDependencyCount)
+                || !CollectPreview(
+                    TEXT("SELECT d.source_package_name, COALESCE(a.object_path, ''), COALESCE(a.asset_name, ''), COALESCE(a.class_path, ''), COALESCE(a.content_scope, ''), COALESCE(a.is_blueprint, 0) "
+                         "FROM asset_dependencies d "
+                         "LEFT JOIN assets a ON a.package_name = d.source_package_name "
+                         "WHERE d.target_package_name = ?1 "
+                         "ORDER BY d.source_package_name ASC;"),
+                    ReferencerPreview,
+                    DirectReferencerCount))
             {
                 OutExecError = Database.GetLastError().IsEmpty() ? TEXT("SQLite query execution failed.") : Database.GetLastError();
                 return false;
@@ -100,6 +174,7 @@ UnrealMCP::FMCPResponse FSummarizeBlueprintClusterTool::Execute(const UnrealMCP:
                 const bool bIsBlueprint = NeighborAsset->GetBoolField(TEXT("isBlueprint"));
                 BlueprintNeighborCount += bIsBlueprint ? 1 : 0;
                 NonBlueprintNeighborCount += bIsBlueprint ? 0 : 1;
+                IncrementScopeCount(ScopeCounts, NeighborAsset->GetStringField(TEXT("contentScope")));
                 NeighborAssets.Add(MakeShared<FJsonValueObject>(NeighborAsset.ToSharedRef()));
             }
 
@@ -120,7 +195,18 @@ UnrealMCP::FMCPResponse FSummarizeBlueprintClusterTool::Execute(const UnrealMCP:
     Result->SetNumberField(TEXT("neighborCount"), NeighborAssets.Num());
     Result->SetNumberField(TEXT("blueprintNeighborCount"), BlueprintNeighborCount);
     Result->SetNumberField(TEXT("nonBlueprintNeighborCount"), NonBlueprintNeighborCount);
+    Result->SetNumberField(TEXT("directDependencyCount"), DirectDependencyCount);
+    Result->SetNumberField(TEXT("directReferencerCount"), DirectReferencerCount);
     Result->SetNumberField(TEXT("limit"), Limit);
+    Result->SetArrayField(TEXT("dependencyPreview"), DependencyPreview);
+    Result->SetArrayField(TEXT("referencerPreview"), ReferencerPreview);
+
+    TSharedRef<FJsonObject> ScopeBreakdown = MakeShared<FJsonObject>();
+    for (const TPair<FString, int32>& Pair : ScopeCounts)
+    {
+        ScopeBreakdown->SetNumberField(Pair.Key, Pair.Value);
+    }
+    Result->SetObjectField(TEXT("scopeBreakdown"), ScopeBreakdown);
     Result->SetArrayField(TEXT("neighbors"), NeighborAssets);
     Response.Result = Result;
     return Response;

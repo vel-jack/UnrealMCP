@@ -27,6 +27,7 @@ UnrealMCP::FMCPResponse FGetIndexStatusTool::Execute(const UnrealMCP::FMCPReques
     Result->SetBoolField(TEXT("databaseOpen"), Snapshot.bDatabaseOpen);
     Result->SetBoolField(TEXT("schemaReady"), Snapshot.bSchemaReady);
     Result->SetBoolField(TEXT("assetRegistryLoaded"), Snapshot.bAssetRegistryLoaded);
+    Result->SetBoolField(TEXT("liveTrackingEnabled"), Snapshot.bLiveTrackingEnabled);
     Result->SetBoolField(TEXT("hasUsableIndex"), Snapshot.bHasUsableIndex);
     Result->SetBoolField(TEXT("isDirty"), Snapshot.bIndexDirty);
     Result->SetNumberField(TEXT("schemaVersion"), Snapshot.SchemaVersion);
@@ -44,6 +45,10 @@ UnrealMCP::FMCPResponse FGetIndexStatusTool::Execute(const UnrealMCP::FMCPReques
     Result->SetStringField(TEXT("lastFullBuildUtc"), Snapshot.LastFullBuildUtc);
     Result->SetStringField(TEXT("lastUpdateUtc"), Snapshot.LastUpdateUtc);
     Result->SetStringField(TEXT("lastError"), Snapshot.LastError);
+    Result->SetBoolField(TEXT("manualRebuildPreferred"), Snapshot.bManualRebuildPreferred);
+    Result->SetBoolField(TEXT("rebuildRecommended"), Snapshot.bRebuildRecommended);
+    Result->SetStringField(TEXT("rebuildCadenceHint"), Snapshot.RebuildCadenceHint);
+    Result->SetStringField(TEXT("agentPolicyHint"), TEXT("prefer_user_triggered_manual_rebuild"));
     Result->SetArrayField(TEXT("dirtyAssetsPreview"), DirtyAssets);
     Response.Result = Result;
     return Response;

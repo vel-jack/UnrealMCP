@@ -8,7 +8,7 @@
 #include "UnrealMCPModule.h"
 
 FBuildProjectIndexTool::FBuildProjectIndexTool()
-    : FMCPToolBase(TEXT("BuildProjectIndex"), TEXT("Builds or rebuilds the local UnrealMCP project-understanding index.")) 
+    : FMCPToolBase(TEXT("BuildProjectIndex"), TEXT("Expensive manual action that builds or rebuilds the local UnrealMCP project-understanding index. Prefer user-triggered rebuilds instead of automatic agent-triggered rebuilds.")) 
 {
 }
 
@@ -66,6 +66,7 @@ UnrealMCP::FMCPResponse FBuildProjectIndexTool::Execute(const UnrealMCP::FMCPReq
     Result->SetBoolField(TEXT("hasUsableIndex"), Snapshot.bHasUsableIndex);
     Result->SetBoolField(TEXT("isDirty"), Snapshot.bIndexDirty);
     Result->SetBoolField(TEXT("assetRegistryLoaded"), Snapshot.bAssetRegistryLoaded);
+    Result->SetBoolField(TEXT("liveTrackingEnabled"), Snapshot.bLiveTrackingEnabled);
     Result->SetNumberField(TEXT("indexedAssetCount"), Snapshot.IndexedAssetCount);
     Result->SetNumberField(TEXT("indexedBlueprintCount"), Snapshot.IndexedBlueprintCount);
     Result->SetNumberField(TEXT("indexedProjectAssetCount"), Snapshot.IndexedProjectAssetCount);
@@ -76,6 +77,8 @@ UnrealMCP::FMCPResponse FBuildProjectIndexTool::Execute(const UnrealMCP::FMCPReq
     Result->SetNumberField(TEXT("indexedPluginBlueprintCount"), Snapshot.IndexedPluginBlueprintCount);
     Result->SetStringField(TEXT("lastFullBuildUtc"), Snapshot.LastFullBuildUtc);
     Result->SetStringField(TEXT("lastUpdateUtc"), Snapshot.LastUpdateUtc);
+    Result->SetBoolField(TEXT("manualRebuildPreferred"), true);
+    Result->SetStringField(TEXT("agentPolicyHint"), TEXT("prefer_user_triggered_manual_rebuild"));
     Result->SetNumberField(TEXT("elapsedMilliseconds"), (FDateTime::UtcNow() - StartedAt).GetTotalMilliseconds());
     Response.Result = Result;
     return Response;

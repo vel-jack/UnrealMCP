@@ -14,7 +14,7 @@ internal sealed class AdapterOptions
 {
     public AdapterMode Mode { get; init; } = AdapterMode.Serve;
     public string? WorkspaceRoot { get; init; }
-    public string PipeName { get; init; } = "UnrealMCP";
+    public string? PipeNameOverride { get; init; }
     public string? DefaultEngineExecutablePath { get; init; }
     public string? ProjectPath { get; init; }
     public TimeSpan PipeConnectTimeout { get; init; } = TimeSpan.FromSeconds(5);
@@ -32,7 +32,7 @@ internal sealed class AdapterOptions
         }
 
         string? workspaceRoot = null;
-        string pipeName = "UnrealMCP";
+        string? pipeName = null;
         string? defaultEngineExecutablePath = null;
         string? projectPath = null;
         TimeSpan pipeConnectTimeout = TimeSpan.FromSeconds(5);
@@ -82,7 +82,7 @@ internal sealed class AdapterOptions
             }
         }
 
-        if (string.IsNullOrWhiteSpace(pipeName))
+        if (pipeName is not null && string.IsNullOrWhiteSpace(PipeNameUtility.Sanitize(pipeName)))
         {
             throw new AdapterOptionsException("The --pipe value must be a non-empty named pipe identifier.");
         }
@@ -100,7 +100,7 @@ internal sealed class AdapterOptions
         {
             Mode = mode,
             WorkspaceRoot = workspaceRoot,
-            PipeName = pipeName,
+            PipeNameOverride = pipeName,
             DefaultEngineExecutablePath = defaultEngineExecutablePath,
             ProjectPath = projectPath,
             PipeConnectTimeout = pipeConnectTimeout,
@@ -156,7 +156,7 @@ internal sealed class AdapterOptions
             "  --workspace <path>              Optional discovery-root override. Otherwise the current working directory is used.",
             "  --engine-exe <path>             Optional default UnrealEditor.exe path for launch requests.",
             "  --project <path>                Optional .uproject path. Required for launch mode unless one project is discoverable.",
-            "  --pipe <name>                   Named pipe to connect to. Defaults to UnrealMCP.",
+            "  --pipe <name>                   Optional named pipe override. Otherwise the adapter derives UnrealMCP_<ProjectName>.",
             "  --pipe-timeout-seconds <n>      Pipe connection timeout. Defaults to 5.",
             "  --request-timeout-seconds <n>   Pipe request timeout. Defaults to 10.",
             "  --launch-timeout-seconds <n>    Launch-and-ready timeout. Defaults to 45.");

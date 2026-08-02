@@ -8,7 +8,6 @@ namespace UnrealMCP.Adapter;
 internal sealed class UnrealSessionManager
 {
     private readonly AdapterOptions _options;
-    private readonly PipeJsonRpcClient _pipeClient;
     private readonly ProjectDiscoveryService _projectDiscovery = new();
     private readonly EngineInstallationResolver _engineResolver = new();
 
@@ -24,7 +23,6 @@ internal sealed class UnrealSessionManager
     public UnrealSessionManager(AdapterOptions options)
     {
         _options = options;
-        _pipeClient = new PipeJsonRpcClient(options.PipeName, options.PipeConnectTimeout, options.RequestTimeout);
 
         if (!string.IsNullOrWhiteSpace(options.ProjectPath))
         {
@@ -133,7 +131,8 @@ internal sealed class UnrealSessionManager
             ["engineAssociation"] = _activeProject?.EngineAssociation,
             ["workspaceRoot"] = GetEffectiveWorkspaceRoot(),
             ["workspaceSource"] = GetWorkspaceSource(),
-            ["pipeName"] = _options.PipeName,
+            ["pipeName"] = GetEffectivePipeName(),
+            ["pipeSource"] = GetPipeSource(),
             ["defaultEngineExecutablePath"] = _options.DefaultEngineExecutablePath,
             ["selectedEngineExecutablePath"] = _selectedEngineExecutablePath,
             ["resolvedEngineExecutablePath"] = engineResolution.EditorExecutablePath,
@@ -247,13 +246,14 @@ internal sealed class UnrealSessionManager
                 ["errorCode"] = "invalid_arguments",
                 ["message"] = $"Tool '{toolName}' requires object arguments.",
                 ["projectPath"] = _activeProject?.ProjectPath,
-                ["pipeName"] = _options.PipeName
+                ["pipeName"] = GetEffectivePipeName(),
+                ["pipeSource"] = GetPipeSource()
             }, true);
         }
 
         try
         {
-            var response = await _pipeClient.SendRequestAsync(toolName, requestParameters, cancellationToken);
+            var response = await CreatePipeClient().SendRequestAsync(toolName, requestParameters, cancellationToken);
             if (response["error"] is JsonObject error)
             {
                 return (new JsonObject
@@ -262,7 +262,8 @@ internal sealed class UnrealSessionManager
                     ["errorCode"] = error["code"]?.ToString(),
                     ["message"] = error["message"]?.GetValue<string>() ?? $"Unreal tool '{toolName}' failed.",
                     ["projectPath"] = _activeProject?.ProjectPath,
-                    ["pipeName"] = _options.PipeName,
+                    ["pipeName"] = GetEffectivePipeName(),
+                    ["pipeSource"] = GetPipeSource(),
                     ["errorData"] = error["data"]?.DeepClone()
                 }, true);
             }
@@ -380,11 +381,6 @@ internal sealed class UnrealSessionManager
             launchedThisRequest = processes.Count > 0;
         }
 
-        if (processes.Count == 0)
-        {
-            return SetUnavailable("unreal_not_running", "Unreal Editor is not running for the selected project.", true, "LaunchUnrealProject", []);
-        }
-
         var readyDeadlineUtc = launchedThisRequest ? DateTime.UtcNow + _options.LaunchReadyTimeout : DateTime.UtcNow;
         Exception? lastTransportException = null;
 
@@ -392,7 +388,8 @@ internal sealed class UnrealSessionManager
         {
             try
             {
-                var initializeResponse = await _pipeClient.SendRequestAsync("initialize", new JsonObject(), cancellationToken);
+                var pipeClient = CreatePipeClient();
+                var initializeResponse = await pipeClient.SendRequestAsync("initialize", new JsonObject(), cancellationToken);
                 if (initializeResponse["error"] is JsonObject initializeError)
                 {
                     if (DateTime.UtcNow < readyDeadlineUtc)
@@ -411,7 +408,7 @@ internal sealed class UnrealSessionManager
                         initializeError);
                 }
 
-                var toolsResponse = await _pipeClient.SendRequestAsync("tools/list", new JsonObject(), cancellationToken);
+                var toolsResponse = await pipeClient.SendRequestAsync("tools/list", new JsonObject(), cancellationToken);
                 if (toolsResponse["error"] is JsonObject toolsError)
                 {
                     if (DateTime.UtcNow < readyDeadlineUtc)
@@ -463,6 +460,11 @@ internal sealed class UnrealSessionManager
             }
         }
 
+        if (processes.Count == 0)
+        {
+            return SetUnavailable("unreal_not_running", "Unreal Editor is not running for the selected project.", true, "LaunchUnrealProject", []);
+        }
+
         var lastMessage = lastTransportException?.Message ?? "The UnrealMCP named pipe did not become ready before the timeout elapsed.";
         return SetUnavailable("unreal_mcp_unavailable", $"Unreal Editor is running, but the UnrealMCP pipe is unavailable: {lastMessage}", true, "ReconnectUnreal", processes);
     }
@@ -496,7 +498,8 @@ internal sealed class UnrealSessionManager
             ["engineAssociation"] = _activeProject?.EngineAssociation,
             ["workspaceRoot"] = workspaceRoot,
             ["workspaceSource"] = GetWorkspaceSource(),
-            ["pipeName"] = _options.PipeName,
+            ["pipeName"] = GetEffectivePipeName(),
+            ["pipeSource"] = GetPipeSource(),
             ["defaultEngineExecutablePath"] = _options.DefaultEngineExecutablePath,
             ["selectedEngineExecutablePath"] = _selectedEngineExecutablePath,
             ["resolvedEngineExecutablePath"] = attach.EngineResolution?.EditorExecutablePath,
@@ -526,7 +529,8 @@ internal sealed class UnrealSessionManager
             ["projectName"] = _activeProject?.ProjectName,
             ["workspaceRoot"] = GetEffectiveWorkspaceRoot(),
             ["workspaceSource"] = GetWorkspaceSource(),
-            ["pipeName"] = _options.PipeName,
+            ["pipeName"] = GetEffectivePipeName(),
+            ["pipeSource"] = GetPipeSource(),
             ["sessionState"] = attach.SessionState,
             ["canRetry"] = attach.CanRetry,
             ["recommendedAction"] = attach.RecommendedAction,
@@ -548,8 +552,25 @@ internal sealed class UnrealSessionManager
             ["message"] = "No Unreal project is selected for this adapter session.",
             ["recommendedAction"] = recommendedAction,
             ["workspaceRoot"] = GetEffectiveWorkspaceRoot(),
-            ["workspaceSource"] = GetWorkspaceSource()
+            ["workspaceSource"] = GetWorkspaceSource(),
+            ["pipeName"] = GetEffectivePipeName(),
+            ["pipeSource"] = GetPipeSource()
         };
+    }
+
+    private PipeJsonRpcClient CreatePipeClient()
+    {
+        return new PipeJsonRpcClient(GetEffectivePipeName(), _options.PipeConnectTimeout, _options.RequestTimeout);
+    }
+
+    private string GetEffectivePipeName()
+    {
+        return PipeNameUtility.GetEffectivePipeName(_options.PipeNameOverride, _activeProject?.ProjectName);
+    }
+
+    private string GetPipeSource()
+    {
+        return string.IsNullOrWhiteSpace(_options.PipeNameOverride) ? "derived_from_project" : "startup_override";
     }
 
     private string? GetEffectiveWorkspaceRoot()

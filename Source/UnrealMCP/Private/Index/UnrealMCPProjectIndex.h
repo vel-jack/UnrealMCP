@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "SQLiteDatabase.h"
+#include "Templates/Function.h"
 
 class IAssetRegistry;
 
@@ -13,6 +14,7 @@ public:
         bool bDatabaseOpen = false;
         bool bSchemaReady = false;
         bool bAssetRegistryLoaded = false;
+        bool bLiveTrackingEnabled = false;
         bool bHasUsableIndex = false;
         bool bIndexDirty = true;
         int32 SchemaVersion = 1;
@@ -30,6 +32,9 @@ public:
         FString LastFullBuildUtc;
         FString LastUpdateUtc;
         FString LastError;
+        bool bManualRebuildPreferred = true;
+        bool bRebuildRecommended = false;
+        FString RebuildCadenceHint = TEXT("manual_daily");
         TArray<FString> DirtyAssets;
     };
 
@@ -40,7 +45,7 @@ public:
     void Shutdown();
 
     FStatusSnapshot GetStatusSnapshot() const;
-    bool BuildFullIndex(FString& OutError);
+    bool BuildFullIndex(FString& OutError, const TFunction<void(int32, int32, const FString&)>& ProgressCallback = {});
     FSQLiteDatabase& GetDatabase();
     const FSQLiteDatabase& GetDatabase() const;
 
@@ -73,9 +78,11 @@ private:
 
     static FString GetDatabasePath();
     static FString ToUtcString(const FDateTime& Value);
+    static bool IsUtcDateToday(const FString& Iso8601Utc);
     static bool IsBlueprintAsset(const FAssetData& AssetData);
     static FString GetContentScope(const FAssetData& AssetData);
     static bool ShouldIndexAsset(const FAssetData& AssetData);
+    static bool QueryAssetRegistryLoaded();
 
     FSQLiteDatabase Database;
 

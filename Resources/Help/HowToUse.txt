@@ -1,0 +1,44 @@
+What UnrealMCP is
+- UnrealMCP is an editor plugin that exposes Unreal project-understanding tools to AI coding agents through MCP.
+- The Unreal Editor hosts the real tool execution.
+- The external adapter is the stable MCP entry point for coding agents.
+
+How users normally work with it
+- Open the Unreal project.
+- Keep the UnrealMCP transport running.
+- In Codex or another MCP client, ask plain-language questions about assets, Blueprints, and features.
+- Use manual index rebuild only when the index becomes stale or after larger project changes.
+
+Main capability groups
+- Asset discovery: SearchAssets, ListAssets, GetAssetInfo, GetDependencies, GetReferencers.
+- Blueprint reading: GetBlueprintInfo, ListVariables, ListFunctions, ListComponents, GetParentBlueprint, GetImplementedInterfaces, ListChildBlueprints.
+- Index and project understanding: GetIndexStatus, BuildProjectIndex, FindFeatureEntryPoints, SummarizeBlueprintCluster, TraceFeatureFlow, ExplainFeatureWorkflow.
+- Level and world reading: ListActors, GetActorInfo, FindActorsUsingBlueprint, GetLevelActorDependencies, ListSelectedActors.
+
+How users know what they can do
+- Ask the coding agent in plain language.
+- Ask the agent to run ListTools or GetServerInfo.
+- Open the Prompt Examples window from the UnrealMCP menu.
+
+Recommended workflow
+1. Find likely entry points for a feature.
+2. Summarize the nearby asset cluster.
+3. Trace a small flow around the top candidate.
+4. Use level and selection tools to connect Blueprint assets with placed actors.
+5. Only rebuild the index manually when needed.
+
+Index guidance
+- Manual rebuild is preferred.
+- Rebuilding can be expensive on large projects.
+- A healthy status usually means hasUsableIndex=true and isDirty=false.
+- Project warnings in the log do not automatically mean UnrealMCP failed if the rebuild completed successfully.
+
+Current safety and limits
+- Discovery and read tools are the main focus right now.
+- Compile and edit paths exist but should be used carefully.
+- Destructive project actions should require confirmation.
+
+Current milestone state
+- Milestone 1 through Milestone 7 are available.
+- The plugin is currently in a validation pause before the next milestone.
+- Real-world usage feedback is expected before new editing or gameplay-control work is expanded.

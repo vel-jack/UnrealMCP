@@ -33,7 +33,16 @@ public:
     bool bEnableNamedPipeTransport = true;
 
     UPROPERTY(Config, EditAnywhere, Category="Transport")
-    FString NamedPipeName = TEXT("UnrealMCP");
+    bool bUseProjectSpecificNamedPipe = true;
+
+    UPROPERTY(Config, EditAnywhere, Category="Transport")
+    FString NamedPipeName;
+
+    UPROPERTY(Config, EditAnywhere, Category="Index")
+    bool bInitializeProjectIndexOnStartup = false;
+
+    UPROPERTY(Config, EditAnywhere, Category="Index")
+    bool bEnableLiveIndexTracking = false;
 
     UPROPERTY(Config, EditAnywhere, Category="Python")
     bool bEnablePythonFallback = false;

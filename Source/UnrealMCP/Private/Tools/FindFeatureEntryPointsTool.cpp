@@ -270,8 +270,17 @@ UnrealMCP::FMCPResponse FFindFeatureEntryPointsTool::Execute(const UnrealMCP::FM
     }
 
     TArray<TSharedPtr<FJsonValue>> Candidates;
+    int32 BlueprintCandidateCount = 0;
+    int32 ProjectCandidateCount = 0;
+    int32 EngineCandidateCount = 0;
+    int32 PluginCandidateCount = 0;
     for (const FCandidateRow& Candidate : CandidateRows)
     {
+        BlueprintCandidateCount += Candidate.bIsBlueprint ? 1 : 0;
+        ProjectCandidateCount += Candidate.ContentScope.Equals(TEXT("project"), ESearchCase::IgnoreCase) ? 1 : 0;
+        EngineCandidateCount += Candidate.ContentScope.Equals(TEXT("engine"), ESearchCase::IgnoreCase) ? 1 : 0;
+        PluginCandidateCount += Candidate.ContentScope.Equals(TEXT("plugin"), ESearchCase::IgnoreCase) ? 1 : 0;
+
         TSharedRef<FJsonObject> CandidateObject = MakeShared<FJsonObject>();
         CandidateObject->SetStringField(TEXT("objectPath"), Candidate.ObjectPath);
         CandidateObject->SetStringField(TEXT("assetName"), Candidate.AssetName);
@@ -307,6 +316,25 @@ UnrealMCP::FMCPResponse FFindFeatureEntryPointsTool::Execute(const UnrealMCP::FM
     Result->SetStringField(TEXT("contextObjectPath"), ContextResolvedObjectPath);
     Result->SetStringField(TEXT("contextPackageName"), ContextPackageName);
     Result->SetNumberField(TEXT("count"), Candidates.Num());
+    Result->SetNumberField(TEXT("blueprintCandidateCount"), BlueprintCandidateCount);
+    Result->SetNumberField(TEXT("projectCandidateCount"), ProjectCandidateCount);
+    Result->SetNumberField(TEXT("engineCandidateCount"), EngineCandidateCount);
+    Result->SetNumberField(TEXT("pluginCandidateCount"), PluginCandidateCount);
+    Result->SetBoolField(TEXT("hasStrongMatch"), CandidateRows.Num() > 0 && CandidateRows[0].Score >= 100);
+    if (CandidateRows.Num() > 0)
+    {
+        TSharedRef<FJsonObject> BestCandidate = MakeShared<FJsonObject>();
+        BestCandidate->SetStringField(TEXT("objectPath"), CandidateRows[0].ObjectPath);
+        BestCandidate->SetStringField(TEXT("assetName"), CandidateRows[0].AssetName);
+        BestCandidate->SetStringField(TEXT("packageName"), CandidateRows[0].PackageName);
+        BestCandidate->SetStringField(TEXT("contentScope"), CandidateRows[0].ContentScope);
+        BestCandidate->SetNumberField(TEXT("score"), CandidateRows[0].Score);
+        if (CandidateRows[0].Reasons.Num() > 0)
+        {
+            BestCandidate->SetStringField(TEXT("primaryReason"), CandidateRows[0].Reasons[0]);
+        }
+        Result->SetObjectField(TEXT("bestCandidate"), BestCandidate);
+    }
     Result->SetArrayField(TEXT("candidates"), Candidates);
     Response.Result = Result;
     return Response;

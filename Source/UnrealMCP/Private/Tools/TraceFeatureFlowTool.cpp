@@ -5,6 +5,21 @@
 #include "Tools/AssetRegistryToolUtils.h"
 #include "Tools/IndexedQueryToolUtils.h"
 
+namespace
+{
+    void IncrementCount(TMap<FString, int32>& Counts, const FString& Key)
+    {
+        int32& Value = Counts.FindOrAdd(Key);
+        ++Value;
+    }
+
+    void IncrementDepthCount(TMap<int32, int32>& Counts, const int32 Depth)
+    {
+        int32& Value = Counts.FindOrAdd(Depth);
+        ++Value;
+    }
+}
+
 FTraceFeatureFlowTool::FTraceFeatureFlowTool()
     : FMCPToolBase(TEXT("TraceFeatureFlow"), TEXT("Traces a small indexed feature flow around a starting Blueprint or asset using dependencies and referencers.")) 
 {
@@ -37,6 +52,11 @@ UnrealMCP::FMCPResponse FTraceFeatureFlowTool::Execute(const UnrealMCP::FMCPRequ
 
     TArray<TSharedPtr<FJsonValue>> Nodes;
     TArray<TSharedPtr<FJsonValue>> Edges;
+    TMap<FString, int32> EdgeKindCounts;
+    TMap<int32, int32> DepthCounts;
+    TMap<FString, int32> ScopeCounts;
+    bool bTruncated = false;
+    TSharedPtr<FJsonObject> StartAsset;
 
     FString Error;
     const bool bQuerySucceeded = UnrealMCP::IndexedQueryToolUtils::ExecuteWithProjectIndex(
@@ -57,11 +77,18 @@ UnrealMCP::FMCPResponse FTraceFeatureFlowTool::Execute(const UnrealMCP::FMCPRequ
                     FString AssetError;
                     if (UnrealMCP::IndexedQueryToolUtils::QueryAssetByPackageName(Database, CurrentPackage, CurrentAsset, AssetError) && CurrentAsset.IsValid())
                     {
+                        if (Depth == 0)
+                        {
+                            StartAsset = CurrentAsset;
+                        }
+
                         TSharedRef<FJsonObject> NodeObject = MakeShared<FJsonObject>();
                         NodeObject->SetStringField(TEXT("packageName"), CurrentPackage);
                         NodeObject->SetNumberField(TEXT("depth"), Depth);
                         NodeObject->SetObjectField(TEXT("asset"), CurrentAsset.ToSharedRef());
                         Nodes.Add(MakeShared<FJsonValueObject>(NodeObject));
+                        IncrementDepthCount(DepthCounts, Depth);
+                        IncrementCount(ScopeCounts, CurrentAsset->GetStringField(TEXT("contentScope")).IsEmpty() ? TEXT("unknown") : CurrentAsset->GetStringField(TEXT("contentScope")).ToLower());
                     }
 
                     auto ExpandQuery = [&](const TCHAR* Sql, const TCHAR* EdgeKind) -> bool
@@ -86,6 +113,7 @@ UnrealMCP::FMCPResponse FTraceFeatureFlowTool::Execute(const UnrealMCP::FMCPRequ
                             EdgeObject->SetStringField(TEXT("kind"), EdgeKind);
                             EdgeObject->SetNumberField(TEXT("depth"), Depth);
                             Edges.Add(MakeShared<FJsonValueObject>(EdgeObject));
+                            IncrementCount(EdgeKindCounts, EdgeKind);
 
                             if (VisitedPackages.Num() < MaxNodes && !VisitedPackages.Contains(RelatedPackage))
                             {
@@ -108,6 +136,7 @@ UnrealMCP::FMCPResponse FTraceFeatureFlowTool::Execute(const UnrealMCP::FMCPRequ
                 Frontier = MoveTemp(NextFrontier);
             }
 
+            bTruncated = VisitedPackages.Num() >= MaxNodes;
             return true;
         },
         Error);
@@ -126,6 +155,32 @@ UnrealMCP::FMCPResponse FTraceFeatureFlowTool::Execute(const UnrealMCP::FMCPRequ
     Result->SetNumberField(TEXT("maxNodes"), MaxNodes);
     Result->SetNumberField(TEXT("nodeCount"), Nodes.Num());
     Result->SetNumberField(TEXT("edgeCount"), Edges.Num());
+    Result->SetBoolField(TEXT("truncated"), bTruncated);
+    if (StartAsset.IsValid())
+    {
+        Result->SetObjectField(TEXT("startAsset"), StartAsset.ToSharedRef());
+    }
+
+    TSharedRef<FJsonObject> EdgeCountsObject = MakeShared<FJsonObject>();
+    for (const TPair<FString, int32>& Pair : EdgeKindCounts)
+    {
+        EdgeCountsObject->SetNumberField(Pair.Key, Pair.Value);
+    }
+    Result->SetObjectField(TEXT("edgeKindCounts"), EdgeCountsObject);
+
+    TSharedRef<FJsonObject> DepthCountsObject = MakeShared<FJsonObject>();
+    for (const TPair<int32, int32>& Pair : DepthCounts)
+    {
+        DepthCountsObject->SetNumberField(FString::FromInt(Pair.Key), Pair.Value);
+    }
+    Result->SetObjectField(TEXT("depthCounts"), DepthCountsObject);
+
+    TSharedRef<FJsonObject> ScopeBreakdownObject = MakeShared<FJsonObject>();
+    for (const TPair<FString, int32>& Pair : ScopeCounts)
+    {
+        ScopeBreakdownObject->SetNumberField(Pair.Key, Pair.Value);
+    }
+    Result->SetObjectField(TEXT("scopeBreakdown"), ScopeBreakdownObject);
     Result->SetArrayField(TEXT("nodes"), Nodes);
     Result->SetArrayField(TEXT("edges"), Edges);
     Response.Result = Result;

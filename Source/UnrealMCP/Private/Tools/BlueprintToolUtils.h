@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Async/Async.h"
 #include "Algo/Sort.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Blueprint/BlueprintSupport.h"
@@ -8,10 +9,49 @@
 #include "Engine/Blueprint.h"
 #include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
+#include "HAL/PlatformProcess.h"
 #include "Misc/PackageName.h"
+#include "Misc/ScopeExit.h"
 
 namespace UnrealMCP::BlueprintToolUtils
 {
+    template <typename TCallable>
+    bool ExecuteOnGameThreadSync(TCallable&& Callable, FString& OutError)
+    {
+        bool bSucceeded = false;
+        auto Run = [&]()
+        {
+            bSucceeded = Callable(OutError);
+        };
+
+        if (IsInGameThread())
+        {
+            Run();
+            return bSucceeded;
+        }
+
+        FEvent* CompletionEvent = FPlatformProcess::GetSynchEventFromPool(false);
+        if (CompletionEvent == nullptr)
+        {
+            OutError = TEXT("Could not create a synchronization event for Blueprint execution.");
+            return false;
+        }
+
+        ON_SCOPE_EXIT
+        {
+            FPlatformProcess::ReturnSynchEventToPool(CompletionEvent);
+        };
+
+        AsyncTask(ENamedThreads::GameThread, [&Run, CompletionEvent]()
+        {
+            Run();
+            CompletionEvent->Trigger();
+        });
+
+        CompletionEvent->Wait();
+        return bSucceeded;
+    }
+
     inline FString GetBlueprintStatusString(EBlueprintStatus Status)
     {
         switch (Status)

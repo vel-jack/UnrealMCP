@@ -25,9 +25,13 @@ public class UnrealMCP : ModuleRules
                 "AssetRegistry",
                 "Json",
                 "JsonUtilities",
+                "LevelEditor",
                 "Projects",
                 "SQLiteCore",
+                "Slate",
+                "SlateCore",
                 "Sockets",
+                "ToolMenus",
                 "UnrealEd"
             });
     }
