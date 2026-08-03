@@ -53,8 +53,7 @@ private:
     static constexpr int32 CurrentSchemaVersion = 1;
 
     bool OpenDatabase(FString& OutError);
-    bool EnsureSchema(FString& OutError, bool bSkipVersionCheck = false);
-    bool RebuildSchema(FString& OutError);
+    bool EnsureSchema(FString& OutError);
     bool RecalculateIndexedCounts(FString* OutError = nullptr);
     bool UpsertAsset(const FAssetData& AssetData, FString* OutError = nullptr);
     bool RemoveAsset(const FString& ObjectPath, const FString& PackageName, FString* OutError = nullptr);

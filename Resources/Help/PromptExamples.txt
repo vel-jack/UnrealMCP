@@ -24,6 +24,10 @@ Trace relationships
 - Summarize the Blueprint cluster around this asset.
 - Trace feature flow for this asset with maxDepth 2 and maxNodes 20.
 
+Future graph-tracing direction
+- Planned future work will support direct tracing across Blueprint nodes, events, functions, variables, interface calls, and cross-Blueprint jumps from an indexed graph model.
+- For now, use the current feature and level tools for higher-level tracing rather than exact node-to-node Blueprint execution explanation.
+
 Project index
 - Check the project index health.
 - Tell me if the index is usable and whether a manual rebuild is recommended.

@@ -6,7 +6,7 @@ public class UnrealMCP : ModuleRules
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
         bUseUnity = false;
-        // Keep non-unity builds predictable while adding new tool source files frequently.
+        // Keep non-unity builds predictable while adding new tool source files frequently and keep source discovery refreshes obvious.
 
         CppStandard = CppStandardVersion.Cpp20;
 
@@ -23,6 +23,7 @@ public class UnrealMCP : ModuleRules
             new[]
             {
                 "AssetRegistry",
+                "BlueprintGraph",
                 "Json",
                 "JsonUtilities",
                 "LevelEditor",

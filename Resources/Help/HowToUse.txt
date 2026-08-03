@@ -37,6 +37,7 @@ Current safety and limits
 - Discovery and read tools are the main focus right now.
 - Compile and edit paths exist but should be used carefully.
 - Destructive project actions should require confirmation.
+- Exact Blueprint event and node-flow tracing is planned as a future indexed graph capability and is not yet a completed user-facing feature.
 
 Current milestone state
 - Milestone 1 through Milestone 7 are available.
