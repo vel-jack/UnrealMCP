@@ -47,8 +47,14 @@ UnrealMCP::FMCPResponse FGetIndexStatusTool::Execute(const UnrealMCP::FMCPReques
     Result->SetStringField(TEXT("lastError"), Snapshot.LastError);
     Result->SetBoolField(TEXT("manualRebuildPreferred"), Snapshot.bManualRebuildPreferred);
     Result->SetBoolField(TEXT("rebuildRecommended"), Snapshot.bRebuildRecommended);
+    Result->SetBoolField(TEXT("partialRefreshAvailable"), Snapshot.bHasUsableIndex);
+    Result->SetBoolField(TEXT("refreshRecommended"), Snapshot.bHasUsableIndex && Snapshot.bIndexDirty);
     Result->SetStringField(TEXT("rebuildCadenceHint"), Snapshot.RebuildCadenceHint);
-    Result->SetStringField(TEXT("agentPolicyHint"), TEXT("prefer_user_triggered_manual_rebuild"));
+    Result->SetStringField(
+        TEXT("agentPolicyHint"),
+        Snapshot.bHasUsableIndex
+            ? TEXT("prefer_RefreshProjectIndex_for_ordinary_changes; reserve_BuildProjectIndex_for_missing_or_invalid_indexes")
+            : TEXT("request_user_triggered_BuildProjectIndex"));
     Result->SetArrayField(TEXT("dirtyAssetsPreview"), DirtyAssets);
     Response.Result = Result;
     return Response;

@@ -1,8 +1,15 @@
 #include "Index/UnrealMCPProjectIndexInternal.h"
 #include "K2Node_CallFunction.h"
+#include "K2Node_BaseMCDelegate.h"
+#include "K2Node_CallDelegate.h"
+#include "K2Node_CreateDelegate.h"
+#include "K2Node_Composite.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_Event.h"
 #include "K2Node_FunctionEntry.h"
+#include "K2Node_MacroInstance.h"
+#include "K2Node_Message.h"
+#include "K2Node_Tunnel.h"
 #include "K2Node_Variable.h"
 
 namespace
@@ -70,8 +77,69 @@ namespace
         return FString();
     }
 
+    FString GetStableGraphName(const UEdGraph* Graph)
+    {
+        if (Graph == nullptr)
+        {
+            return FString();
+        }
+
+        const FString GraphGuid = Graph->GraphGuid.IsValid()
+            ? Graph->GraphGuid.ToString(EGuidFormats::DigitsWithHyphensLower)
+            : TEXT("no-guid");
+        return FString::Printf(
+            TEXT("%s::%s::%s"),
+            *Graph->GetName(),
+            *GraphGuid,
+            *Graph->GetPathName());
+    }
+
     void PopulateNodeMemberMetadata(const UBlueprint* Blueprint, const UEdGraphNode* Node, FIndexedBlueprintNodeRow& NodeRow)
     {
+        if (const UK2Node_Composite* CompositeNode = Cast<UK2Node_Composite>(Node))
+        {
+            NodeRow.MemberName = GetStableGraphName(CompositeNode->BoundGraph);
+            const UClass* SelfClass = Blueprint && Blueprint->GeneratedClass
+                ? Blueprint->GeneratedClass
+                : (Blueprint ? Blueprint->SkeletonGeneratedClass : nullptr);
+            NodeRow.MemberParentPath = SelfClass ? NormalizeBlueprintClassPath(SelfClass->GetPathName()) : FString();
+            return;
+        }
+
+        if (const UK2Node_MacroInstance* MacroNode = Cast<UK2Node_MacroInstance>(Node))
+        {
+            if (const UEdGraph* MacroGraph = MacroNode->GetMacroGraph())
+            {
+                NodeRow.MemberName = GetStableGraphName(MacroGraph);
+            }
+
+            if (const UBlueprint* SourceBlueprint = MacroNode->GetSourceBlueprint())
+            {
+                const UClass* SourceClass = SourceBlueprint->GeneratedClass
+                    ? SourceBlueprint->GeneratedClass
+                    : SourceBlueprint->SkeletonGeneratedClass;
+                NodeRow.MemberParentPath = SourceClass ? NormalizeBlueprintClassPath(SourceClass->GetPathName()) : FString();
+            }
+            return;
+        }
+
+        if (const UK2Node_BaseMCDelegate* DelegateNode = Cast<UK2Node_BaseMCDelegate>(Node))
+        {
+            NodeRow.MemberName = DelegateNode->GetPropertyName().ToString();
+            NodeRow.MemberParentPath = GetMemberParentPath(DelegateNode->DelegateReference, Blueprint);
+            return;
+        }
+
+        if (const UK2Node_CreateDelegate* CreateDelegateNode = Cast<UK2Node_CreateDelegate>(Node))
+        {
+            NodeRow.MemberName = CreateDelegateNode->GetFunctionName().ToString();
+            if (const UClass* ScopeClass = CreateDelegateNode->GetScopeClass())
+            {
+                NodeRow.MemberParentPath = NormalizeBlueprintClassPath(ScopeClass->GetPathName());
+            }
+            return;
+        }
+
         if (const UK2Node_CallFunction* CallFunctionNode = Cast<UK2Node_CallFunction>(Node))
         {
             NodeRow.MemberName = CallFunctionNode->GetFunctionName().ToString();
@@ -129,11 +197,6 @@ namespace
         }
     }
 
-    FString GetStableGraphName(const UEdGraph* Graph)
-    {
-        return Graph ? Graph->GetName() : FString();
-    }
-
     FString GetStableNodeGuid(const UEdGraphNode* Node)
     {
         if (Node == nullptr)
@@ -166,6 +229,24 @@ namespace
             *Pin->PinName.ToString());
     }
 
+    FString MakeStableEdgeKey(
+        const FString& SourceGraphName,
+        const FString& SourceNodeGuid,
+        const FString& SourcePinId,
+        const FString& TargetGraphName,
+        const FString& TargetNodeGuid,
+        const FString& TargetPinId)
+    {
+        return FString::Printf(
+            TEXT("%s|%s|%s|%s|%s|%s"),
+            *SourceGraphName,
+            *SourceNodeGuid,
+            *SourcePinId,
+            *TargetGraphName,
+            *TargetNodeGuid,
+            *TargetPinId);
+    }
+
     FString GetNodeTypeString(const UEdGraphNode* Node)
     {
         if (Node == nullptr || Node->GetClass() == nullptr)
@@ -190,6 +271,30 @@ namespace
         {
             return TEXT("function_result");
         }
+        if (ClassName.Contains(TEXT("K2Node_Message")))
+        {
+            return TEXT("interface_call");
+        }
+        if (ClassName.Contains(TEXT("K2Node_CallDelegate")))
+        {
+            return TEXT("delegate_broadcast");
+        }
+        if (ClassName.Contains(TEXT("K2Node_AssignDelegate")) || ClassName.Contains(TEXT("K2Node_AddDelegate")))
+        {
+            return TEXT("delegate_bind");
+        }
+        if (ClassName.Contains(TEXT("K2Node_RemoveDelegate")))
+        {
+            return TEXT("delegate_unbind");
+        }
+        if (ClassName.Contains(TEXT("K2Node_ClearDelegate")))
+        {
+            return TEXT("delegate_clear");
+        }
+        if (ClassName.Contains(TEXT("K2Node_CreateDelegate")))
+        {
+            return TEXT("delegate_handler");
+        }
         if (ClassName.Contains(TEXT("K2Node_CallFunction")))
         {
             return TEXT("call_function");
@@ -205,6 +310,23 @@ namespace
         if (ClassName.Contains(TEXT("K2Node_MacroInstance")))
         {
             return TEXT("macro_instance");
+        }
+        if (ClassName.Contains(TEXT("K2Node_Composite")))
+        {
+            return TEXT("composite_instance");
+        }
+        if (const UK2Node_Tunnel* TunnelNode = Cast<UK2Node_Tunnel>(Node))
+        {
+            const bool bIsCollapsedGraph = Node->GetGraph() && Cast<UK2Node_Composite>(Node->GetGraph()->GetOuter()) != nullptr;
+            if (TunnelNode->DrawNodeAsEntry())
+            {
+                return bIsCollapsedGraph ? TEXT("composite_entry") : TEXT("macro_entry");
+            }
+            if (TunnelNode->DrawNodeAsExit())
+            {
+                return bIsCollapsedGraph ? TEXT("composite_exit") : TEXT("macro_exit");
+            }
+            return TEXT("tunnel");
         }
         if (ClassName.Contains(TEXT("K2Node_ExecutionSequence")))
         {
@@ -248,6 +370,11 @@ namespace
             return TEXT("macro_graph");
         }
 
+        if (Cast<UK2Node_Composite>(Graph->GetOuter()) != nullptr)
+        {
+            return TEXT("collapsed_graph");
+        }
+
         for (const FBPInterfaceDescription& InterfaceDescription : Blueprint->ImplementedInterfaces)
         {
             if (InterfaceDescription.Graphs.Contains(const_cast<UEdGraph*>(Graph)))
@@ -277,10 +404,13 @@ bool ExtractBlueprintGraphRows(
         return false;
     }
 
+    TSet<FString> SeenEdgeKeys;
+
     TArray<UEdGraph*> AllGraphs;
     TSet<const UEdGraph*> SeenGraphs;
 
-    auto AddGraphs = [&AllGraphs, &SeenGraphs](const TArray<UEdGraph*>& Graphs)
+    TFunction<void(const TArray<UEdGraph*>&)> AddGraphs;
+    AddGraphs = [&AllGraphs, &SeenGraphs, &AddGraphs](const TArray<UEdGraph*>& Graphs)
     {
         for (UEdGraph* Graph : Graphs)
         {
@@ -288,6 +418,16 @@ bool ExtractBlueprintGraphRows(
             {
                 SeenGraphs.Add(Graph);
                 AllGraphs.Add(Graph);
+
+                TArray<UEdGraph*> NestedGraphs;
+                for (const UEdGraphNode* Node : Graph->Nodes)
+                {
+                    if (Node != nullptr)
+                    {
+                        NestedGraphs.Append(Node->GetSubGraphs());
+                    }
+                }
+                AddGraphs(NestedGraphs);
             }
         }
     };
@@ -342,7 +482,7 @@ bool ExtractBlueprintGraphRows(
             if (GraphRow.EntryNodeGuid.IsEmpty())
             {
                 const FString NodeType = GetNodeTypeString(Node);
-                if (NodeType == TEXT("event") || NodeType == TEXT("custom_event") || NodeType == TEXT("function_entry"))
+                if (NodeType == TEXT("event") || NodeType == TEXT("custom_event") || NodeType == TEXT("function_entry") || NodeType == TEXT("macro_entry") || NodeType == TEXT("composite_entry"))
                 {
                     GraphRow.EntryNodeGuid = GetStableNodeGuid(Node);
                 }
@@ -392,6 +532,7 @@ bool ExtractBlueprintGraphRows(
                 PinRow.bIsConst = Pin->PinType.bIsConst;
                 PinRow.LinkedPinCount = Pin->LinkedTo.Num();
                 PinRow.DefaultValue = Pin->DefaultValue;
+                const FString SourcePinId = PinRow.PinId;
                 OutPins.Add(MoveTemp(PinRow));
 
                 if (Pin->Direction != EGPD_Output)
@@ -406,13 +547,30 @@ bool ExtractBlueprintGraphRows(
                         continue;
                     }
 
+                    const FString TargetGraphName = GetStableGraphName(LinkedPin->GetOwningNodeUnchecked()->GetGraph());
+                    const FString TargetNodeGuid = GetStableNodeGuid(LinkedPin->GetOwningNodeUnchecked());
+                    const FString TargetPinId = GetStablePinId(LinkedPin);
+                    const FString EdgeKey = MakeStableEdgeKey(
+                        GraphRow.GraphName,
+                        NodeRow.NodeGuid,
+                        SourcePinId,
+                        TargetGraphName,
+                        TargetNodeGuid,
+                        TargetPinId);
+                    if (SeenEdgeKeys.Contains(EdgeKey))
+                    {
+                        continue;
+                    }
+
+                    SeenEdgeKeys.Add(EdgeKey);
+
                     FIndexedBlueprintEdgeRow EdgeRow;
                     EdgeRow.SourceGraphName = GraphRow.GraphName;
                     EdgeRow.SourceNodeGuid = NodeRow.NodeGuid;
-                    EdgeRow.SourcePinId = PinRow.PinId;
-                    EdgeRow.TargetGraphName = GetStableGraphName(LinkedPin->GetOwningNodeUnchecked()->GetGraph());
-                    EdgeRow.TargetNodeGuid = GetStableNodeGuid(LinkedPin->GetOwningNodeUnchecked());
-                    EdgeRow.TargetPinId = GetStablePinId(LinkedPin);
+                    EdgeRow.SourcePinId = SourcePinId;
+                    EdgeRow.TargetGraphName = TargetGraphName;
+                    EdgeRow.TargetNodeGuid = TargetNodeGuid;
+                    EdgeRow.TargetPinId = TargetPinId;
                     EdgeRow.EdgeKind = IsExecPin(Pin) || IsExecPin(LinkedPin) ? TEXT("exec") : TEXT("data");
                     OutEdges.Add(MoveTemp(EdgeRow));
                 }

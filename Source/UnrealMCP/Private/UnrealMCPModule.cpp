@@ -7,6 +7,7 @@
 #include "Tools/CompileAllBlueprintsTool.h"
 #include "Tools/CompileBlueprintTool.h"
 #include "Tools/ExplainBlueprintRoleTool.h"
+#include "Tools/ExplainBlueprintTraceTool.h"
 #include "Tools/ExplainFeatureWorkflowTool.h"
 #include "Tools/FindActorsUsingBlueprintTool.h"
 #include "Tools/FindAssetsByClassTool.h"
@@ -41,6 +42,7 @@
 #include "Tools/ListFoldersTool.h"
 #include "Tools/ListSelectedActorsTool.h"
 #include "Tools/ListToolsTool.h"
+#include "Tools/RefreshProjectIndexTool.h"
 #include "Tools/SearchAssetsTool.h"
 #include "Tools/SummarizeBlueprintClusterTool.h"
 #include "Tools/TraceBlueprintFlowTool.h"
@@ -192,9 +194,11 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FGetServerInfoTool>());
     Registry.RegisterTool(MakeShared<FGetIndexStatusTool>());
     Registry.RegisterTool(MakeShared<FBuildProjectIndexTool>());
+    Registry.RegisterTool(MakeShared<FRefreshProjectIndexTool>());
     Registry.RegisterTool(MakeShared<FGetAssetReferencesTool>());
     Registry.RegisterTool(MakeShared<FGetAssetReferencersTool>());
     Registry.RegisterTool(MakeShared<FExplainBlueprintRoleTool>());
+    Registry.RegisterTool(MakeShared<FExplainBlueprintTraceTool>());
     Registry.RegisterTool(MakeShared<FExplainFeatureWorkflowTool>());
     Registry.RegisterTool(MakeShared<FFindFeatureEntryPointsTool>());
     Registry.RegisterTool(MakeShared<FSummarizeBlueprintClusterTool>());

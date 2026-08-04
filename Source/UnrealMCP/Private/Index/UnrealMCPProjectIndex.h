@@ -38,6 +38,16 @@ public:
         TArray<FString> DirtyAssets;
     };
 
+    struct FRefreshResult
+    {
+        int32 CandidateCount = 0;
+        int32 RefreshedAssetCount = 0;
+        int32 RemovedAssetCount = 0;
+        int32 UnchangedAssetCount = 0;
+        TArray<FString> RefreshedAssets;
+        TArray<FString> RemovedAssets;
+    };
+
     FUnrealMCPProjectIndex();
     ~FUnrealMCPProjectIndex();
 
@@ -46,6 +56,11 @@ public:
 
     FStatusSnapshot GetStatusSnapshot() const;
     bool BuildFullIndex(FString& OutError, const TFunction<void(int32, int32, const FString&)>& ProgressCallback = {});
+    bool RefreshProjectIndex(
+        const TArray<FString>& RequestedObjectPaths,
+        FRefreshResult& OutResult,
+        FString& OutError,
+        const TFunction<void(int32, int32, const FString&)>& ProgressCallback = {});
     FSQLiteDatabase& GetDatabase();
     const FSQLiteDatabase& GetDatabase() const;
 

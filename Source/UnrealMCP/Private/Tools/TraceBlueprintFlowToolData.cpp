@@ -53,6 +53,97 @@ namespace
         return true;
     }
 
+    bool ResolveConnectedTargetAssets(FSQLiteDatabase& Database, const FString& ObjectPath, FTraceTraversalState& State, FString& OutError)
+    {
+        FSQLitePreparedStatement TargetStatement(
+            Database,
+            TEXT("SELECT e.target_graph_name, e.target_node_guid, source_pin.subcategory_object_path "
+                 "FROM blueprint_edges e "
+                 "JOIN blueprint_pins target_pin ON target_pin.blueprint_object_path = e.blueprint_object_path AND target_pin.graph_name = e.target_graph_name AND target_pin.node_guid = e.target_node_guid AND target_pin.pin_id = e.target_pin_id "
+                 "JOIN blueprint_pins source_pin ON source_pin.blueprint_object_path = e.blueprint_object_path AND source_pin.graph_name = e.source_graph_name AND source_pin.node_guid = e.source_node_guid AND source_pin.pin_id = e.source_pin_id "
+                 "WHERE e.blueprint_object_path = ?1 AND lower(target_pin.pin_name) IN ('self', 'target') AND source_pin.subcategory_object_path <> '' "
+                 "ORDER BY e.target_graph_name ASC, e.target_node_guid ASC;"),
+            ESQLitePreparedStatementFlags::None);
+        if (!TargetStatement.IsValid() || !TargetStatement.SetBindingValueByIndex(1, ObjectPath))
+        {
+            OutError = TEXT("TraceBlueprintFlow could not prepare the connected target query.");
+            return false;
+        }
+
+        const int64 TargetResult = TargetStatement.Execute([&](const FSQLitePreparedStatement& Row)
+        {
+            FString GraphName;
+            FString NodeGuid;
+            FString TargetClassPath;
+            if (!Row.GetColumnValueByIndex(0, GraphName)
+                || !Row.GetColumnValueByIndex(1, NodeGuid)
+                || !Row.GetColumnValueByIndex(2, TargetClassPath))
+            {
+                return ESQLitePreparedStatementExecuteRowResult::Error;
+            }
+
+            if (FTraceNodeRecord* Node = State.NodesByKey.Find(MakeTraceNodeKey(ObjectPath, GraphName, NodeGuid)))
+            {
+                Node->ConnectedTargetClassPath = TargetClassPath;
+            }
+            return ESQLitePreparedStatementExecuteRowResult::Continue;
+        });
+        if (TargetResult == INDEX_NONE)
+        {
+            OutError = Database.GetLastError().IsEmpty() ? TEXT("TraceBlueprintFlow connected target query failed.") : Database.GetLastError();
+            return false;
+        }
+
+        TMap<FString, TPair<FString, FString>> AssetByClassPath;
+        for (TPair<FString, FTraceNodeRecord>& Pair : State.NodesByKey)
+        {
+            FTraceNodeRecord& Node = Pair.Value;
+            if (!Node.BlueprintObjectPath.Equals(ObjectPath, ESearchCase::CaseSensitive) || Node.ConnectedTargetClassPath.IsEmpty())
+            {
+                continue;
+            }
+
+            if (!AssetByClassPath.Contains(Node.ConnectedTargetClassPath))
+            {
+                FString AssetObjectPath;
+                FString AssetName;
+                FSQLitePreparedStatement AssetStatement(
+                    Database,
+                    TEXT("SELECT object_path, asset_name FROM assets WHERE generated_class_path = ?1 AND is_blueprint = 1 ORDER BY object_path ASC LIMIT 1;"),
+                    ESQLitePreparedStatementFlags::None);
+                if (!AssetStatement.IsValid() || !AssetStatement.SetBindingValueByIndex(1, Node.ConnectedTargetClassPath))
+                {
+                    OutError = TEXT("TraceBlueprintFlow could not prepare the connected target asset query.");
+                    return false;
+                }
+
+                const int64 AssetResult = AssetStatement.Execute([&](const FSQLitePreparedStatement& AssetRow)
+                {
+                    if (!AssetRow.GetColumnValueByIndex(0, AssetObjectPath) || !AssetRow.GetColumnValueByIndex(1, AssetName))
+                    {
+                        return ESQLitePreparedStatementExecuteRowResult::Error;
+                    }
+                    return ESQLitePreparedStatementExecuteRowResult::Stop;
+                });
+                if (AssetResult == INDEX_NONE)
+                {
+                    OutError = Database.GetLastError().IsEmpty() ? TEXT("TraceBlueprintFlow connected target asset query failed.") : Database.GetLastError();
+                    return false;
+                }
+                AssetByClassPath.Add(Node.ConnectedTargetClassPath, TPair<FString, FString>(MoveTemp(AssetObjectPath), MoveTemp(AssetName)));
+            }
+
+            const TPair<FString, FString>& Asset = AssetByClassPath[Node.ConnectedTargetClassPath];
+            if (!Asset.Key.IsEmpty())
+            {
+                Node.bHasResolvedTargetAsset = true;
+                Node.ResolvedTargetAssetObjectPath = Asset.Key;
+                Node.ResolvedTargetAssetName = Asset.Value;
+            }
+        }
+        return true;
+    }
+
     void IndexEntryNodesForBlueprint(FTraceTraversalState& State, const FString& ObjectPath)
     {
         for (const FGraphEntryRecord& Entry : State.GraphEntries)
@@ -66,12 +157,31 @@ namespace
             if (FTraceNodeRecord* Node = State.NodesByKey.Find(EntryKey))
             {
                 Node->bIsEntry = true;
+                State.EntryNodeKeysByAssetAndMember.FindOrAdd(MakeTraceMemberLookupKey(ObjectPath, Entry.GraphName)).AddUnique(EntryKey);
                 if (!Node->MemberName.IsEmpty()
-                    && (Node->NodeType == TEXT("function_entry") || Node->NodeType == TEXT("custom_event")))
+                    && (Node->NodeType == TEXT("function_entry") || Node->NodeType == TEXT("custom_event") || Node->NodeType == TEXT("macro_entry")))
                 {
-                    State.EntryNodeKeysByAssetAndMember.FindOrAdd(MakeTraceMemberLookupKey(ObjectPath, Node->MemberName)).Add(EntryKey);
+                    State.EntryNodeKeysByAssetAndMember.FindOrAdd(MakeTraceMemberLookupKey(ObjectPath, Node->MemberName)).AddUnique(EntryKey);
                 }
             }
+        }
+
+        for (TPair<FString, FTraceNodeRecord>& Pair : State.NodesByKey)
+        {
+            FTraceNodeRecord& Node = Pair.Value;
+            if (!Node.BlueprintObjectPath.Equals(ObjectPath, ESearchCase::CaseSensitive)
+                || Node.MemberName.IsEmpty()
+                || (Node.NodeType != TEXT("function_entry")
+                    && Node.NodeType != TEXT("custom_event")
+                    && Node.NodeType != TEXT("event")
+                    && Node.NodeType != TEXT("macro_entry")
+                    && Node.NodeType != TEXT("composite_entry")))
+            {
+                continue;
+            }
+
+            Node.bIsEntry = true;
+            State.EntryNodeKeysByAssetAndMember.FindOrAdd(MakeTraceMemberLookupKey(ObjectPath, Node.MemberName)).AddUnique(Pair.Key);
         }
     }
 }
@@ -222,6 +332,11 @@ bool LoadBlueprintTraceData(
     }
 
     if (bResolveExternalMembers && !ResolveNodeAssetReferences(Database, State, OutError))
+    {
+        return false;
+    }
+
+    if (bResolveExternalMembers && !ResolveConnectedTargetAssets(Database, ObjectPath, State, OutError))
     {
         return false;
     }

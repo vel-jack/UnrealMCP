@@ -7,12 +7,13 @@ How users normally work with it
 - Open the Unreal project.
 - Keep the UnrealMCP transport running.
 - In Codex or another MCP client, ask plain-language questions about assets, Blueprints, and features.
-- Use manual index rebuild only when the index becomes stale or after larger project changes.
+- Use Refresh Changed Assets for ordinary project changes. Reserve a manual full rebuild for a missing, invalid, or intentionally reset index.
 
 Main capability groups
 - Asset discovery: SearchAssets, ListAssets, GetAssetInfo, GetDependencies, GetReferencers.
 - Blueprint reading: GetBlueprintInfo, ListVariables, ListFunctions, ListComponents, GetParentBlueprint, GetImplementedInterfaces, ListChildBlueprints.
-- Index and project understanding: GetIndexStatus, BuildProjectIndex, FindFeatureEntryPoints, SummarizeBlueprintCluster, TraceFeatureFlow, ExplainFeatureWorkflow.
+- Index and project understanding: GetIndexStatus, RefreshProjectIndex, BuildProjectIndex, FindFeatureEntryPoints, SummarizeBlueprintCluster, TraceFeatureFlow, ExplainFeatureWorkflow.
+- Indexed Blueprint graph tracing: FindBlueprintTraceStartPoints, TraceBlueprintFlow, ExplainBlueprintTrace, InspectBlueprintNode, FindBlueprintNodeReferences, FindBlueprintVariableUsage, FindCrossBlueprintCalls.
 - Level and world reading: ListActors, GetActorInfo, FindActorsUsingBlueprint, GetLevelActorDependencies, ListSelectedActors.
 
 How users know what they can do
@@ -23,13 +24,13 @@ How users know what they can do
 Recommended workflow
 1. Find likely entry points for a feature.
 2. Summarize the nearby asset cluster.
-3. Trace a small flow around the top candidate.
+3. Trace a small flow around the top candidate. Function calls, custom events, macros, interface implementations, dispatcher bindings, and incoming data dependencies can be followed locally by UnrealMCP.
 4. Use level and selection tools to connect Blueprint assets with placed actors.
-5. Only rebuild the index manually when needed.
+5. Refresh changed assets after ordinary edits; only perform a full rebuild when needed.
 
 Index guidance
-- Manual rebuild is preferred.
-- Rebuilding can be expensive on large projects.
+- Partial refresh is preferred for ordinary changed, added, or deleted assets.
+- Full rebuilding can be expensive on large projects and remains a manual recovery/maintenance action.
 - A healthy status usually means hasUsableIndex=true and isDirty=false.
 - Project warnings in the log do not automatically mean UnrealMCP failed if the rebuild completed successfully.
 
@@ -37,9 +38,9 @@ Current safety and limits
 - Discovery and read tools are the main focus right now.
 - Compile and edit paths exist but should be used carefully.
 - Destructive project actions should require confirmation.
-- Exact Blueprint event and node-flow tracing is planned as a future indexed graph capability and is not yet a completed user-facing feature.
+- Indexed Blueprint event and node-flow tracing is available, including macros, collapsed graphs, interface implementations, connected Blueprint instance targets, and dispatcher relationships. Runtime-dependent dispatch and latent/async behavior may still need manual verification.
 
 Current milestone state
 - Milestone 1 through Milestone 7 are available.
-- The plugin is currently in a validation pause before the next milestone.
-- Real-world usage feedback is expected before new editing or gameplay-control work is expanded.
+- Milestone 8 indexed Blueprint graph tracing is in progress and usable.
+- Read and explanation workflows remain the current focus before editing or gameplay-control work expands.

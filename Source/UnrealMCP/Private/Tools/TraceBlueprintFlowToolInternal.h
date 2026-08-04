@@ -30,6 +30,10 @@ struct FTraceNodeRecord
     FString ResolvedMemberAssetPackageName;
     FString ResolvedMemberAssetScope;
     bool bResolvedMemberAssetIsBlueprint = false;
+    FString ConnectedTargetClassPath;
+    bool bHasResolvedTargetAsset = false;
+    FString ResolvedTargetAssetObjectPath;
+    FString ResolvedTargetAssetName;
 };
 
 struct FTraceEdgeRecord
@@ -146,6 +150,18 @@ inline TSharedRef<FJsonObject> SerializeTraceNode(const FTraceNodeRecord& Node)
         AssetObject->SetBoolField(TEXT("isBlueprint"), Node.bResolvedMemberAssetIsBlueprint);
         NodeObject->SetObjectField(TEXT("resolvedMemberAsset"), AssetObject);
     }
+    NodeObject->SetStringField(TEXT("connectedTargetClassPath"), Node.ConnectedTargetClassPath);
+    NodeObject->SetBoolField(TEXT("hasResolvedTargetAsset"), Node.bHasResolvedTargetAsset);
+    NodeObject->SetBoolField(
+        TEXT("isConnectedTargetCrossBlueprint"),
+        Node.bHasResolvedTargetAsset && !Node.ResolvedTargetAssetObjectPath.Equals(Node.BlueprintObjectPath, ESearchCase::CaseSensitive));
+    if (Node.bHasResolvedTargetAsset)
+    {
+        TSharedRef<FJsonObject> TargetAssetObject = MakeShared<FJsonObject>();
+        TargetAssetObject->SetStringField(TEXT("objectPath"), Node.ResolvedTargetAssetObjectPath);
+        TargetAssetObject->SetStringField(TEXT("assetName"), Node.ResolvedTargetAssetName);
+        NodeObject->SetObjectField(TEXT("resolvedTargetAsset"), TargetAssetObject);
+    }
     return NodeObject;
 }
 
@@ -169,6 +185,21 @@ bool LoadBlueprintTraceData(
     const FString& ObjectPath,
     bool bResolveExternalMembers,
     FTraceTraversalState& State,
+    FString& OutError);
+
+bool ExpandBlueprintTraceTargets(
+    FSQLiteDatabase& Database,
+    const FTraceNodeRecord& CurrentNode,
+    int32 CurrentDepth,
+    int32 CurrentCallDepth,
+    int32 MaxDepth,
+    int32 MaxCallDepth,
+    bool bFollowCrossBlueprintCalls,
+    FTraceTraversalState& State,
+    TSet<FString>& TraversedEdgeKeys,
+    TArray<FTraceEdgeRecord>& TraversedEdges,
+    TSet<FString>& VisitedNodeSet,
+    TQueue<FTraceFrontierItem>& Frontier,
     FString& OutError);
 
 TSharedRef<FJsonObject> BuildTraceFlowOutput(

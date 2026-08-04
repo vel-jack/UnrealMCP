@@ -71,6 +71,17 @@ bool FUnrealMCPProjectIndex::UpsertAsset(const FAssetData& AssetData, FString* O
                         TEXT("interfaceGraph"),
                         InterfaceDescription.Interface ? InterfaceDescription.Interface->GetPathName() : FString());
                 }
+
+                if (InterfaceDescription.Interface != nullptr)
+                {
+                    for (TFieldIterator<UFunction> FunctionIt(InterfaceDescription.Interface, EFieldIteratorFlags::ExcludeSuper); FunctionIt; ++FunctionIt)
+                    {
+                        BlueprintFunctions.Emplace(
+                            FunctionIt->GetName(),
+                            TEXT("interfaceDeclaration"),
+                            InterfaceDescription.Interface->GetPathName());
+                    }
+                }
             }
 
             FunctionCount = BlueprintFunctions.Num();

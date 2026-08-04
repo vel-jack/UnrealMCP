@@ -24,14 +24,25 @@ Trace relationships
 - Summarize the Blueprint cluster around this asset.
 - Trace feature flow for this asset with maxDepth 2 and maxNodes 20.
 
-Future graph-tracing direction
-- Planned future work will support direct tracing across Blueprint nodes, events, functions, variables, interface calls, and cross-Blueprint jumps from an indexed graph model.
-- For now, use the current feature and level tools for higher-level tracing rather than exact node-to-node Blueprint execution explanation.
+Indexed Blueprint graph tracing
+- Trace the Begin Play event in /Game/Path/MyBlueprint.MyBlueprint and summarize the execution and data flow.
+- Starting from SendGoldEvent in /Game/A_BadActor.A_BadActor, follow functions, custom events, macros, interface calls, dispatcher bindings, and cross-Blueprint calls. Keep the trace bounded and return a concise explanation.
+- Trace through any collapsed graphs and identify the concrete Blueprint instance targeted by connected object variables.
+- Find where this dispatcher is bound and broadcast, then follow each resolved handler with a bounded call depth.
+- Explain this Blueprint flow with maxCallDepth 2. Mention exact, inferred, or unresolved transitions.
+- Find where variable GoldBox is read and written, then trace the flow around the strongest write.
+- Find every indexed node that references function RecieveSomeGold and explain the callers.
+
+Trace depth guidance
+- Start with maxCallDepth 1 or 2 and a concise explanation.
+- Increase depth only when the first result ends at a relevant call boundary.
+- Ask for the full structured trace only when node GUIDs, pin edges, or exact graph locations are needed.
 
 Project index
 - Check the project index health.
-- Tell me if the index is usable and whether a manual rebuild is recommended.
-- Rebuild the index only if the user confirms or if manual maintenance is needed.
+- Refresh only changed project assets, then continue the Blueprint trace.
+- Refresh /Game/Path/MyBlueprint.MyBlueprint explicitly and return the refreshed count.
+- Use RefreshProjectIndex for ordinary edits. Rebuild the full index only if it is missing, invalid, or the user explicitly requests maintenance.
 
 Good prompt pattern
 - Find likely entry points for feature X, choose the strongest project-content candidate, summarize the nearby cluster, and trace the likely workflow.

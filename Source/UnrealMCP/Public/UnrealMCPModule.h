@@ -36,6 +36,7 @@ private:
     void RunTestCommand(const FString& Method, TSharedPtr<class FJsonObject> Params = nullptr) const;
     void HandleSearchAssetsCommand(const TArray<FString>& Args) const;
     void HandleInitializeProjectIndex() const;
+    void HandleRefreshProjectIndex() const;
     void HandleRebuildProjectIndex() const;
     void HandleLogIndexStatus() const;
     void HandleOpenIndexFolder() const;

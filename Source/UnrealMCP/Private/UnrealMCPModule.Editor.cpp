@@ -128,6 +128,7 @@ void FUnrealMCPModule::RegisterEditorControls()
                     FToolMenuSection& SubSection = SubMenu->AddSection(TEXT("UnrealMCPActions"), FText::FromString(TEXT("UnrealMCP")));
 
                     SubSection.AddMenuEntry(TEXT("UnrealMCP.InitializeIndex"), FText::FromString(TEXT("Initialize Index")), FText::FromString(TEXT("Opens the UnrealMCP project index on demand without rebuilding it.")), FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FUnrealMCPModule::HandleInitializeProjectIndex)));
+                    SubSection.AddMenuEntry(TEXT("UnrealMCP.RefreshIndex"), FText::FromString(TEXT("Refresh Changed Assets")), FText::FromString(TEXT("Detects and reindexes only changed, added, or deleted project assets.")), FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FUnrealMCPModule::HandleRefreshProjectIndex)));
                     SubSection.AddMenuEntry(TEXT("UnrealMCP.RebuildIndex"), FText::FromString(TEXT("Rebuild Index")), FText::FromString(TEXT("Runs a full UnrealMCP project index rebuild.")), FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FUnrealMCPModule::HandleRebuildProjectIndex)));
                     SubSection.AddMenuEntry(TEXT("UnrealMCP.LogIndexStatus"), FText::FromString(TEXT("Log Index Status")), FText::FromString(TEXT("Logs the current UnrealMCP index status snapshot.")), FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FUnrealMCPModule::HandleLogIndexStatus)));
                     SubSection.AddMenuEntry(TEXT("UnrealMCP.OpenIndexFolder"), FText::FromString(TEXT("Open Index Folder")), FText::FromString(TEXT("Opens the Saved/UnrealMCP folder in Explorer.")), FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FUnrealMCPModule::HandleOpenIndexFolder)));
@@ -151,6 +152,7 @@ void FUnrealMCPModule::RegisterEditorControls()
                     FToolMenuSection& SubSection = SubMenu->AddSection(TEXT("UnrealMCPToolbarActions"), FText::FromString(TEXT("UnrealMCP")));
 
                     SubSection.AddMenuEntry(TEXT("UnrealMCP.Toolbar.InitializeIndex"), FText::FromString(TEXT("Initialize Index")), FText::FromString(TEXT("Opens the UnrealMCP project index on demand without rebuilding it.")), FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FUnrealMCPModule::HandleInitializeProjectIndex)));
+                    SubSection.AddMenuEntry(TEXT("UnrealMCP.Toolbar.RefreshIndex"), FText::FromString(TEXT("Refresh Changed Assets")), FText::FromString(TEXT("Detects and reindexes only changed, added, or deleted project assets.")), FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FUnrealMCPModule::HandleRefreshProjectIndex)));
                     SubSection.AddMenuEntry(TEXT("UnrealMCP.Toolbar.RebuildIndex"), FText::FromString(TEXT("Rebuild Index")), FText::FromString(TEXT("Runs a full UnrealMCP project index rebuild.")), FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FUnrealMCPModule::HandleRebuildProjectIndex)));
                     SubSection.AddMenuEntry(TEXT("UnrealMCP.Toolbar.LogIndexStatus"), FText::FromString(TEXT("Log Index Status")), FText::FromString(TEXT("Logs the current UnrealMCP index status snapshot.")), FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FUnrealMCPModule::HandleLogIndexStatus)));
                     SubSection.AddMenuEntry(TEXT("UnrealMCP.Toolbar.OpenIndexFolder"), FText::FromString(TEXT("Open Index Folder")), FText::FromString(TEXT("Opens the Saved/UnrealMCP folder in Explorer.")), FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FUnrealMCPModule::HandleOpenIndexFolder)));
@@ -228,6 +230,53 @@ void FUnrealMCPModule::HandleRebuildProjectIndex() const
     FMessageDialog::Open(
         EAppMsgType::Ok,
         FText::FromString(FString::Printf(TEXT("UnrealMCP index rebuilt.\nAssets: %lld\nBlueprints: %lld"), Snapshot.IndexedAssetCount, Snapshot.IndexedBlueprintCount)));
+}
+
+void FUnrealMCPModule::HandleRefreshProjectIndex() const
+{
+    if (!EnsureProjectIndexInitialized())
+    {
+        FMessageDialog::Open(EAppMsgType::Ok, FText::FromString(TEXT("UnrealMCP could not initialize the project index. Check LogUnrealMCP for details.")));
+        return;
+    }
+
+    FString Error;
+    FUnrealMCPProjectIndex::FRefreshResult RefreshResult;
+    FScopedSlowTask SlowTask(100.0f, FText::FromString(TEXT("Refreshing changed UnrealMCP index assets...")));
+    SlowTask.MakeDialog(true);
+
+    const bool bSucceeded = ProjectIndex->RefreshProjectIndex(
+        {},
+        RefreshResult,
+        Error,
+        [&SlowTask](int32 CurrentIndex, int32 TotalAssets, const FString& StatusText)
+        {
+            const float Total = FMath::Max(1, TotalAssets);
+            const float TargetProgress = (FMath::Clamp(static_cast<float>(CurrentIndex), 0.0f, Total) / Total) * 100.0f;
+            const float Remaining = FMath::Max(0.0f, TargetProgress - SlowTask.CompletedWork);
+            if (Remaining > 0.0f)
+            {
+                SlowTask.EnterProgressFrame(Remaining, FText::FromString(StatusText));
+            }
+            else
+            {
+                SlowTask.DefaultMessage = FText::FromString(StatusText);
+            }
+        });
+    if (!bSucceeded)
+    {
+        UE_LOG(LogUnrealMCP, Error, TEXT("Manual partial index refresh failed: %s"), *Error);
+        FMessageDialog::Open(EAppMsgType::Ok, FText::FromString(FString::Printf(TEXT("UnrealMCP partial refresh failed:\n%s"), *Error)));
+        return;
+    }
+
+    FMessageDialog::Open(
+        EAppMsgType::Ok,
+        FText::FromString(FString::Printf(
+            TEXT("UnrealMCP partial refresh complete.\nCandidates: %d\nRefreshed: %d\nRemoved: %d"),
+            RefreshResult.CandidateCount,
+            RefreshResult.RefreshedAssetCount,
+            RefreshResult.RemovedAssetCount)));
 }
 
 void FUnrealMCPModule::HandleLogIndexStatus() const
