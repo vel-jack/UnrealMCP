@@ -8,6 +8,8 @@ Understand a feature
 Inspect a Blueprint
 - Get Blueprint info for /Game/Path/MyBlueprint.MyBlueprint.
 - List Blueprint variables, functions, and components for this asset.
+- Show the indexed component hierarchy for this Blueprint, identify component Blueprint assets, and summarize where each component is used in its graphs.
+- Explain how component AC_MyFeature participates in this Actor. Follow its graph references and inspect its component Blueprint when available.
 - Show the parent Blueprint and implemented interfaces for this asset.
 
 Read the current level or selection

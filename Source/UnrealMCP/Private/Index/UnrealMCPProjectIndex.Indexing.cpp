@@ -5,6 +5,7 @@
 #include "Blueprint/BlueprintSupport.h"
 #include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
+#include "Components/SceneComponent.h"
 #include "Index/UnrealMCPProjectIndexInternal.h"
 #include "Tools/BlueprintToolUtils.h"
 
@@ -33,7 +34,7 @@ bool FUnrealMCPProjectIndex::UpsertAsset(const FAssetData& AssetData, FString* O
 
     TArray<FBPVariableDescription> BlueprintVariables;
     TArray<TTuple<FString, FString, FString>> BlueprintFunctions;
-    TArray<TTuple<FString, FString, FString, bool, int32>> BlueprintComponents;
+    TArray<FIndexedBlueprintComponentRow> BlueprintComponents;
     TArray<FIndexedBlueprintGraphRow> BlueprintGraphs;
     TArray<FIndexedBlueprintNodeRow> BlueprintNodes;
     TArray<FIndexedBlueprintPinRow> BlueprintPins;
@@ -101,13 +102,43 @@ bool FUnrealMCPProjectIndex::UpsertAsset(const FAssetData& AssetData, FString* O
 
                 for (const USCS_Node* Node : Nodes)
                 {
+                    if (Node == nullptr)
+                    {
+                        continue;
+                    }
+
                     const USCS_Node* ParentNode = Blueprint->SimpleConstructionScript->FindParentNode(const_cast<USCS_Node*>(Node));
-                    BlueprintComponents.Emplace(
-                        Node ? Node->GetVariableName().ToString() : FString(),
-                        Node && Node->ComponentClass ? Node->ComponentClass->GetPathName() : FString(),
-                        ParentNode ? ParentNode->GetVariableName().ToString() : FString(),
-                        Blueprint->SimpleConstructionScript->GetDefaultSceneRootNode() == Node,
-                        Node ? Node->GetChildNodes().Num() : 0);
+                    FIndexedBlueprintComponentRow ComponentRow;
+                    ComponentRow.VariableName = Node->GetVariableName().ToString();
+                    ComponentRow.ComponentClassPath = Node->ComponentClass ? Node->ComponentClass->GetPathName() : FString();
+                    ComponentRow.TemplateName = Node->ComponentTemplate ? Node->ComponentTemplate->GetName() : FString();
+                    ComponentRow.TemplatePath = Node->ComponentTemplate ? Node->ComponentTemplate->GetPathName() : FString();
+                    ComponentRow.ParentVariableName = ParentNode
+                        ? ParentNode->GetVariableName().ToString()
+                        : Node->ParentComponentOrVariableName.ToString();
+                    ComponentRow.AttachSocketName = Node->AttachToName.ToString();
+                    ComponentRow.bIsDefaultSceneRoot = Blueprint->SimpleConstructionScript->GetDefaultSceneRootNode() == Node;
+                    ComponentRow.ChildCount = Node->GetChildNodes().Num();
+
+                    if (Node->ComponentClass != nullptr)
+                    {
+                        if (const UBlueprint* ComponentBlueprint = Cast<UBlueprint>(Node->ComponentClass->ClassGeneratedBy))
+                        {
+                            ComponentRow.ComponentBlueprintPath = ComponentBlueprint->GetPathName();
+                        }
+                    }
+
+                    if (const USceneComponent* SceneTemplate = Cast<USceneComponent>(Node->ComponentTemplate))
+                    {
+                        ComponentRow.bIsSceneComponent = true;
+                        ComponentRow.RelativeLocation = SceneTemplate->GetRelativeLocation().ToCompactString();
+                        ComponentRow.RelativeRotation = SceneTemplate->GetRelativeRotation().ToCompactString();
+                        ComponentRow.RelativeScale = SceneTemplate->GetRelativeScale3D().ToCompactString();
+                        ComponentRow.Mobility = StaticEnum<EComponentMobility::Type>()->GetNameStringByValue(
+                            static_cast<int64>(SceneTemplate->Mobility));
+                    }
+
+                    BlueprintComponents.Add(MoveTemp(ComponentRow));
                 }
             }
 
@@ -210,19 +241,29 @@ bool FUnrealMCPProjectIndex::UpsertAsset(const FAssetData& AssetData, FString* O
         }
     }
 
-    for (const TTuple<FString, FString, FString, bool, int32>& ComponentRow : BlueprintComponents)
+    for (const FIndexedBlueprintComponentRow& ComponentRow : BlueprintComponents)
     {
         if (!ExecuteBoundStatement(Database,
-            TEXT("INSERT INTO blueprint_components(blueprint_object_path, variable_name, component_class_path, parent_variable_name, is_default_scene_root, child_count)"
-                " VALUES(?1, ?2, ?3, ?4, ?5, ?6);"),
+            TEXT("INSERT INTO blueprint_components(blueprint_object_path, variable_name, component_class_path, component_blueprint_path, template_name, template_path, parent_variable_name, attach_socket_name, creation_source, is_scene_component, is_default_scene_root, child_count, relative_location, relative_rotation, relative_scale, mobility)"
+                " VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16);"),
             [&ObjectPath, &ComponentRow](FSQLitePreparedStatement& Statement)
             {
                 return Statement.SetBindingValueByIndex(1, ObjectPath)
-                    && Statement.SetBindingValueByIndex(2, ComponentRow.Get<0>())
-                    && Statement.SetBindingValueByIndex(3, ComponentRow.Get<1>())
-                    && Statement.SetBindingValueByIndex(4, ComponentRow.Get<2>())
-                    && Statement.SetBindingValueByIndex(5, ComponentRow.Get<3>() ? 1 : 0)
-                    && Statement.SetBindingValueByIndex(6, ComponentRow.Get<4>());
+                    && Statement.SetBindingValueByIndex(2, ComponentRow.VariableName)
+                    && Statement.SetBindingValueByIndex(3, ComponentRow.ComponentClassPath)
+                    && Statement.SetBindingValueByIndex(4, ComponentRow.ComponentBlueprintPath)
+                    && Statement.SetBindingValueByIndex(5, ComponentRow.TemplateName)
+                    && Statement.SetBindingValueByIndex(6, ComponentRow.TemplatePath)
+                    && Statement.SetBindingValueByIndex(7, ComponentRow.ParentVariableName)
+                    && Statement.SetBindingValueByIndex(8, ComponentRow.AttachSocketName)
+                    && Statement.SetBindingValueByIndex(9, ComponentRow.CreationSource)
+                    && Statement.SetBindingValueByIndex(10, ComponentRow.bIsSceneComponent ? 1 : 0)
+                    && Statement.SetBindingValueByIndex(11, ComponentRow.bIsDefaultSceneRoot ? 1 : 0)
+                    && Statement.SetBindingValueByIndex(12, ComponentRow.ChildCount)
+                    && Statement.SetBindingValueByIndex(13, ComponentRow.RelativeLocation)
+                    && Statement.SetBindingValueByIndex(14, ComponentRow.RelativeRotation)
+                    && Statement.SetBindingValueByIndex(15, ComponentRow.RelativeScale)
+                    && Statement.SetBindingValueByIndex(16, ComponentRow.Mobility);
             },
             OutError))
         {

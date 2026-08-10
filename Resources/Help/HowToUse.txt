@@ -11,7 +11,7 @@ How users normally work with it
 
 Main capability groups
 - Asset discovery: SearchAssets, ListAssets, GetAssetInfo, GetDependencies, GetReferencers.
-- Blueprint reading: GetBlueprintInfo, ListVariables, ListFunctions, ListComponents, GetParentBlueprint, GetImplementedInterfaces, ListChildBlueprints.
+- Blueprint reading: GetBlueprintInfo, ListVariables, ListFunctions, ListComponents, GetBlueprintComponentHierarchy, GetParentBlueprint, GetImplementedInterfaces, ListChildBlueprints.
 - Index and project understanding: GetIndexStatus, RefreshProjectIndex, BuildProjectIndex, FindFeatureEntryPoints, SummarizeBlueprintCluster, TraceFeatureFlow, ExplainFeatureWorkflow.
 - Indexed Blueprint graph tracing: FindBlueprintTraceStartPoints, TraceBlueprintFlow, ExplainBlueprintTrace, InspectBlueprintNode, FindBlueprintNodeReferences, FindBlueprintVariableUsage, FindCrossBlueprintCalls.
 - Level and world reading: ListActors, GetActorInfo, FindActorsUsingBlueprint, GetLevelActorDependencies, ListSelectedActors.
@@ -27,6 +27,11 @@ Recommended workflow
 3. Trace a small flow around the top candidate. Function calls, custom events, macros, interface implementations, dispatcher bindings, and incoming data dependencies can be followed locally by UnrealMCP.
 4. Use level and selection tools to connect Blueprint assets with placed actors.
 5. Refresh changed assets after ordinary edits; only perform a full rebuild when needed.
+
+Blueprint components
+- GetBlueprintComponentHierarchy returns Blueprint-created components, attachment parents, component classes, component Blueprint assets, template identity, scene transforms, mobility, and graph usage sites.
+- A non-empty componentBlueprintPath identifies a separate Scene Component or Actor Component Blueprint that can be inspected and traced as its own execution host.
+- Use suggestedTraceParams to follow graph reads/calls involving a component variable. A zero usage count means no indexed graph node currently references that component variable.
 
 Index guidance
 - Partial refresh is preferred for ordinary changed, added, or deleted assets.

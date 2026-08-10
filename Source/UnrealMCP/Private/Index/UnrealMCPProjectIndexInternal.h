@@ -17,6 +17,25 @@ struct FIndexedBlueprintGraphRow
     int32 NodeCount = 0;
 };
 
+struct FIndexedBlueprintComponentRow
+{
+    FString VariableName;
+    FString ComponentClassPath;
+    FString ComponentBlueprintPath;
+    FString TemplateName;
+    FString TemplatePath;
+    FString ParentVariableName;
+    FString AttachSocketName;
+    FString CreationSource = TEXT("blueprint_scs");
+    FString RelativeLocation;
+    FString RelativeRotation;
+    FString RelativeScale;
+    FString Mobility;
+    bool bIsSceneComponent = false;
+    bool bIsDefaultSceneRoot = false;
+    int32 ChildCount = 0;
+};
+
 struct FIndexedBlueprintNodeRow
 {
     FString GraphName;

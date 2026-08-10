@@ -97,7 +97,7 @@ namespace
 }
 
 FFindBlueprintNodeReferencesTool::FFindBlueprintNodeReferencesTool()
-    : FMCPToolBase(TEXT("FindBlueprintNodeReferences"), TEXT("Finds indexed Blueprint call sites that reference a Blueprint node member, function, or event across the project."))
+    : FMCPToolBase(TEXT("FindBlueprintNodeReferences"), TEXT("Finds indexed Blueprint nodes that reference a component variable, function, event, or other member across the project."))
 {
 }
 
@@ -361,7 +361,7 @@ TSharedPtr<FJsonObject> FFindBlueprintNodeReferencesTool::BuildInputSchema() con
 
     TSharedRef<FJsonObject> ObjectPathProperty = MakeShared<FJsonObject>();
     ObjectPathProperty->SetStringField(TEXT("type"), TEXT("string"));
-    ObjectPathProperty->SetStringField(TEXT("description"), TEXT("Blueprint asset object path that owns the target function, event, or node member."));
+    ObjectPathProperty->SetStringField(TEXT("description"), TEXT("Blueprint asset object path that owns the target component variable, function, event, or node member."));
     Properties->SetObjectField(TEXT("objectPath"), ObjectPathProperty);
 
     TSharedRef<FJsonObject> QueryProperty = MakeShared<FJsonObject>();
@@ -371,7 +371,7 @@ TSharedPtr<FJsonObject> FFindBlueprintNodeReferencesTool::BuildInputSchema() con
 
     TSharedRef<FJsonObject> MemberNameProperty = MakeShared<FJsonObject>();
     MemberNameProperty->SetStringField(TEXT("type"), TEXT("string"));
-    MemberNameProperty->SetStringField(TEXT("description"), TEXT("Optional exact member name such as SendGoldEvent or RecieveSomeGold."));
+    MemberNameProperty->SetStringField(TEXT("description"), TEXT("Optional exact component variable, function, or event member name such as AC_MyFeature or SendGoldEvent."));
     Properties->SetObjectField(TEXT("memberName"), MemberNameProperty);
 
     TSharedRef<FJsonObject> NodeGuidProperty = MakeShared<FJsonObject>();
