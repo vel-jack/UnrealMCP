@@ -3,6 +3,7 @@
 #include "Index/UnrealMCPProjectIndex.h"
 #include "MCP/MCPServer.h"
 #include "Tools/AssetExistsTool.h"
+#include "Tools/ApplyBlueprintInteractionPlanTool.h"
 #include "Tools/AddBlueprintComponentTool.h"
 #include "Tools/AddBlueprintComponentsTool.h"
 #include "Tools/AddBlueprintBranchNodeTool.h"
@@ -323,6 +324,7 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FSetBlueprintNodeCommentTool>());
     Registry.RegisterTool(MakeShared<FSetBlueprintSequenceOutputsTool>());
     Registry.RegisterTool(MakeShared<FLayoutBlueprintNodesTool>());
+    Registry.RegisterTool(MakeShared<FApplyBlueprintInteractionPlanTool>());
     Registry.RegisterTool(MakeShared<FWireBlueprintEventToFunctionTool>());
     Registry.RegisterTool(MakeShared<FListToolsTool>(Registry));
 }

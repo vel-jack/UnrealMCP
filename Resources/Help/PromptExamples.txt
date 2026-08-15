@@ -87,6 +87,12 @@ Safe Blueprint interaction wiring
 - Dry-run wiring custom event HandlePrimaryClick in /Game/Path/BP_Controller.BP_Controller to call TraceTargetUnderCursor on component InteractionTraceComponent. Do not save yet.
 - If the dry-run succeeds, apply the same event-to-function wiring, compile only that Blueprint, save it, and return the changed node GUIDs and pin connections.
 - Re-run the event-to-function workflow and confirm it is already complete without adding duplicate nodes.
+- Dry-run an ApplyBlueprintInteractionPlan workflow with stable node IDs for Custom Event -> component function call -> Branch. Validate every named pin and do not save.
+- Apply the validated interaction plan, compile only the touched Blueprint, save once, and return created node IDs plus exact connections.
+- In AC_EnhancedInputSystem, dry-run extending the existing pointer-pressed exec route by exact node GUID. Insert a Sequence after the occupied output, preserve the legacy interface call on Then_0, and place the new AC_DSMInteraction handler call on Then_1. Do not replace or disconnect the legacy route.
+- Apply that Sequence-splice plan only if the source has exactly one existing exec route, compile and save once, then rerun the plan and confirm it is already complete.
+- Dry-run an interaction plan that sets Get Component by Class.ComponentClass with defaultObjectPath before connecting its typed ReturnValue to a component function target.
+- Atomically insert this impure node into the exact existing source-to-target exec link with executionInsertions; preserve all data links, compile once, save, and verify an idempotent retry.
 
 Good prompt pattern
 - Find likely entry points for feature X, choose the strongest project-content candidate, summarize the nearby cluster, and trace the likely workflow.

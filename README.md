@@ -74,6 +74,7 @@ This plugin embeds a minimal Model Context Protocol server directly into the Unr
 - `AddBlueprintCommentNode`
 - `CreateBlueprintFunctionGraph`
 - `WireBlueprintEventToFunction`
+- `ApplyBlueprintInteractionPlan`
 - `GetIndexStatus`
 - `BuildProjectIndex`
 - `FindCircularDependencies`
@@ -130,6 +131,14 @@ Output-bearing interface graph creation is regression-tested by `UnrealMCP.Bluep
 `WireBlueprintEventToFunction` is the first Phase 4 high-level workflow. It idempotently creates or reuses a Custom Event, adds one exact impure Blueprint-callable function call, optionally wires a Blueprint component/member variable into the call target, lays out the nodes, and performs at most one compile/save/index refresh. It refuses to replace an event's existing execution route or a function call's existing target connection. Use `dryRun=true` before applying changes to an unfamiliar Blueprint.
 
 The workflow is regression-tested by `UnrealMCP.Blueprint.Authoring.WireEventToFunction.Live`, covering dry-run, exact execution and component-target pin links, compilation, idempotent retry, duplicate prevention, and temporary fixture cleanup.
+
+`ApplyBlueprintInteractionPlan` applies a complete declarative graph fragment in one preflighted operation. Its schema supports `existingNode` GUID anchors, `customEvent`, `functionCall`, `variableGet`, `branch`, and `sequence` nodes plus exact named-pin connections. Stable `workflowId` and node `id` values make retries idempotent. Existing target-pin or execution-route conflicts are rejected instead of replaced, and compile/save/index refresh run at most once after the plan.
+
+A `sequence` node can safely extend one occupied execution output by specifying `spliceAfterNodeId` and `spliceAfterPinName`. The tool inserts the Sequence, reconnects the original route through `Then_0`, and leaves `Then_1` available for the new workflow. The splice must have exactly one existing route, is fully preflighted, and is validated rather than repeated on retry. This is the preferred way to add DSM interaction calls beside legacy pointer/interface handling without removing that behavior.
+
+Plan nodes also accept `inputDefaults` entries with either `defaultValue` or `defaultObjectPath`. Defaults are applied before connection validation, enabling typed nodes such as `Get Component by Class` to connect safely in the same transaction. `executionInsertions` atomically insert one impure node into an exact existing exec link and validate the completed route on retry.
+
+The declarative workflow is regression-tested by `UnrealMCP.Blueprint.Authoring.InteractionPlan.Live`, covering complete dry-run preflight, exact existing-node anchors, four-node/three-link application, component-target data wiring, legacy-route-preserving Sequence insertion, compilation, idempotent retry, duplicate prevention, and temporary fixture cleanup.
 
 ## Project Architecture Analysis
 
