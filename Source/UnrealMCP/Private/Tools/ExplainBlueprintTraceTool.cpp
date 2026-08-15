@@ -257,6 +257,10 @@ UnrealMCP::FMCPResponse FExplainBlueprintTraceTool::Execute(const UnrealMCP::FMC
     int32 CollapsedGraphNodeCount = 0;
     int32 InterfaceCallNodeCount = 0;
     int32 DispatcherNodeCount = 0;
+    int32 LatentNodeCount = 0;
+    int32 AsyncNodeCount = 0;
+    int32 TimelineNodeCount = 0;
+    int32 TimerNodeCount = 0;
     TArray<TSharedPtr<FJsonValue>> SummarySteps;
 
     for (const FString& NodeKey : VisitedOrderFinal)
@@ -296,6 +300,10 @@ UnrealMCP::FMCPResponse FExplainBlueprintTraceTool::Execute(const UnrealMCP::FMC
         {
             ++DispatcherNodeCount;
         }
+        LatentNodeCount += Node->ExecutionSemantic == TEXT("latent") ? 1 : 0;
+        AsyncNodeCount += Node->ExecutionSemantic == TEXT("async") ? 1 : 0;
+        TimelineNodeCount += Node->ExecutionSemantic == TEXT("timeline") ? 1 : 0;
+        TimerNodeCount += Node->ExecutionSemantic == TEXT("timer") ? 1 : 0;
 
         const bool bIsCrossBlueprint = Node->bHasResolvedMemberAsset
             && !Node->ResolvedMemberAssetObjectPath.IsEmpty()
@@ -307,11 +315,16 @@ UnrealMCP::FMCPResponse FExplainBlueprintTraceTool::Execute(const UnrealMCP::FMC
 
         if (SummarySteps.Num() < 12)
         {
-            SummarySteps.Add(MakeShared<FJsonValueString>(BuildExplainNodeLabel(*Node)));
+            FString Step = BuildExplainNodeLabel(*Node);
+            if (!Node->ExecutionSemantic.IsEmpty())
+            {
+                Step += FString::Printf(TEXT(" [%s continuation: %s]"), *Node->ExecutionSemantic, *Node->SemanticConfidence);
+            }
+            SummarySteps.Add(MakeShared<FJsonValueString>(Step));
         }
     }
 
-    const FString Confidence = BuildTraceConfidence(StartNodeKeysFinal, State, bFollowCrossBlueprintCalls);
+    const FString Confidence = BuildTraceConfidence(StartNodeKeysFinal, State, TraversedEdgesFinal);
     const FString Explanation = BuildExplanationText(State, VisitedOrderFinal, Confidence);
 
     int32 MacroTransitionCount = 0;
@@ -351,10 +364,21 @@ UnrealMCP::FMCPResponse FExplainBlueprintTraceTool::Execute(const UnrealMCP::FMC
     Result->SetNumberField(TEXT("collapsedGraphNodeCount"), CollapsedGraphNodeCount);
     Result->SetNumberField(TEXT("interfaceCallNodeCount"), InterfaceCallNodeCount);
     Result->SetNumberField(TEXT("dispatcherNodeCount"), DispatcherNodeCount);
+    Result->SetNumberField(TEXT("latentNodeCount"), LatentNodeCount);
+    Result->SetNumberField(TEXT("asyncNodeCount"), AsyncNodeCount);
+    Result->SetNumberField(TEXT("timelineNodeCount"), TimelineNodeCount);
+    Result->SetNumberField(TEXT("timerNodeCount"), TimerNodeCount);
     Result->SetNumberField(TEXT("macroTransitionCount"), MacroTransitionCount);
     Result->SetNumberField(TEXT("collapsedGraphTransitionCount"), CollapsedGraphTransitionCount);
     Result->SetNumberField(TEXT("interfaceTransitionCount"), InterfaceTransitionCount);
     Result->SetNumberField(TEXT("dispatcherTransitionCount"), DispatcherTransitionCount);
+    TArray<TSharedPtr<FJsonValue>> UnresolvedTransitions;
+    for (const FTraceUnresolvedTransitionRecord& Transition : State.UnresolvedTransitions)
+    {
+        UnresolvedTransitions.Add(MakeShared<FJsonValueObject>(SerializeUnresolvedTraceTransition(Transition)));
+    }
+    Result->SetNumberField(TEXT("unresolvedTransitionCount"), UnresolvedTransitions.Num());
+    Result->SetArrayField(TEXT("unresolvedTransitions"), UnresolvedTransitions);
     Result->SetStringField(TEXT("summaryText"), Explanation);
     Result->SetArrayField(TEXT("summarySteps"), SummarySteps);
     Result->SetStringField(TEXT("nextStepHint"), TEXT("Use TraceBlueprintFlow for the raw traced subgraph, or InspectBlueprintNode on one of the summarized steps for local detail."));

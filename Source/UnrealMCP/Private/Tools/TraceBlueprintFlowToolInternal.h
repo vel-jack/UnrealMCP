@@ -34,6 +34,11 @@ struct FTraceNodeRecord
     bool bHasResolvedTargetAsset = false;
     FString ResolvedTargetAssetObjectPath;
     FString ResolvedTargetAssetName;
+    FString ExecutionSemantic;
+    FString SemanticConfidence;
+    FString SemanticReason;
+    FString ContinuationModel;
+    FString CallbackMemberName;
 };
 
 struct FTraceEdgeRecord
@@ -47,6 +52,18 @@ struct FTraceEdgeRecord
     FString TargetNodeGuid;
     FString TargetPinId;
     FString EdgeKind;
+    FString Confidence = TEXT("exact");
+    FString ConfidenceReason = TEXT("indexed_pin_link");
+};
+
+struct FTraceUnresolvedTransitionRecord
+{
+    FString SourceBlueprintObjectPath;
+    FString SourceGraphName;
+    FString SourceNodeGuid;
+    FString SourceNodeTitle;
+    FString TransitionKind;
+    FString Reason;
 };
 
 struct FGraphEntryRecord
@@ -68,6 +85,7 @@ struct FTraceTraversalState
     TMap<FString, FString> PinMatchReasonsByNodeKey;
     TMap<FString, TArray<FString>> EntryNodeKeysByAssetAndMember;
     TSet<FString> LoadedBlueprintObjectPaths;
+    TArray<FTraceUnresolvedTransitionRecord> UnresolvedTransitions;
 };
 
 struct FTraceFrontierItem
@@ -118,6 +136,85 @@ inline bool TraceStringMatchesQuery(const FString& Value, const FString& Query)
     return !Value.IsEmpty() && !Query.IsEmpty() && Value.Contains(Query, ESearchCase::IgnoreCase);
 }
 
+inline void ClassifyTraceNodeSemantics(FTraceNodeRecord& Node)
+{
+    if (Node.NodeType == TEXT("timeline"))
+    {
+        Node.ExecutionSemantic = TEXT("timeline");
+        Node.SemanticConfidence = TEXT("exact");
+        Node.SemanticReason = TEXT("indexed_timeline_node");
+        Node.ContinuationModel = TEXT("update_and_finished_exec_outputs");
+        return;
+    }
+
+    if (Node.NodeClassPath.Contains(TEXT("K2Node_AsyncAction"))
+        || Node.NodeClassPath.Contains(TEXT("K2Node_BaseAsyncTask"))
+        || Node.NodeClassPath.Contains(TEXT("K2Node_LatentGameplayTaskCall")))
+    {
+        Node.ExecutionSemantic = TEXT("async");
+        Node.SemanticConfidence = TEXT("exact");
+        Node.SemanticReason = TEXT("async_node_class");
+        Node.ContinuationModel = TEXT("callback_exec_outputs");
+        return;
+    }
+
+    const FString MemberLower = Node.MemberName.ToLower();
+    if (MemberLower.Contains(TEXT("timer")))
+    {
+        Node.ExecutionSemantic = TEXT("timer");
+        Node.SemanticConfidence = TEXT("inferred");
+        Node.SemanticReason = TEXT("timer_member_name");
+        Node.ContinuationModel = MemberLower.StartsWith(TEXT("settimer"))
+            ? TEXT("scheduled_callback")
+            : TEXT("timer_control");
+        return;
+    }
+
+    static const TSet<FString> KnownLatentMembers = {
+        TEXT("delay"),
+        TEXT("retriggerabledelay"),
+        TEXT("movecomponentto"),
+        TEXT("loadstreamlevel"),
+        TEXT("unloadstreamlevel"),
+        TEXT("aimoveto")
+    };
+    if (KnownLatentMembers.Contains(MemberLower)
+        || Node.NodeClassPath.Contains(TEXT("Latent"), ESearchCase::IgnoreCase))
+    {
+        Node.ExecutionSemantic = TEXT("latent");
+        Node.SemanticConfidence = KnownLatentMembers.Contains(MemberLower) ? TEXT("inferred") : TEXT("exact");
+        Node.SemanticReason = KnownLatentMembers.Contains(MemberLower) ? TEXT("known_latent_member") : TEXT("latent_node_class");
+        Node.ContinuationModel = TEXT("deferred_exec_output");
+    }
+}
+
+inline void AddUnresolvedTraceTransition(
+    FTraceTraversalState& State,
+    const FTraceNodeRecord& SourceNode,
+    const FString& TransitionKind,
+    const FString& Reason)
+{
+    for (const FTraceUnresolvedTransitionRecord& Existing : State.UnresolvedTransitions)
+    {
+        if (Existing.SourceBlueprintObjectPath == SourceNode.BlueprintObjectPath
+            && Existing.SourceGraphName == SourceNode.GraphName
+            && Existing.SourceNodeGuid == SourceNode.NodeGuid
+            && Existing.TransitionKind == TransitionKind
+            && Existing.Reason == Reason)
+        {
+            return;
+        }
+    }
+
+    FTraceUnresolvedTransitionRecord& Record = State.UnresolvedTransitions.AddDefaulted_GetRef();
+    Record.SourceBlueprintObjectPath = SourceNode.BlueprintObjectPath;
+    Record.SourceGraphName = SourceNode.GraphName;
+    Record.SourceNodeGuid = SourceNode.NodeGuid;
+    Record.SourceNodeTitle = SourceNode.NodeTitle;
+    Record.TransitionKind = TransitionKind;
+    Record.Reason = Reason;
+}
+
 inline TSharedRef<FJsonObject> SerializeTraceNode(const FTraceNodeRecord& Node)
 {
     TSharedRef<FJsonObject> NodeObject = MakeShared<FJsonObject>();
@@ -138,6 +235,17 @@ inline TSharedRef<FJsonObject> SerializeTraceNode(const FTraceNodeRecord& Node)
     NodeObject->SetBoolField(TEXT("isEntry"), Node.bIsEntry);
     NodeObject->SetStringField(TEXT("matchReason"), Node.MatchReason);
     NodeObject->SetNumberField(TEXT("depth"), Node.Depth);
+    if (!Node.ExecutionSemantic.IsEmpty())
+    {
+        NodeObject->SetStringField(TEXT("executionSemantic"), Node.ExecutionSemantic);
+        NodeObject->SetStringField(TEXT("semanticConfidence"), Node.SemanticConfidence);
+        NodeObject->SetStringField(TEXT("semanticReason"), Node.SemanticReason);
+        NodeObject->SetStringField(TEXT("continuationModel"), Node.ContinuationModel);
+        if (!Node.CallbackMemberName.IsEmpty())
+        {
+            NodeObject->SetStringField(TEXT("callbackMemberName"), Node.CallbackMemberName);
+        }
+    }
     NodeObject->SetBoolField(TEXT("hasResolvedMemberAsset"), Node.bHasResolvedMemberAsset);
     NodeObject->SetBoolField(TEXT("isCrossBlueprintReference"), Node.bHasResolvedMemberAsset && !Node.ResolvedMemberAssetObjectPath.Equals(Node.BlueprintObjectPath, ESearchCase::CaseSensitive));
     if (Node.bHasResolvedMemberAsset)
@@ -177,7 +285,70 @@ inline TSharedRef<FJsonObject> SerializeTraceEdge(const FTraceEdgeRecord& Edge)
     EdgeObject->SetStringField(TEXT("targetNodeGuid"), Edge.TargetNodeGuid);
     EdgeObject->SetStringField(TEXT("targetPinId"), Edge.TargetPinId);
     EdgeObject->SetStringField(TEXT("edgeKind"), Edge.EdgeKind);
+    EdgeObject->SetStringField(TEXT("confidence"), Edge.Confidence);
+    EdgeObject->SetStringField(TEXT("confidenceReason"), Edge.ConfidenceReason);
     return EdgeObject;
+}
+
+inline TSharedRef<FJsonObject> SerializeUnresolvedTraceTransition(const FTraceUnresolvedTransitionRecord& Transition)
+{
+    TSharedRef<FJsonObject> Object = MakeShared<FJsonObject>();
+    Object->SetStringField(TEXT("sourceBlueprintObjectPath"), Transition.SourceBlueprintObjectPath);
+    Object->SetStringField(TEXT("sourceGraphName"), Transition.SourceGraphName);
+    Object->SetStringField(TEXT("sourceNodeGuid"), Transition.SourceNodeGuid);
+    Object->SetStringField(TEXT("sourceNodeTitle"), Transition.SourceNodeTitle);
+    Object->SetStringField(TEXT("transitionKind"), Transition.TransitionKind);
+    Object->SetStringField(TEXT("reason"), Transition.Reason);
+    Object->SetStringField(TEXT("confidence"), TEXT("unresolved"));
+    return Object;
+}
+
+inline FString CalculateIndexedTraceConfidence(
+    const TArray<FString>& StartNodeKeys,
+    const FTraceTraversalState& State,
+    const TArray<FTraceEdgeRecord>& TraversedEdges)
+{
+    if (StartNodeKeys.IsEmpty())
+    {
+        return TEXT("unresolved");
+    }
+
+    if (State.UnresolvedTransitions.Num() > 0)
+    {
+        return TEXT("unresolved");
+    }
+
+    for (const FString& StartKey : StartNodeKeys)
+    {
+        if (const FTraceNodeRecord* Node = State.NodesByKey.Find(StartKey))
+        {
+            if (!Node->MatchReason.IsEmpty()
+                && Node->MatchReason != TEXT("entry_node")
+                && Node->MatchReason != TEXT("node_title")
+                && Node->MatchReason != TEXT("member_name"))
+            {
+                return TEXT("inferred");
+            }
+        }
+    }
+
+    for (const FTraceEdgeRecord& Edge : TraversedEdges)
+    {
+        if (Edge.Confidence == TEXT("inferred"))
+        {
+            return TEXT("inferred");
+        }
+    }
+
+    for (const TPair<FString, FTraceNodeRecord>& Pair : State.NodesByKey)
+    {
+        if (Pair.Value.Depth != INDEX_NONE && Pair.Value.SemanticConfidence == TEXT("inferred"))
+        {
+            return TEXT("inferred");
+        }
+    }
+
+    return TEXT("exact");
 }
 
 bool LoadBlueprintTraceData(

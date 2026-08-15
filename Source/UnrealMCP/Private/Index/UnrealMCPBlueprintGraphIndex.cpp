@@ -390,6 +390,23 @@ namespace
     {
         return Pin != nullptr && Pin->PinType.PinCategory == TEXT("exec");
     }
+
+    FString GetEffectivePinDefaultValue(const UEdGraphPin* Pin)
+    {
+        if (Pin == nullptr)
+        {
+            return FString();
+        }
+        if (Pin->DefaultObject != nullptr)
+        {
+            return Pin->DefaultObject->GetPathName();
+        }
+        if (!Pin->DefaultValue.IsEmpty())
+        {
+            return Pin->DefaultValue;
+        }
+        return Pin->DefaultTextValue.IsEmpty() ? FString() : Pin->DefaultTextValue.ToString();
+    }
 }
 
 bool ExtractBlueprintGraphRows(
@@ -531,7 +548,7 @@ bool ExtractBlueprintGraphRows(
                 PinRow.bIsReference = Pin->PinType.bIsReference;
                 PinRow.bIsConst = Pin->PinType.bIsConst;
                 PinRow.LinkedPinCount = Pin->LinkedTo.Num();
-                PinRow.DefaultValue = Pin->DefaultValue;
+                PinRow.DefaultValue = GetEffectivePinDefaultValue(Pin);
                 const FString SourcePinId = PinRow.PinId;
                 OutPins.Add(MoveTemp(PinRow));
 

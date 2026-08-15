@@ -24,6 +24,8 @@ namespace
         const FTraceNodeRecord& CurrentNode,
         const TArray<FString>& TargetNodeKeys,
         const FString& EdgeKind,
+        const FString& Confidence,
+        const FString& ConfidenceReason,
         int32 CurrentDepth,
         int32 CurrentCallDepth,
         FTraceTraversalState& State,
@@ -48,6 +50,8 @@ namespace
             Edge.TargetGraphName = TargetNode->GraphName;
             Edge.TargetNodeGuid = TargetNode->NodeGuid;
             Edge.EdgeKind = EdgeKind;
+            Edge.Confidence = Confidence;
+            Edge.ConfidenceReason = ConfidenceReason;
 
             const FString EdgeKey = MakeExpansionEdgeKey(Edge);
             if (!TraversedEdgeKeys.Contains(EdgeKey))
@@ -264,18 +268,39 @@ bool ExpandBlueprintTraceTargets(
     // Loading another Blueprint can rehash NodesByKey, so never retain a map value reference across a load.
     const FTraceNodeRecord ExpansionNode = CurrentNode;
 
-    if (ExpansionNode.MemberName.IsEmpty() || CurrentDepth >= MaxDepth || CurrentCallDepth >= MaxCallDepth)
+    if (CurrentDepth >= MaxDepth || CurrentCallDepth >= MaxCallDepth)
     {
         return true;
     }
 
     TArray<FString> TargetNodeKeys;
     FString EdgeKind;
+    FString Confidence = TEXT("exact");
+    FString ConfidenceReason;
+    bool bReportMissingTarget = true;
 
-    if (ExpansionNode.NodeType == TEXT("call_function")
+    if (ExpansionNode.ExecutionSemantic == TEXT("timer") && !ExpansionNode.CallbackMemberName.IsEmpty())
+    {
+        AppendMemberEntries(ExpansionNode.BlueprintObjectPath, ExpansionNode.CallbackMemberName, State, TargetNodeKeys);
+        EdgeKind = TEXT("timer_callback");
+        Confidence = TEXT("inferred");
+        ConfidenceReason = TEXT("timer_function_name_default");
+    }
+    else if (ExpansionNode.NodeType == TEXT("call_function")
         || ExpansionNode.NodeType == TEXT("macro_instance")
         || ExpansionNode.NodeType == TEXT("composite_instance"))
     {
+        if (ExpansionNode.MemberName.IsEmpty())
+        {
+            AddUnresolvedTraceTransition(State, ExpansionNode, TEXT("call"), TEXT("missing_member_name"));
+            return true;
+        }
+
+        bReportMissingTarget = ExpansionNode.NodeType != TEXT("call_function")
+            || ExpansionNode.MemberParentPath.StartsWith(TEXT("/Game/"))
+            || (!ExpansionNode.MemberParentPath.StartsWith(TEXT("/Script/"))
+                && ExpansionNode.MemberParentPath.Contains(TEXT("_C")));
+
         const FString TargetBlueprintPath = ExpansionNode.bHasResolvedTargetAsset
             ? ExpansionNode.ResolvedTargetAssetObjectPath
             : ExpansionNode.ResolvedMemberAssetObjectPath;
@@ -283,12 +308,17 @@ bool ExpandBlueprintTraceTargets(
             || (!ExpansionNode.bHasResolvedTargetAsset
                 && (!ExpansionNode.bHasResolvedMemberAsset || !ExpansionNode.bResolvedMemberAssetIsBlueprint)))
         {
+            if (bReportMissingTarget)
+            {
+                AddUnresolvedTraceTransition(State, ExpansionNode, TEXT("call"), TEXT("target_blueprint_not_resolved"));
+            }
             return true;
         }
 
         const bool bIsCrossBlueprint = !TargetBlueprintPath.Equals(ExpansionNode.BlueprintObjectPath, ESearchCase::CaseSensitive);
         if (bIsCrossBlueprint && !bFollowCrossBlueprintCalls)
         {
+            AddUnresolvedTraceTransition(State, ExpansionNode, TEXT("cross_blueprint_call"), TEXT("cross_blueprint_follow_disabled"));
             return true;
         }
         if (!LoadBlueprintTraceData(Database, TargetBlueprintPath, true, State, OutError))
@@ -299,6 +329,9 @@ bool ExpandBlueprintTraceTargets(
         EdgeKind = ExpansionNode.NodeType == TEXT("macro_instance")
             ? TEXT("macro")
             : (ExpansionNode.NodeType == TEXT("composite_instance") ? TEXT("collapsed_graph") : TEXT("call"));
+        ConfidenceReason = ExpansionNode.NodeType == TEXT("call_function")
+            ? TEXT("resolved_member_entry")
+            : TEXT("owned_subgraph_entry");
     }
     else if (ExpansionNode.NodeType == TEXT("interface_call"))
     {
@@ -307,6 +340,8 @@ bool ExpandBlueprintTraceTargets(
             return false;
         }
         EdgeKind = TEXT("interface_call");
+        Confidence = TEXT("inferred");
+        ConfidenceReason = TEXT("runtime_interface_implementation_candidates");
     }
     else if (ExpansionNode.NodeType == TEXT("delegate_bind"))
     {
@@ -315,6 +350,7 @@ bool ExpandBlueprintTraceTargets(
             State,
             TargetNodeKeys);
         EdgeKind = TEXT("delegate_bind");
+        ConfidenceReason = TEXT("indexed_delegate_binding");
     }
     else if (ExpansionNode.NodeType == TEXT("delegate_broadcast"))
     {
@@ -323,9 +359,36 @@ bool ExpandBlueprintTraceTargets(
             return false;
         }
         EdgeKind = TEXT("delegate_broadcast");
+        Confidence = TEXT("inferred");
+        ConfidenceReason = TEXT("runtime_dispatcher_bindings");
+    }
+    else if (ExpansionNode.NodeType == TEXT("delegate_handler"))
+    {
+        if (!ExpansionNode.MemberName.IsEmpty())
+        {
+            const FString TargetAsset = ExpansionNode.bHasResolvedMemberAsset
+                ? ExpansionNode.ResolvedMemberAssetObjectPath
+                : ExpansionNode.BlueprintObjectPath;
+            AppendMemberEntries(TargetAsset, ExpansionNode.MemberName, State, TargetNodeKeys);
+        }
+        EdgeKind = TEXT("delegate_callback");
+        ConfidenceReason = TEXT("encoded_delegate_function_reference");
     }
     else
     {
+        return true;
+    }
+
+    if (TargetNodeKeys.IsEmpty())
+    {
+        if (bReportMissingTarget)
+        {
+            AddUnresolvedTraceTransition(
+                State,
+                ExpansionNode,
+                EdgeKind.IsEmpty() ? TEXT("expansion") : EdgeKind,
+                TEXT("no_indexed_target_entry"));
+        }
         return true;
     }
 
@@ -333,6 +396,8 @@ bool ExpandBlueprintTraceTargets(
         ExpansionNode,
         TargetNodeKeys,
         EdgeKind,
+        Confidence,
+        ConfidenceReason,
         CurrentDepth,
         CurrentCallDepth,
         State,

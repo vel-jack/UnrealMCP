@@ -14,7 +14,37 @@ Main capability groups
 - Blueprint reading: GetBlueprintInfo, ListVariables, ListFunctions, ListComponents, GetBlueprintComponentHierarchy, GetParentBlueprint, GetImplementedInterfaces, ListChildBlueprints.
 - Index and project understanding: GetIndexStatus, RefreshProjectIndex, BuildProjectIndex, FindFeatureEntryPoints, SummarizeBlueprintCluster, TraceFeatureFlow, ExplainFeatureWorkflow.
 - Indexed Blueprint graph tracing: FindBlueprintTraceStartPoints, TraceBlueprintFlow, ExplainBlueprintTrace, InspectBlueprintNode, FindBlueprintNodeReferences, FindBlueprintVariableUsage, FindCrossBlueprintCalls.
+- Project architecture analysis: focused analyzers identify static package cycles, coupling, unresolved references, review-only unused candidates, and folder-boundary crossings. AnalyzeProjectArchitecture returns a compact combined report; PlanProjectRefactor returns ordered non-destructive actions with verification steps.
 - Level and world reading: ListActors, GetActorInfo, FindActorsUsingBlueprint, GetLevelActorDependencies, ListSelectedActors.
+- Safe Blueprint authoring: CreateBlueprintAsset, AddBlueprintComponent, AddBlueprintComponents, AddBlueprintVariable, ListBlueprintGraphs, ValidateBlueprint, CompileBlueprint, SaveBlueprint.
+
+Blueprint authoring safety
+- Start mutation requests with dryRun=true when targeting an unfamiliar asset.
+- Saving and compilation are explicit: use saveAfterEdit and compileAfterEdit only when required.
+- Existing assets are never overwritten by CreateBlueprintAsset.
+- Component and variable additions are idempotent by name; conflicting existing types/classes return an error.
+- AddBlueprintComponents prevalidates an ordered component set, supports parents created earlier in the same request, and compiles/saves/refreshes the index only once by default.
+- Component propertyDefaults can set editable template properties using JSON primitive values or Unreal export-text strings. Existing components are never silently reconfigured by an add request.
+- Successful saved edits refresh only the touched Blueprint in the project index.
+- ValidateBlueprint compiles only the requested Blueprint without saving and returns structured diagnostics.
+- Graph editing supports AddBlueprintBranchNode, AddBlueprintSequenceNode, AddBlueprintCustomEventNode, AddBlueprintFunctionCallNode, AddBlueprintInterfaceEventNode, AddBlueprintInterfaceFunctionGraph, AddBlueprintDelegateBroadcastNode, AddBlueprintVariableGetNode, AddBlueprintVariableSetNode, MoveBlueprintNode, ConnectBlueprintPins, DisconnectBlueprintPins, SetBlueprintPinDefaultObject, SetBlueprintPinDefaultValue, SetBlueprintPinSplit, and DeleteBlueprintNode.
+- Graph edits should use stable graph/node/pin GUIDs from ListBlueprintGraphs, InspectBlueprintNode, and node-creation responses.
+- Automatic layout defaults to 320 pixels horizontally and shifts collisions by 180 pixels vertically. Explicit positions and relative anchors are supported.
+- DeleteBlueprintNode requires confirm=true; use dryRun=true first to inspect affected links.
+- DisconnectBlueprintPins also requires confirmation and can remove one exact link or all links from a selected pin.
+- Function-call creation requires an exact reflected function name and optional owner class path; non-Blueprint-callable functions are rejected.
+- ListBlueprintNodePins reads current live pin IDs, types, defaults, and linked endpoint IDs; prefer it before connection edits in a changing graph.
+- Class and object selections may live in Unreal's DefaultObject rather than the literal string. Pin results expose defaultObjectPath and use the resolved path as the effective defaultValue.
+- AddBlueprintCastNode requires an exact target class and supports pure or exec-flow casts.
+- Reroute pins begin as wildcard and specialize after a compatible connection.
+- CreateBlueprintFunctionGraph returns its stable graph GUID and entry/return node GUIDs. Void functions may not have a return node.
+- AddBlueprintFunctionParameter adds input/output pins and creates a return node when the first output is added. SetBlueprintFunctionMetadata controls category, description, pure, and const flags.
+- AddBlueprintOverrideEventNode validates the exact parent UFunction and creates only legal event overrides.
+- AddEnhancedInputActionNode targets an exact InputAction asset and reports when Enhanced Input is unavailable.
+- AddBlueprintDelegateNode creates bind/unbind nodes. AddBlueprintDelegateEventNode creates a uniquely named Custom Event with the exact reflected delegate parameters; connect its OutputDelegate pin to the bind node's Delegate pin.
+- SetBlueprintPinSplit exposes struct members such as FGISInteractionTarget and FHitResult locally. Recombining requires explicit confirmation.
+- SetBlueprintSequenceOutputs safely adds or explicitly removes Sequence execution outputs. SetBlueprintNodeComment updates per-node documentation and bubble state.
+- LayoutBlueprintNodes performs deterministic execution-flow layout for an explicit stable node-GUID set; use dryRun first on unfamiliar graphs.
 
 How users know what they can do
 - Ask the coding agent in plain language.
@@ -43,9 +73,10 @@ Current safety and limits
 - Discovery and read tools are the main focus right now.
 - Compile and edit paths exist but should be used carefully.
 - Destructive project actions should require confirmation.
-- Indexed Blueprint event and node-flow tracing is available, including macros, collapsed graphs, interface implementations, connected Blueprint instance targets, and dispatcher relationships. Runtime-dependent dispatch and latent/async behavior may still need manual verification.
+- Indexed Blueprint event and node-flow tracing is available, including macros, collapsed graphs, interface implementations, connected Blueprint instance targets, dispatcher relationships, and latent/async/timeline/timer boundary classification. Confidence and unresolved-transition fields identify runtime-dependent paths that still need PIE verification.
 
 Current milestone state
 - Milestone 1 through Milestone 7 are available.
 - Milestone 8 indexed Blueprint graph tracing is in progress and usable.
+- Milestone 10 architecture analysis has started with indexed circular-dependency and Blueprint-coupling tools.
 - Read and explanation workflows remain the current focus before editing or gameplay-control work expands.

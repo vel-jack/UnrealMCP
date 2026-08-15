@@ -12,6 +12,31 @@ Inspect a Blueprint
 - Explain how component AC_MyFeature participates in this Actor. Follow its graph references and inspect its component Blueprint when available.
 - Show the parent Blueprint and implemented interfaces for this asset.
 
+Safely author a Blueprint
+- Dry-run creating /Game/Blueprints/AC_InteractionController with parent /Script/Engine.ActorComponent. Do not save anything.
+- Add GISSelectionManagerComponent to this Blueprint using its exact C++ class path. Dry-run first, then add, compile only this Blueprint, and save if validation succeeds.
+- Dry-run adding these components as one ordered batch: InteractionRoot scene component, SelectionController under InteractionRoot, and AudioFeedback under InteractionRoot with bAutoActivate=false. If valid, apply once, compile once, save, and report the partial index refresh.
+- Add a camera component with its editable template FieldOfView property set to 75. Dry-run first and do not change an existing same-name component.
+- Add an instance-editable Actor reference variable named SelectedActor, compile only this Blueprint, save it, and report the automatic index refresh.
+- List the stable graph identities for this Blueprint before attempting graph edits.
+- Validate this Blueprint without saving and return all compiler warnings and errors.
+- Add a Branch 320 pixels to the right of Begin Play, avoid overlapping existing nodes, connect Begin Play to its exec input, validate, and save only this Blueprint.
+- Dry-run moving this node relative to another node and report its proposed collision-adjusted position before editing.
+- Add input Actor and output bool parameters to this function, set its category to Interaction, validate, and save only after it compiles.
+- Add the exact Enhanced Input Action event for this InputAction asset and show all trigger pins before wiring it.
+- Split the FGISInteractionTarget output pin, connect its Actor member to SelectSingle, and report the exact pin IDs used.
+- Bind OnSelectionChanged on the selection manager component, create a signature-matched event named HandleSelectionChanged, connect the delegate pins, validate, and save.
+- Dry-run deleting this node and report every affected pin link. Do not delete it without my explicit confirmation.
+- Create a custom event named HandlePrimaryClick, place a Sequence to its right, and connect their exec pins without overlapping existing nodes.
+- Add Get and Set nodes for variable SelectedActor, return their exact pin IDs, and do not save until the graph validates.
+- Add a Print String call using /Script/Engine.KismetSystemLibrary, set its InString default, connect it to the preceding exec node, validate, save, and confirm the indexed trace.
+- Dry-run disconnecting this exact source-target pin pair and report the affected link count.
+- List the live pins and exact linked endpoints for this node before changing its connections.
+- Create a typed cast to /Script/Engine.Pawn, connect this Actor reference to its Object pin, validate, and save.
+- Add a reroute between these distant data pins and keep the surrounding nodes aligned.
+- Add a comment around this interaction flow with enough padding and no node overlap.
+- Create a function graph named HandleDragStart and return its graph and entry node GUIDs.
+
 Read the current level or selection
 - List actors in the active editor world.
 - List selected actors and tell me which Blueprint actor is currently selected.
@@ -35,6 +60,18 @@ Indexed Blueprint graph tracing
 - Find where variable GoldBox is read and written, then trace the flow around the strongest write.
 - Find every indexed node that references function RecieveSomeGold and explain the callers.
 
+Analyze project architecture
+- Find circular dependencies among all project Blueprints and summarize the largest cycle first.
+- Find circular Blueprint dependencies under /Game/Features/Viewshed and list the exact package edges that should be broken.
+- Rank the 25 most coupled project Blueprints by indexed package dependencies. Explain why each high-risk asset is risky, but do not claim these are runtime calls.
+- Analyze indexed package coupling for /Game/Path/MyBlueprint.MyBlueprint and separate project-Blueprint dependencies from external asset dependencies.
+- Find broken Blueprint references under /Game/Features/Viewshed. Group the evidence by category and tell me which Blueprints should be validated manually first.
+- Check /Game/Path/MyBlueprint.MyBlueprint for unresolved project dependency, component, variable, pin, member-owner, or graph-edge references. Do not describe index evidence as a compiler error.
+- Find Blueprint assets under /Game/Features/Viewshed with no indexed incoming project references. Exclude possible roots and treat every result only as a manual-review candidate.
+- Analyze /Game/Features/Viewshed as a feature boundary. Rank the Blueprints with the most crossing dependencies and summarize incoming versus outgoing edges without claiming runtime coupling.
+- Analyze the project architecture under /Game with compact output. Include /Game/Features/Viewshed as a feature boundary and return the highest-priority hotspots.
+- Build a non-destructive refactor plan for /Game/Features/Viewshed. Prioritize broken references and cycles before coupling, and keep unused assets as manual-review candidates only.
+
 Trace depth guidance
 - Start with maxCallDepth 1 or 2 and a concise explanation.
 - Increase depth only when the first result ends at a relevant call boundary.
@@ -45,6 +82,11 @@ Project index
 - Refresh only changed project assets, then continue the Blueprint trace.
 - Refresh /Game/Path/MyBlueprint.MyBlueprint explicitly and return the refreshed count.
 - Use RefreshProjectIndex for ordinary edits. Rebuild the full index only if it is missing, invalid, or the user explicitly requests maintenance.
+
+Safe Blueprint interaction wiring
+- Dry-run wiring custom event HandlePrimaryClick in /Game/Path/BP_Controller.BP_Controller to call TraceTargetUnderCursor on component InteractionTraceComponent. Do not save yet.
+- If the dry-run succeeds, apply the same event-to-function wiring, compile only that Blueprint, save it, and return the changed node GUIDs and pin connections.
+- Re-run the event-to-function workflow and confirm it is already complete without adding duplicate nodes.
 
 Good prompt pattern
 - Find likely entry points for feature X, choose the strongest project-content candidate, summarize the nearby cluster, and trace the likely workflow.

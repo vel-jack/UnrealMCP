@@ -6,7 +6,7 @@ public class UnrealMCP : ModuleRules
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
         bUseUnity = false;
-        // Keep non-unity builds predictable while adding, splitting, and testing tool source files.
+        // Keep non-unity builds predictable while improving Blueprint pin-default inspection.
 
         CppStandard = CppStandardVersion.Cpp20;
 

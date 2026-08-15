@@ -3,9 +3,37 @@
 #include "Index/UnrealMCPProjectIndex.h"
 #include "MCP/MCPServer.h"
 #include "Tools/AssetExistsTool.h"
+#include "Tools/AddBlueprintComponentTool.h"
+#include "Tools/AddBlueprintComponentsTool.h"
+#include "Tools/AddBlueprintBranchNodeTool.h"
+#include "Tools/AddBlueprintCastNodeTool.h"
+#include "Tools/AddBlueprintCommentNodeTool.h"
+#include "Tools/AddBlueprintCustomEventNodeTool.h"
+#include "Tools/AddBlueprintFunctionCallNodeTool.h"
+#include "Tools/AddBlueprintFunctionParameterTool.h"
+#include "Tools/AddBlueprintInterfaceEventNodeTool.h"
+#include "Tools/AddBlueprintInterfaceFunctionGraphTool.h"
+#include "Tools/AddBlueprintOverrideEventNodeTool.h"
+#include "Tools/AddBlueprintDelegateNodeTool.h"
+#include "Tools/AddBlueprintDelegateEventNodeTool.h"
+#include "Tools/AddBlueprintDelegateBroadcastNodeTool.h"
+#include "Tools/AddBlueprintRerouteNodeTool.h"
+#include "Tools/AddBlueprintSequenceNodeTool.h"
+#include "Tools/AddBlueprintVariableGetNodeTool.h"
+#include "Tools/AddBlueprintVariableSetNodeTool.h"
+#include "Tools/AddBlueprintVariableTool.h"
+#include "Tools/AddEnhancedInputActionNodeTool.h"
+#include "Tools/AnalyzeBlueprintCouplingTool.h"
+#include "Tools/AnalyzeFeatureBoundaryTool.h"
+#include "Tools/AnalyzeProjectArchitectureTool.h"
 #include "Tools/BuildProjectIndexTool.h"
 #include "Tools/CompileAllBlueprintsTool.h"
+#include "Tools/ConnectBlueprintPinsTool.h"
 #include "Tools/CompileBlueprintTool.h"
+#include "Tools/CreateBlueprintAssetTool.h"
+#include "Tools/CreateBlueprintFunctionGraphTool.h"
+#include "Tools/DeleteBlueprintNodeTool.h"
+#include "Tools/DisconnectBlueprintPinsTool.h"
 #include "Tools/ExplainBlueprintRoleTool.h"
 #include "Tools/ExplainBlueprintTraceTool.h"
 #include "Tools/ExplainFeatureWorkflowTool.h"
@@ -15,8 +43,11 @@
 #include "Tools/FindBlueprintNodeReferencesTool.h"
 #include "Tools/FindBlueprintTraceStartPointsTool.h"
 #include "Tools/FindCrossBlueprintCallsTool.h"
+#include "Tools/FindCircularDependenciesTool.h"
 #include "Tools/FindBlueprintVariableUsageTool.h"
+#include "Tools/FindBrokenBlueprintReferencesTool.h"
 #include "Tools/FindFeatureEntryPointsTool.h"
+#include "Tools/FindUnusedBlueprintAssetsTool.h"
 #include "Tools/GetActorInfoTool.h"
 #include "Tools/GetAssetInfoTool.h"
 #include "Tools/GetAssetReferencersTool.h"
@@ -37,16 +68,30 @@
 #include "Tools/ListAssetsTool.h"
 #include "Tools/ListBlueprintComponentsTool.h"
 #include "Tools/ListBlueprintFunctionsTool.h"
+#include "Tools/ListBlueprintGraphsTool.h"
+#include "Tools/ListBlueprintNodePinsTool.h"
 #include "Tools/ListBlueprintVariablesTool.h"
 #include "Tools/ListChildBlueprintsTool.h"
 #include "Tools/ListFoldersTool.h"
 #include "Tools/ListSelectedActorsTool.h"
 #include "Tools/ListToolsTool.h"
+#include "Tools/LayoutBlueprintNodesTool.h"
+#include "Tools/MoveBlueprintNodeTool.h"
+#include "Tools/PlanProjectRefactorTool.h"
 #include "Tools/RefreshProjectIndexTool.h"
 #include "Tools/SearchAssetsTool.h"
+#include "Tools/SetBlueprintPinDefaultObjectTool.h"
+#include "Tools/SetBlueprintPinDefaultValueTool.h"
+#include "Tools/SetBlueprintPinSplitTool.h"
+#include "Tools/SetBlueprintFunctionMetadataTool.h"
+#include "Tools/SetBlueprintNodeCommentTool.h"
+#include "Tools/SetBlueprintSequenceOutputsTool.h"
+#include "Tools/SaveBlueprintTool.h"
 #include "Tools/SummarizeBlueprintClusterTool.h"
 #include "Tools/TraceBlueprintFlowTool.h"
 #include "Tools/TraceFeatureFlowTool.h"
+#include "Tools/ValidateBlueprintTool.h"
+#include "Tools/WireBlueprintEventToFunctionTool.h"
 #include "Transport/NamedPipeMCPTransport.h"
 #include "UnrealMCPLog.h"
 #include "UnrealMCPSettings.h"
@@ -204,6 +249,13 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FSummarizeBlueprintClusterTool>());
     Registry.RegisterTool(MakeShared<FTraceBlueprintFlowTool>());
     Registry.RegisterTool(MakeShared<FTraceFeatureFlowTool>());
+    Registry.RegisterTool(MakeShared<FFindCircularDependenciesTool>());
+    Registry.RegisterTool(MakeShared<FAnalyzeBlueprintCouplingTool>());
+    Registry.RegisterTool(MakeShared<FFindBrokenBlueprintReferencesTool>());
+    Registry.RegisterTool(MakeShared<FFindUnusedBlueprintAssetsTool>());
+    Registry.RegisterTool(MakeShared<FAnalyzeFeatureBoundaryTool>());
+    Registry.RegisterTool(MakeShared<FAnalyzeProjectArchitectureTool>());
+    Registry.RegisterTool(MakeShared<FPlanProjectRefactorTool>());
     Registry.RegisterTool(MakeShared<FSearchAssetsTool>());
     Registry.RegisterTool(MakeShared<FAssetExistsTool>());
     Registry.RegisterTool(MakeShared<FGetAssetInfoTool>());
@@ -223,6 +275,7 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FFindBlueprintVariableUsageTool>());
     Registry.RegisterTool(MakeShared<FListBlueprintVariablesTool>());
     Registry.RegisterTool(MakeShared<FListBlueprintFunctionsTool>());
+    Registry.RegisterTool(MakeShared<FListBlueprintGraphsTool>());
     Registry.RegisterTool(MakeShared<FListBlueprintComponentsTool>());
     Registry.RegisterTool(MakeShared<FGetParentBlueprintTool>());
     Registry.RegisterTool(MakeShared<FGetBlueprintInterfacesTool>());
@@ -234,6 +287,43 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FListSelectedActorsTool>());
     Registry.RegisterTool(MakeShared<FCompileBlueprintTool>());
     Registry.RegisterTool(MakeShared<FCompileAllBlueprintsTool>());
+    Registry.RegisterTool(MakeShared<FCreateBlueprintAssetTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintComponentTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintComponentsTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintVariableTool>());
+    Registry.RegisterTool(MakeShared<FSaveBlueprintTool>());
+    Registry.RegisterTool(MakeShared<FValidateBlueprintTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintBranchNodeTool>());
+    Registry.RegisterTool(MakeShared<FMoveBlueprintNodeTool>());
+    Registry.RegisterTool(MakeShared<FConnectBlueprintPinsTool>());
+    Registry.RegisterTool(MakeShared<FSetBlueprintPinDefaultObjectTool>());
+    Registry.RegisterTool(MakeShared<FSetBlueprintPinDefaultValueTool>());
+    Registry.RegisterTool(MakeShared<FDeleteBlueprintNodeTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintSequenceNodeTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintCustomEventNodeTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintFunctionCallNodeTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintFunctionParameterTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintInterfaceEventNodeTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintInterfaceFunctionGraphTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintOverrideEventNodeTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintDelegateNodeTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintDelegateEventNodeTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintDelegateBroadcastNodeTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintVariableGetNodeTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintVariableSetNodeTool>());
+    Registry.RegisterTool(MakeShared<FDisconnectBlueprintPinsTool>());
+    Registry.RegisterTool(MakeShared<FListBlueprintNodePinsTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintCastNodeTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintRerouteNodeTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintCommentNodeTool>());
+    Registry.RegisterTool(MakeShared<FCreateBlueprintFunctionGraphTool>());
+    Registry.RegisterTool(MakeShared<FAddEnhancedInputActionNodeTool>());
+    Registry.RegisterTool(MakeShared<FSetBlueprintPinSplitTool>());
+    Registry.RegisterTool(MakeShared<FSetBlueprintFunctionMetadataTool>());
+    Registry.RegisterTool(MakeShared<FSetBlueprintNodeCommentTool>());
+    Registry.RegisterTool(MakeShared<FSetBlueprintSequenceOutputsTool>());
+    Registry.RegisterTool(MakeShared<FLayoutBlueprintNodesTool>());
+    Registry.RegisterTool(MakeShared<FWireBlueprintEventToFunctionTool>());
     Registry.RegisterTool(MakeShared<FListToolsTool>(Registry));
 }
 

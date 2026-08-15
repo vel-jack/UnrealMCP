@@ -36,8 +36,53 @@ This plugin embeds a minimal Model Context Protocol server directly into the Unr
 - `ListChildBlueprints`
 - `CompileBlueprint`
 - `CompileAllBlueprints`
+- `CreateBlueprintAsset`
+- `AddBlueprintComponent`
+- `AddBlueprintComponents`
+- `AddBlueprintVariable`
+- `ListBlueprintGraphs`
+- `ValidateBlueprint`
+- `SaveBlueprint`
+- `AddBlueprintBranchNode`
+- `MoveBlueprintNode`
+- `ConnectBlueprintPins`
+- `SetBlueprintPinDefaultObject`
+- `SetBlueprintPinDefaultValue`
+- `DeleteBlueprintNode`
+- `AddBlueprintSequenceNode`
+- `AddBlueprintCustomEventNode`
+- `AddBlueprintFunctionCallNode`
+- `AddBlueprintFunctionParameter`
+- `AddBlueprintInterfaceEventNode`
+- `AddBlueprintInterfaceFunctionGraph`
+- `SetBlueprintFunctionMetadata`
+- `AddBlueprintOverrideEventNode`
+- `AddEnhancedInputActionNode`
+- `SetBlueprintPinSplit`
+- `SetBlueprintSequenceOutputs`
+- `SetBlueprintNodeComment`
+- `LayoutBlueprintNodes`
+- `AddBlueprintDelegateNode`
+- `AddBlueprintDelegateEventNode`
+- `AddBlueprintDelegateBroadcastNode`
+- `AddBlueprintVariableGetNode`
+- `AddBlueprintVariableSetNode`
+- `DisconnectBlueprintPins`
+- `ListBlueprintNodePins`
+- `AddBlueprintCastNode`
+- `AddBlueprintRerouteNode`
+- `AddBlueprintCommentNode`
+- `CreateBlueprintFunctionGraph`
+- `WireBlueprintEventToFunction`
 - `GetIndexStatus`
 - `BuildProjectIndex`
+- `FindCircularDependencies`
+- `AnalyzeBlueprintCoupling`
+- `FindBrokenBlueprintReferences`
+- `FindUnusedBlueprintAssets`
+- `AnalyzeFeatureBoundary`
+- `AnalyzeProjectArchitecture`
+- `PlanProjectRefactor`
 - `tools/list` JSON-RPC method
 
 ## Project Index
@@ -52,6 +97,51 @@ Current indexed data:
 - Blueprint function names
 - Blueprint SCS component hierarchy summaries
 - package dependency edges
+- stable Blueprint graph identities and component usage metadata
+
+## Safe Blueprint Authoring
+
+Phase 1 authoring supports transactional Blueprint creation, component addition, variable addition, validation, and explicit saving. `AddBlueprintComponent` accepts safe editable component-template `propertyDefaults`; `AddBlueprintComponents` prevalidates an ordered component hierarchy and applies it in one transaction, with one optional compile/save/index refresh. Mutation tools support `dryRun`, `compileAfterEdit`, and `saveAfterEdit`; creation never overwrites an existing asset. Successful saved edits refresh only the touched asset in the project index.
+
+Component defaults accept JSON strings, numbers, and booleans. Complex Unreal values can be supplied as export-text strings. Existing same-name/same-class components are reported as `alreadyExists` and are not modified, so retrying a request cannot silently replace their configured defaults.
+
+The first Phase 2 graph-editing slice supports stable GUID targeting, collision-aware Branch placement, node movement, validated pin connections/defaults, and confirmed node deletion. Automatic layout uses 320-pixel horizontal spacing and 180-pixel vertical collision steps by default.
+
+The second slice adds Sequence, Custom Event, exact reflected function-call, and member-GUID Variable Get/Set nodes, plus guarded single-link or all-link disconnection. Saved authored flows are immediately available to indexed tracing after partial refresh.
+
+The next slice adds live pin/linked-endpoint readback, typed casts, wildcard reroutes, bounded comments, and uniquely named function graphs. All were live-tested with save, validation, and indexed graph readback.
+
+Pin inspection preserves Unreal's separate literal, object/class, and text defaults. `defaultValue` is the effective AI-facing value, while `literalDefaultValue`, `defaultObjectPath`, `defaultTextValue`, and `defaultValueSource` explain exactly where Unreal stored it.
+
+`SetBlueprintPinDefaultObject` safely assigns exact UObject or UClass defaults to unconnected object/class input pins. This covers nodes such as `Get Component by Class`, whose selected class is stored in Unreal's `DefaultObject` rather than its literal `DefaultValue`.
+
+Indexed traces classify latent, async, timeline, and timer boundaries from existing graph metadata. Trace results include exact, inferred, or unresolved confidence, explicit continuation models, and unresolved transition records. Runtime-dependent callback selection still requires PIE validation.
+
+AXIS-oriented authoring now includes function input/output parameters and return-node creation, function metadata, parent-class override events, reflected Enhanced Input Action events, generic struct pin splitting/recombining, and dispatcher bind/unbind nodes with exact signature-matched Custom Events. These primitives were live-tested together with validation, save, and partial index refresh.
+
+`AddBlueprintInterfaceEventNode` adds or idempotently resolves event-compatible interface implementations in Ubergraphs. Interface functions with output/return parameters are rejected because Unreal requires those implementations to use function graphs.
+
+`AddBlueprintInterfaceFunctionGraph` creates or resolves signature-correct implementation graphs for non-event interface functions, including output and return signatures. `AddBlueprintDelegateBroadcastNode` creates validated Blueprint-callable multicast delegate broadcasts with exact signature pins.
+
+Output-bearing interface graph creation is regression-tested by `UnrealMCP.Blueprint.Authoring.AddInterfaceFunctionGraph.Live`, including signature propagation, idempotent retry, target compilation, and temporary fixture cleanup.
+
+`LayoutBlueprintNodes` arranges an explicit node set by local execution-flow depth with configurable spacing and collision avoidance. It returns every proposed or applied position and supports dry-run before mutation.
+
+`WireBlueprintEventToFunction` is the first Phase 4 high-level workflow. It idempotently creates or reuses a Custom Event, adds one exact impure Blueprint-callable function call, optionally wires a Blueprint component/member variable into the call target, lays out the nodes, and performs at most one compile/save/index refresh. It refuses to replace an event's existing execution route or a function call's existing target connection. Use `dryRun=true` before applying changes to an unfamiliar Blueprint.
+
+The workflow is regression-tested by `UnrealMCP.Blueprint.Authoring.WireEventToFunction.Live`, covering dry-run, exact execution and component-target pin links, compilation, idempotent retry, duplicate prevention, and temporary fixture cleanup.
+
+## Project Architecture Analysis
+
+`FindCircularDependencies` finds strongly connected groups among indexed project Blueprint package dependencies and returns the exact internal edges that keep each cycle connected. `AnalyzeBlueprintCoupling` ranks project Blueprints by indexed package fan-in and fan-out, with explicit thresholds and separate internal/external counts. These are static package-reference signals, not proof of runtime execution or runtime coupling.
+
+`FindBrokenBlueprintReferences` reports conservative index evidence for missing project dependency targets, unresolved Blueprint component/type/member paths, and orphaned indexed graph edges. It does not replace live Blueprint validation or compilation.
+
+`FindUnusedBlueprintAssets` returns review candidates with no indexed incoming project-package dependencies. It never declares an asset safe to delete and excludes likely configuration, map, framework, library, or manually invoked roots by default. `AnalyzeFeatureBoundary` evaluates a required `/Game/...` folder boundary using internal and crossing package edges, ranked boundary Blueprints, outside-scope groups, and explicit risk thresholds.
+
+All architecture tools support bounded results and optional project scope or exact Blueprint filters where appropriate. They query the existing index and do not require a schema change or full rebuild when the current index is healthy.
+
+`AnalyzeProjectArchitecture` composes the focused analyzers into a compact risk overview and prioritized hotspot list; detailed bounded evidence is opt-in. `PlanProjectRefactor` converts the same evidence into ordered, non-destructive actions with verification tools and parameters. It never edits assets, never issues deletion instructions, and does not include C++ migration planning.
 
 Current index lifecycle:
 
@@ -242,7 +332,6 @@ When Unreal Editor is open with the selected project:
 
 ## Next Steps
 
-- Add richer index-backed query tools for feature tracing
-- Expand dependency and referencer graph coverage
-- Add map, actor, and world relationships into the index
-- Expose higher-level understanding tools before edit/write flows
+- Add dedicated graph node and pin editing tools
+- Add function, interface, input, and dispatcher authoring
+- Extend the first idempotent event-to-function workflow with branch/input and multi-stage selection/drag plans

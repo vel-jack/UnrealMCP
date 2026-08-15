@@ -250,6 +250,7 @@ bool LoadBlueprintTraceData(
             }
 
             Node.bIsPure = bIsPureInt != 0;
+            ClassifyTraceNodeSemantics(Node);
             State.NodesByKey.Add(MakeTraceNodeKey(ObjectPath, Node.GraphName, Node.NodeGuid), MoveTemp(Node));
             return ESQLitePreparedStatementExecuteRowResult::Continue;
         });
@@ -257,6 +258,47 @@ bool LoadBlueprintTraceData(
         if (QueryResult == INDEX_NONE)
         {
             OutError = Database.GetLastError().IsEmpty() ? TEXT("TraceBlueprintFlow node query failed.") : Database.GetLastError();
+            return false;
+        }
+    }
+
+    {
+        const FString Sql = TEXT("SELECT graph_name, node_guid, pin_name, default_value FROM blueprint_pins "
+                                 "WHERE blueprint_object_path = ?1 AND default_value <> '' "
+                                 "AND lower(pin_name) IN ('functionname', 'function_name') "
+                                 "ORDER BY graph_name ASC, node_guid ASC;");
+        FSQLitePreparedStatement Statement(Database, *Sql, ESQLitePreparedStatementFlags::None);
+        if (!Statement.IsValid() || !Statement.SetBindingValueByIndex(1, ObjectPath))
+        {
+            OutError = TEXT("TraceBlueprintFlow could not prepare the timer callback query.");
+            return false;
+        }
+
+        const int64 QueryResult = Statement.Execute([&](const FSQLitePreparedStatement& Row)
+        {
+            FString GraphName;
+            FString NodeGuid;
+            FString PinName;
+            FString DefaultValue;
+            if (!Row.GetColumnValueByIndex(0, GraphName)
+                || !Row.GetColumnValueByIndex(1, NodeGuid)
+                || !Row.GetColumnValueByIndex(2, PinName)
+                || !Row.GetColumnValueByIndex(3, DefaultValue))
+            {
+                return ESQLitePreparedStatementExecuteRowResult::Error;
+            }
+
+            if (FTraceNodeRecord* Node = State.NodesByKey.Find(MakeTraceNodeKey(ObjectPath, GraphName, NodeGuid));
+                Node != nullptr && Node->ExecutionSemantic == TEXT("timer"))
+            {
+                Node->CallbackMemberName = DefaultValue;
+            }
+            return ESQLitePreparedStatementExecuteRowResult::Continue;
+        });
+
+        if (QueryResult == INDEX_NONE)
+        {
+            OutError = Database.GetLastError().IsEmpty() ? TEXT("TraceBlueprintFlow timer callback query failed.") : Database.GetLastError();
             return false;
         }
     }

@@ -121,59 +121,12 @@ inline void CollectExplainStartNodes(
     }
 }
 
-inline FString BuildTraceConfidence(const TArray<FString>& StartNodeKeys, const FTraceTraversalState& State, bool bFollowCrossBlueprintCalls)
+inline FString BuildTraceConfidence(
+    const TArray<FString>& StartNodeKeys,
+    const FTraceTraversalState& State,
+    const TArray<FTraceEdgeRecord>& TraversedEdges)
 {
-    bool bHasFuzzyStart = false;
-    bool bHasCrossBlueprintWithoutFollow = false;
-    bool bHasUnresolvedReference = false;
-
-    for (const FString& StartKey : StartNodeKeys)
-    {
-        if (const FTraceNodeRecord* Node = State.NodesByKey.Find(StartKey))
-        {
-            if (!Node->MatchReason.IsEmpty()
-                && Node->MatchReason != TEXT("entry_node")
-                && Node->MatchReason != TEXT("node_title")
-                && Node->MatchReason != TEXT("member_name"))
-            {
-                bHasFuzzyStart = true;
-            }
-        }
-    }
-
-    for (const TPair<FString, FTraceNodeRecord>& Pair : State.NodesByKey)
-    {
-        const FTraceNodeRecord& Node = Pair.Value;
-        if (Node.Depth == INDEX_NONE)
-        {
-            continue;
-        }
-
-        if (Node.NodeType == TEXT("call_function") && Node.MemberName.IsEmpty())
-        {
-            bHasUnresolvedReference = true;
-        }
-
-        const bool bIsCrossBlueprint = Node.bHasResolvedMemberAsset
-            && !Node.ResolvedMemberAssetObjectPath.IsEmpty()
-            && !Node.ResolvedMemberAssetObjectPath.Equals(Node.BlueprintObjectPath, ESearchCase::CaseSensitive);
-        if (bIsCrossBlueprint && !bFollowCrossBlueprintCalls)
-        {
-            bHasCrossBlueprintWithoutFollow = true;
-        }
-    }
-
-    if (!bHasFuzzyStart && !bHasCrossBlueprintWithoutFollow && !bHasUnresolvedReference)
-    {
-        return TEXT("exact");
-    }
-
-    if (bHasUnresolvedReference || bHasCrossBlueprintWithoutFollow)
-    {
-        return TEXT("mixed");
-    }
-
-    return TEXT("inferred");
+    return CalculateIndexedTraceConfidence(StartNodeKeys, State, TraversedEdges);
 }
 
 inline FString BuildExplanationText(const FTraceTraversalState& State, const TArray<FString>& VisitedOrder, const FString& Confidence)
@@ -211,11 +164,11 @@ inline FString BuildExplanationText(const FTraceTraversalState& State, const TAr
     }
     else if (Confidence == TEXT("inferred"))
     {
-        Prefix = TEXT("The indexed trace is useful, but some start-node matching was inferred from nearby graph metadata.");
+        Prefix = TEXT("The indexed trace is partly inferred and should be read as a guided explanation rather than a guaranteed full execution path.");
     }
     else
     {
-        Prefix = TEXT("The indexed trace is partly inferred and should be read as a guided explanation rather than a guaranteed full execution path.");
+        Prefix = TEXT("The indexed trace reached one or more unresolved transitions; the reported path is incomplete at those boundaries.");
     }
 
     return Prefix + TEXT(" Flow summary: ") + FString::Join(Segments, TEXT(" -> "));

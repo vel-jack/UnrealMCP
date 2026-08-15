@@ -27,6 +27,12 @@ namespace
         NodeObject->SetStringField(TEXT("memberName"), Node.MemberName);
         NodeObject->SetNumberField(TEXT("depth"), Node.Depth);
         NodeObject->SetBoolField(TEXT("isEntry"), Node.bIsEntry);
+        if (!Node.ExecutionSemantic.IsEmpty())
+        {
+            NodeObject->SetStringField(TEXT("executionSemantic"), Node.ExecutionSemantic);
+            NodeObject->SetStringField(TEXT("semanticConfidence"), Node.SemanticConfidence);
+            NodeObject->SetStringField(TEXT("continuationModel"), Node.ContinuationModel);
+        }
 
         const bool bIsCrossBlueprintReference = Node.bHasResolvedMemberAsset
             && !Node.ResolvedMemberAssetObjectPath.Equals(Node.BlueprintObjectPath, ESearchCase::CaseSensitive);
@@ -63,6 +69,8 @@ namespace
             EdgeObject->SetStringField(TEXT("targetBlueprintObjectPath"), Edge.TargetBlueprintObjectPath);
             EdgeObject->SetStringField(TEXT("targetGraphName"), Edge.TargetGraphName);
             EdgeObject->SetStringField(TEXT("edgeKind"), Edge.EdgeKind);
+            EdgeObject->SetStringField(TEXT("confidence"), Edge.Confidence);
+            EdgeObject->SetStringField(TEXT("confidenceReason"), Edge.ConfidenceReason);
             Result.Add(MakeShared<FJsonValueObject>(EdgeObject));
         }
         return Result;
@@ -115,6 +123,10 @@ namespace
             }
 
             FString Step = BuildNodeLabel(*Node);
+            if (!Node->ExecutionSemantic.IsEmpty())
+            {
+                Step += FString::Printf(TEXT(" [%s continuation: %s]"), *Node->ExecutionSemantic, *Node->SemanticConfidence);
+            }
             if (Node->bHasResolvedMemberAsset
                 && !Node->ResolvedMemberAssetObjectPath.IsEmpty()
                 && !Node->ResolvedMemberAssetObjectPath.Equals(Node->BlueprintObjectPath, ESearchCase::CaseSensitive))
@@ -140,6 +152,10 @@ namespace
             }
 
             FString Label = BuildNodeLabel(*Node);
+            if (!Node->ExecutionSemantic.IsEmpty())
+            {
+                Label += FString::Printf(TEXT(" [%s]"), *Node->ExecutionSemantic);
+            }
             if (Node->bHasResolvedMemberAsset
                 && !Node->ResolvedMemberAssetObjectPath.IsEmpty()
                 && !Node->ResolvedMemberAssetObjectPath.Equals(Node->BlueprintObjectPath, ESearchCase::CaseSensitive))
@@ -196,6 +212,40 @@ TSharedRef<FJsonObject> BuildTraceFlowOutput(
     Result->SetNumberField(TEXT("startNodeCount"), StartNodeCount);
     Result->SetNumberField(TEXT("tracedNodeCount"), VisitedOrder.Num());
     Result->SetNumberField(TEXT("tracedEdgeCount"), TraversedEdges.Num());
+    Result->SetStringField(TEXT("traceConfidence"), CalculateIndexedTraceConfidence(StartNodeKeys, State, TraversedEdges));
+
+    int32 LatentNodeCount = 0;
+    int32 AsyncNodeCount = 0;
+    int32 TimelineNodeCount = 0;
+    int32 TimerNodeCount = 0;
+    TArray<TSharedPtr<FJsonValue>> SemanticBoundaries;
+    for (const FString& NodeKey : VisitedOrder)
+    {
+        const FTraceNodeRecord* Node = State.NodesByKey.Find(NodeKey);
+        if (Node == nullptr || Node->ExecutionSemantic.IsEmpty())
+        {
+            continue;
+        }
+
+        LatentNodeCount += Node->ExecutionSemantic == TEXT("latent") ? 1 : 0;
+        AsyncNodeCount += Node->ExecutionSemantic == TEXT("async") ? 1 : 0;
+        TimelineNodeCount += Node->ExecutionSemantic == TEXT("timeline") ? 1 : 0;
+        TimerNodeCount += Node->ExecutionSemantic == TEXT("timer") ? 1 : 0;
+        SemanticBoundaries.Add(MakeShared<FJsonValueObject>(BuildCompactNodeObject(*Node)));
+    }
+    Result->SetNumberField(TEXT("latentNodeCount"), LatentNodeCount);
+    Result->SetNumberField(TEXT("asyncNodeCount"), AsyncNodeCount);
+    Result->SetNumberField(TEXT("timelineNodeCount"), TimelineNodeCount);
+    Result->SetNumberField(TEXT("timerNodeCount"), TimerNodeCount);
+    Result->SetArrayField(TEXT("semanticBoundaries"), SemanticBoundaries);
+
+    TArray<TSharedPtr<FJsonValue>> UnresolvedTransitions;
+    for (const FTraceUnresolvedTransitionRecord& Transition : State.UnresolvedTransitions)
+    {
+        UnresolvedTransitions.Add(MakeShared<FJsonValueObject>(SerializeUnresolvedTraceTransition(Transition)));
+    }
+    Result->SetNumberField(TEXT("unresolvedTransitionCount"), UnresolvedTransitions.Num());
+    Result->SetArrayField(TEXT("unresolvedTransitions"), UnresolvedTransitions);
     if (BlueprintAsset.IsValid())
     {
         Result->SetObjectField(TEXT("asset"), BlueprintAsset.ToSharedRef());
