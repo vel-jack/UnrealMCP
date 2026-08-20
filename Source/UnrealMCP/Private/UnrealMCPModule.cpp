@@ -54,17 +54,20 @@
 #include "Tools/GetAssetReferencersTool.h"
 #include "Tools/GetAssetReferencesTool.h"
 #include "Tools/GetBlueprintComponentHierarchyTool.h"
+#include "Tools/GetBlueprintComponentDefaultsTool.h"
 #include "Tools/GetBlueprintDependenciesTool.h"
 #include "Tools/GetBlueprintInfoTool.h"
 #include "Tools/GetBlueprintInterfacesTool.h"
 #include "Tools/GetDependenciesTool.h"
 #include "Tools/GetIndexStatusTool.h"
 #include "Tools/InspectBlueprintNodeTool.h"
+#include "Tools/InspectEnhancedInputActionWiringTool.h"
 #include "Tools/GetLevelActorDependenciesTool.h"
 #include "Tools/GetParentBlueprintTool.h"
 #include "Tools/GetReferencersTool.h"
 #include "Tools/GetServerInfoTool.h"
 #include "Tools/HealthCheckTool.h"
+#include "Tools/SetBlueprintComponentDefaultsTool.h"
 #include "Tools/ListActorsTool.h"
 #include "Tools/ListAssetsTool.h"
 #include "Tools/ListBlueprintComponentsTool.h"
@@ -93,6 +96,7 @@
 #include "Tools/TraceFeatureFlowTool.h"
 #include "Tools/ValidateBlueprintTool.h"
 #include "Tools/WireBlueprintEventToFunctionTool.h"
+#include "Tools/WireEnhancedInputActionToComponentTool.h"
 #include "Transport/NamedPipeMCPTransport.h"
 #include "UnrealMCPLog.h"
 #include "UnrealMCPSettings.h"
@@ -291,6 +295,8 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FCreateBlueprintAssetTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintComponentTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintComponentsTool>());
+    Registry.RegisterTool(MakeShared<FGetBlueprintComponentDefaultsTool>());
+    Registry.RegisterTool(MakeShared<FSetBlueprintComponentDefaultsTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintVariableTool>());
     Registry.RegisterTool(MakeShared<FSaveBlueprintTool>());
     Registry.RegisterTool(MakeShared<FValidateBlueprintTool>());
@@ -319,6 +325,7 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FAddBlueprintCommentNodeTool>());
     Registry.RegisterTool(MakeShared<FCreateBlueprintFunctionGraphTool>());
     Registry.RegisterTool(MakeShared<FAddEnhancedInputActionNodeTool>());
+    Registry.RegisterTool(MakeShared<FInspectEnhancedInputActionWiringTool>());
     Registry.RegisterTool(MakeShared<FSetBlueprintPinSplitTool>());
     Registry.RegisterTool(MakeShared<FSetBlueprintFunctionMetadataTool>());
     Registry.RegisterTool(MakeShared<FSetBlueprintNodeCommentTool>());
@@ -326,6 +333,7 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FLayoutBlueprintNodesTool>());
     Registry.RegisterTool(MakeShared<FApplyBlueprintInteractionPlanTool>());
     Registry.RegisterTool(MakeShared<FWireBlueprintEventToFunctionTool>());
+    Registry.RegisterTool(MakeShared<FWireEnhancedInputActionToComponentTool>());
     Registry.RegisterTool(MakeShared<FListToolsTool>(Registry));
 }
 

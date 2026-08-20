@@ -39,6 +39,8 @@ This plugin embeds a minimal Model Context Protocol server directly into the Unr
 - `CreateBlueprintAsset`
 - `AddBlueprintComponent`
 - `AddBlueprintComponents`
+- `GetBlueprintComponentDefaults`
+- `SetBlueprintComponentDefaults`
 - `AddBlueprintVariable`
 - `ListBlueprintGraphs`
 - `ValidateBlueprint`
@@ -58,6 +60,7 @@ This plugin embeds a minimal Model Context Protocol server directly into the Unr
 - `SetBlueprintFunctionMetadata`
 - `AddBlueprintOverrideEventNode`
 - `AddEnhancedInputActionNode`
+- `InspectEnhancedInputActionWiring`
 - `SetBlueprintPinSplit`
 - `SetBlueprintSequenceOutputs`
 - `SetBlueprintNodeComment`
@@ -74,6 +77,7 @@ This plugin embeds a minimal Model Context Protocol server directly into the Unr
 - `AddBlueprintCommentNode`
 - `CreateBlueprintFunctionGraph`
 - `WireBlueprintEventToFunction`
+- `WireEnhancedInputActionToComponent`
 - `ApplyBlueprintInteractionPlan`
 - `GetIndexStatus`
 - `BuildProjectIndex`
@@ -102,9 +106,9 @@ Current indexed data:
 
 ## Safe Blueprint Authoring
 
-Phase 1 authoring supports transactional Blueprint creation, component addition, variable addition, validation, and explicit saving. `AddBlueprintComponent` accepts safe editable component-template `propertyDefaults`; `AddBlueprintComponents` prevalidates an ordered component hierarchy and applies it in one transaction, with one optional compile/save/index refresh. Mutation tools support `dryRun`, `compileAfterEdit`, and `saveAfterEdit`; creation never overwrites an existing asset. Successful saved edits refresh only the touched asset in the project index.
+Phase 1 authoring supports transactional Blueprint creation, component addition, component-default inspection/update, variable addition, validation, and explicit saving. `AddBlueprintComponent` accepts safe editable component-template `propertyDefaults`; setting `updateExistingDefaults=true` explicitly applies those defaults when the same-name/same-class component already exists. `GetBlueprintComponentDefaults` reads bounded editable template values, while `SetBlueprintComponentDefaults` preflights changes on a transient duplicate before one transaction/compile/save. `AddBlueprintComponents` prevalidates an ordered component hierarchy and applies it in one transaction, with one optional compile/save/index refresh. Mutation tools support `dryRun`, `compileAfterEdit`, and `saveAfterEdit`; creation never overwrites an existing asset. Successful saved edits refresh only the touched asset in the project index.
 
-Component defaults accept JSON strings, numbers, and booleans. Complex Unreal values can be supplied as export-text strings. Existing same-name/same-class components are reported as `alreadyExists` and are not modified, so retrying a request cannot silently replace their configured defaults.
+Component defaults accept JSON strings, numbers, and booleans. Complex Unreal values can be supplied as export-text strings. Existing same-name/same-class components remain unchanged unless `updateExistingDefaults=true` is supplied, so retrying a normal add request cannot silently replace their configured defaults.
 
 The first Phase 2 graph-editing slice supports stable GUID targeting, collision-aware Branch placement, node movement, validated pin connections/defaults, and confirmed node deletion. Automatic layout uses 320-pixel horizontal spacing and 180-pixel vertical collision steps by default.
 
@@ -129,6 +133,8 @@ Output-bearing interface graph creation is regression-tested by `UnrealMCP.Bluep
 `LayoutBlueprintNodes` arranges an explicit node set by local execution-flow depth with configurable spacing and collision avoidance. It returns every proposed or applied position and supports dry-run before mutation.
 
 `WireBlueprintEventToFunction` is the first Phase 4 high-level workflow. It idempotently creates or reuses a Custom Event, adds one exact impure Blueprint-callable function call, optionally wires a Blueprint component/member variable into the call target, lays out the nodes, and performs at most one compile/save/index refresh. It refuses to replace an event's existing execution route or a function call's existing target connection. Use `dryRun=true` before applying changes to an unfamiliar Blueprint.
+
+`InspectEnhancedInputActionWiring` reports every matching Enhanced Input Action node and the exact execution targets of its five phase pins. `WireEnhancedInputActionToComponent` inserts one exact component function call into one phase, preserves a single existing continuation after the new call, and is idempotent on retries. It rejects ambiguous action nodes, multiple phase routes, missing components, and non-callable functions. Use inspection and `dryRun=true` first; required data inputs are reported as `unconnectedInputPins` for explicit follow-up wiring.
 
 The workflow is regression-tested by `UnrealMCP.Blueprint.Authoring.WireEventToFunction.Live`, covering dry-run, exact execution and component-target pin links, compilation, idempotent retry, duplicate prevention, and temporary fixture cleanup.
 

@@ -37,64 +37,87 @@ namespace UnrealMCP::BlueprintComponentEditUtils
             }
         }
 
-        bool ApplyPropertyDefaults(
-            UObject* Target,
-            const TSharedPtr<FJsonObject>& PropertyDefaults,
-            TArray<FString>& OutAppliedProperties,
-            FString& OutError)
+        bool IsSafelyEditable(const FProperty* Property)
         {
-            if (!PropertyDefaults.IsValid())
-            {
-                return true;
-            }
-
-            for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : PropertyDefaults->Values)
-            {
-                FProperty* Property = FindFProperty<FProperty>(Target->GetClass(), *Pair.Key);
-                if (Property == nullptr)
-                {
-                    OutError = FString::Printf(TEXT("Component property '%s' was not found on class '%s'."), *Pair.Key, *Target->GetClass()->GetPathName());
-                    return false;
-                }
-                if (!Property->HasAnyPropertyFlags(CPF_Edit)
-                    || Property->HasAnyPropertyFlags(CPF_EditConst | CPF_Transient | CPF_Deprecated | CPF_DisableEditOnTemplate))
-                {
-                    OutError = FString::Printf(TEXT("Component property '%s' is not safely editable on a component template."), *Pair.Key);
-                    return false;
-                }
-
-                FString ImportText;
-                if (!JsonValueToImportText(Pair.Value, ImportText))
-                {
-                    OutError = FString::Printf(TEXT("Component property '%s' must be a JSON string, number, or boolean."), *Pair.Key);
-                    return false;
-                }
-
-                void* ValueAddress = Property->ContainerPtrToValuePtr<void>(Target);
-                if (Property->ImportText_Direct(*ImportText, ValueAddress, Target, PPF_None) == nullptr)
-                {
-                    OutError = FString::Printf(
-                        TEXT("Value '%s' is invalid for component property '%s'. Use Unreal export-text syntax for complex values."),
-                        *ImportText,
-                        *Pair.Key);
-                    return false;
-                }
-                OutAppliedProperties.Add(Pair.Key);
-            }
-            return true;
+            return Property != nullptr
+                && Property->HasAnyPropertyFlags(CPF_Edit)
+                && !Property->HasAnyPropertyFlags(CPF_EditConst | CPF_Transient | CPF_Deprecated | CPF_DisableEditOnTemplate);
         }
 
-        USCS_Node* FindNodeByName(UBlueprint* Blueprint, const FString& ComponentName)
+        FString ExportPropertyValue(const FProperty* Property, UObject* Target)
         {
-            for (USCS_Node* Node : Blueprint->SimpleConstructionScript->GetAllNodes())
-            {
-                if (Node != nullptr && Node->GetVariableName().ToString().Equals(ComponentName, ESearchCase::IgnoreCase))
-                {
-                    return Node;
-                }
-            }
-            return nullptr;
+            FString Value;
+            const void* Address = Property->ContainerPtrToValuePtr<void>(Target);
+            Property->ExportText_Direct(Value, Address, Address, Target, PPF_None);
+            return Value;
         }
+    }
+
+    USCS_Node* FindComponentNode(UBlueprint* Blueprint, const FString& ComponentName)
+    {
+        if (Blueprint == nullptr || Blueprint->SimpleConstructionScript == nullptr) return nullptr;
+        for (USCS_Node* Node : Blueprint->SimpleConstructionScript->GetAllNodes())
+        {
+            if (Node != nullptr && Node->GetVariableName().ToString().Equals(ComponentName, ESearchCase::IgnoreCase)) return Node;
+        }
+        return nullptr;
+    }
+
+    bool GetEditablePropertyValues(UObject* Target, const TArray<FString>& PropertyNames, const int32 MaxProperties, TArray<FPropertyValue>& OutValues, FString& OutError)
+    {
+        if (Target == nullptr) { OutError = TEXT("Component template is null."); return false; }
+        TSet<FString> Requested;
+        for (const FString& Name : PropertyNames) Requested.Add(Name.ToLower());
+        for (TFieldIterator<FProperty> It(Target->GetClass(), EFieldIteratorFlags::IncludeSuper); It && OutValues.Num() < MaxProperties; ++It)
+        {
+            FProperty* Property = *It;
+            if (!IsSafelyEditable(Property) || (!Requested.IsEmpty() && !Requested.Contains(Property->GetName().ToLower()))) continue;
+            FPropertyValue Item;
+            Item.Name = Property->GetName();
+            Item.Type = Property->GetCPPType();
+            Item.Value = ExportPropertyValue(Property, Target);
+            OutValues.Add(MoveTemp(Item));
+        }
+        if (!Requested.IsEmpty())
+        {
+            for (const FString& Name : PropertyNames)
+            {
+                if (!OutValues.ContainsByPredicate([&](const FPropertyValue& Value){ return Value.Name.Equals(Name, ESearchCase::IgnoreCase); }))
+                { OutError = FString::Printf(TEXT("Component property '%s' was not found or is not safely editable."), *Name); return false; }
+            }
+        }
+        return true;
+    }
+
+    bool ApplyPropertyDefaults(UObject* Target, const TSharedPtr<FJsonObject>& PropertyDefaults, TArray<FPropertyValue>& OutValues, FString& OutError)
+    {
+        if (!PropertyDefaults.IsValid()) return true;
+        for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : PropertyDefaults->Values)
+        {
+            FProperty* Property = FindFProperty<FProperty>(Target->GetClass(), *Pair.Key);
+            if (Property == nullptr) { OutError = FString::Printf(TEXT("Component property '%s' was not found on class '%s'."), *Pair.Key, *Target->GetClass()->GetPathName()); return false; }
+            if (!IsSafelyEditable(Property)) { OutError = FString::Printf(TEXT("Component property '%s' is not safely editable on a component template."), *Pair.Key); return false; }
+            FString ImportText;
+            if (!JsonValueToImportText(Pair.Value, ImportText)) { OutError = FString::Printf(TEXT("Component property '%s' must be a JSON string, number, or boolean."), *Pair.Key); return false; }
+            FPropertyValue Item;
+            Item.Name = Pair.Key;
+            Item.Type = Property->GetCPPType();
+            Item.PreviousValue = ExportPropertyValue(Property, Target);
+            void* Address = Property->ContainerPtrToValuePtr<void>(Target);
+            if (Property->ImportText_Direct(*ImportText, Address, Target, PPF_None) == nullptr)
+            { OutError = FString::Printf(TEXT("Value '%s' is invalid for component property '%s'. Use Unreal export-text syntax for complex values."), *ImportText, *Pair.Key); return false; }
+            Item.Value = ExportPropertyValue(Property, Target);
+            Item.bChanged = Item.PreviousValue != Item.Value;
+            OutValues.Add(MoveTemp(Item));
+        }
+        return true;
+    }
+
+    bool ValidatePropertyDefaults(UObject* Target, const TSharedPtr<FJsonObject>& PropertyDefaults, FString& OutError)
+    {
+        UObject* ValidationObject = Target != nullptr ? DuplicateObject<UObject>(Target, GetTransientPackage()) : nullptr;
+        TArray<FPropertyValue> Ignored;
+        return ValidationObject != nullptr && ApplyPropertyDefaults(ValidationObject, PropertyDefaults, Ignored, OutError);
     }
 
     bool ParseComponentSpec(const TSharedPtr<FJsonObject>& Object, FComponentSpec& OutSpec, FString& OutError)
@@ -194,7 +217,7 @@ namespace UnrealMCP::BlueprintComponentEditUtils
             if (!Result.bAlreadyExists && Spec.PropertyDefaults.IsValid())
             {
                 UObject* ValidationObject = DuplicateObject<UObject>(Spec.ComponentClass->GetDefaultObject(), GetTransientPackage());
-                TArray<FString> IgnoredProperties;
+                TArray<FPropertyValue> IgnoredProperties;
                 if (ValidationObject == nullptr || !ApplyPropertyDefaults(ValidationObject, Spec.PropertyDefaults, IgnoredProperties, OutError))
                 {
                     return false;
@@ -224,7 +247,7 @@ namespace UnrealMCP::BlueprintComponentEditUtils
 
             USCS_Node* ParentNode = Spec.ParentComponentName.IsEmpty()
                 ? nullptr
-                : FindNodeByName(Blueprint, Spec.ParentComponentName);
+                : FindComponentNode(Blueprint, Spec.ParentComponentName);
             USCS_Node* NewNode = Blueprint->SimpleConstructionScript->CreateNode(Spec.ComponentClass, *Spec.ComponentName);
             if (NewNode == nullptr || NewNode->ComponentTemplate == nullptr)
             {
@@ -234,9 +257,15 @@ namespace UnrealMCP::BlueprintComponentEditUtils
 
             NewNode->Modify();
             NewNode->ComponentTemplate->Modify();
-            if (!ApplyPropertyDefaults(NewNode->ComponentTemplate, Spec.PropertyDefaults, Result.AppliedProperties, OutError))
+            TArray<FPropertyValue> AppliedValues;
+            if (!ApplyPropertyDefaults(NewNode->ComponentTemplate, Spec.PropertyDefaults, AppliedValues, OutError))
             {
                 return false;
+            }
+            for (const FPropertyValue& Value : AppliedValues)
+            {
+                Result.AppliedProperties.Add(Value.Name);
+                Result.bChanged |= Value.bChanged;
             }
 
             if (ParentNode != nullptr)
@@ -249,6 +278,7 @@ namespace UnrealMCP::BlueprintComponentEditUtils
                 Blueprint->SimpleConstructionScript->AddNode(NewNode);
             }
             Result.bAdded = true;
+            Result.bChanged = true;
         }
         return true;
     }

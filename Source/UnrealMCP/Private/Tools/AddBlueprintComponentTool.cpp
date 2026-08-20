@@ -3,6 +3,7 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Engine/Blueprint.h"
+#include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
@@ -40,6 +41,7 @@ UnrealMCP::FMCPResponse FAddBlueprintComponentTool::Execute(const UnrealMCP::FMC
     }
 
     const bool bDryRun = BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("dryRun"), false);
+    const bool bUpdateExistingDefaults = BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("updateExistingDefaults"), false);
     const bool bCompile = BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("compileAfterEdit"), false);
     const bool bSave = BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("saveAfterEdit"), false);
     bool bCompileSucceeded = false;
@@ -63,20 +65,44 @@ UnrealMCP::FMCPResponse FAddBlueprintComponentTool::Execute(const UnrealMCP::FMC
             return false;
         }
         Spec = Specs[0];
-        if (bDryRun || ComponentResults[0].bAlreadyExists)
+        if (ComponentResults[0].bAlreadyExists && bUpdateExistingDefaults && Spec.PropertyDefaults.IsValid())
+        {
+            USCS_Node* ExistingNode = FindComponentNode(Blueprint, Spec.ComponentName);
+            if (ExistingNode == nullptr || ExistingNode->ComponentTemplate == nullptr)
+            {
+                OutError = TEXT("The existing component template could not be resolved.");
+                return false;
+            }
+            if (!ValidatePropertyDefaults(ExistingNode->ComponentTemplate, Spec.PropertyDefaults, OutError)) return false;
+            if (bDryRun) return true;
+
+            const FScopedTransaction Transaction(
+                NSLOCTEXT("UnrealMCP", "UpdateBlueprintComponentDefaults", "UnrealMCP Update Blueprint Component Defaults"));
+            Blueprint->Modify(); ExistingNode->Modify(); ExistingNode->ComponentTemplate->Modify();
+            TArray<FPropertyValue> Values;
+            if (!ApplyPropertyDefaults(ExistingNode->ComponentTemplate, Spec.PropertyDefaults, Values, OutError)) return false;
+            for (const FPropertyValue& Value : Values)
+            {
+                ComponentResults[0].AppliedProperties.Add(Value.Name);
+                ComponentResults[0].bChanged |= Value.bChanged;
+            }
+            ComponentResults[0].bUpdatedExisting = ComponentResults[0].bChanged;
+            if (!ComponentResults[0].bChanged) return true;
+            FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+        }
+        else if (bDryRun || ComponentResults[0].bAlreadyExists)
         {
             return true;
         }
-
-        const FScopedTransaction Transaction(
-            NSLOCTEXT("UnrealMCP", "AddBlueprintComponent", "UnrealMCP Add Blueprint Component"));
-        Blueprint->Modify();
-        Blueprint->SimpleConstructionScript->Modify();
-        if (!AddValidatedSpecs(Blueprint, Specs, ComponentResults, OutError))
+        else
         {
-            return false;
+            const FScopedTransaction Transaction(
+                NSLOCTEXT("UnrealMCP", "AddBlueprintComponent", "UnrealMCP Add Blueprint Component"));
+            Blueprint->Modify();
+            Blueprint->SimpleConstructionScript->Modify();
+            if (!AddValidatedSpecs(Blueprint, Specs, ComponentResults, OutError)) return false;
+            FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
         }
-        FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 
         if (bCompile)
         {
@@ -117,15 +143,18 @@ UnrealMCP::FMCPResponse FAddBlueprintComponentTool::Execute(const UnrealMCP::FMC
     Result->SetBoolField(TEXT("dryRun"), bDryRun);
     Result->SetBoolField(TEXT("alreadyExists"), ComponentResult.bAlreadyExists);
     Result->SetBoolField(TEXT("added"), ComponentResult.bAdded);
+    Result->SetBoolField(TEXT("updateExistingDefaults"), bUpdateExistingDefaults);
+    Result->SetBoolField(TEXT("updatedExisting"), ComponentResult.bUpdatedExisting);
+    Result->SetBoolField(TEXT("changed"), ComponentResult.bChanged);
     TArray<TSharedPtr<FJsonValue>> AppliedProperties;
     for (const FString& PropertyName : ComponentResult.AppliedProperties)
     {
         AppliedProperties.Add(MakeShared<FJsonValueString>(PropertyName));
     }
     Result->SetArrayField(TEXT("appliedProperties"), AppliedProperties);
-    Result->SetBoolField(TEXT("compiled"), bCompile && ComponentResult.bAdded);
+    Result->SetBoolField(TEXT("compiled"), bCompile && ComponentResult.bChanged);
     Result->SetBoolField(TEXT("compileSucceeded"), bCompileSucceeded);
-    Result->SetBoolField(TEXT("saved"), bSave && ComponentResult.bAdded);
+    Result->SetBoolField(TEXT("saved"), bSave && ComponentResult.bChanged);
     Result->SetStringField(TEXT("savedFilename"), SavedFilename);
     Result->SetBoolField(TEXT("indexRefreshed"), bIndexRefreshed);
     Result->SetStringField(TEXT("indexRefreshError"), IndexRefreshError);
@@ -149,6 +178,7 @@ TSharedPtr<FJsonObject> FAddBlueprintComponentTool::BuildInputSchema() const
     Defaults->SetBoolField(TEXT("additionalProperties"), true);
     Properties->SetObjectField(TEXT("propertyDefaults"), Defaults);
     Properties->SetObjectField(TEXT("dryRun"), BuildBoolProperty(TEXT("Validate without mutation.")));
+    Properties->SetObjectField(TEXT("updateExistingDefaults"), BuildBoolProperty(TEXT("If the named component already exists, explicitly update supplied propertyDefaults. Defaults false.")));
     Properties->SetObjectField(TEXT("compileAfterEdit"), BuildBoolProperty(TEXT("Compile only this Blueprint after mutation.")));
     Properties->SetObjectField(TEXT("saveAfterEdit"), BuildBoolProperty(TEXT("Save after mutation.")));
     Schema->SetObjectField(TEXT("properties"), Properties);

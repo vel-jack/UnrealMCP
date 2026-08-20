@@ -27,6 +27,17 @@ namespace UnrealMCP::BlueprintComponentEditUtils
         bool bAlreadyExists = false;
         bool bAdded = false;
         TArray<FString> AppliedProperties;
+        bool bUpdatedExisting = false;
+        bool bChanged = false;
+    };
+
+    struct FPropertyValue
+    {
+        FString Name;
+        FString Type;
+        FString Value;
+        FString PreviousValue;
+        bool bChanged = false;
     };
 
     bool ParseComponentSpec(
@@ -44,5 +55,22 @@ namespace UnrealMCP::BlueprintComponentEditUtils
         UBlueprint* Blueprint,
         const TArray<FComponentSpec>& Specs,
         TArray<FComponentResult>& InOutResults,
+        FString& OutError);
+
+    USCS_Node* FindComponentNode(UBlueprint* Blueprint, const FString& ComponentName);
+    bool GetEditablePropertyValues(
+        UObject* Target,
+        const TArray<FString>& PropertyNames,
+        int32 MaxProperties,
+        TArray<FPropertyValue>& OutValues,
+        FString& OutError);
+    bool ValidatePropertyDefaults(
+        UObject* Target,
+        const TSharedPtr<FJsonObject>& PropertyDefaults,
+        FString& OutError);
+    bool ApplyPropertyDefaults(
+        UObject* Target,
+        const TSharedPtr<FJsonObject>& PropertyDefaults,
+        TArray<FPropertyValue>& OutValues,
         FString& OutError);
 }
