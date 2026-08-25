@@ -77,6 +77,9 @@ UnrealMCP::FMCPResponse FAddBlueprintFunctionParameterTool::Execute(const Unreal
     FString Direction;
     FString TypeName;
     FString TypeObjectPath;
+    FString ContainerTypeName;
+    FString ValueTypeName;
+    FString ValueTypeObjectPath;
     if (!Request.Params.IsValid()
         || !Request.Params->TryGetStringField(TEXT("objectPath"), ObjectPath)
         || !Request.Params->TryGetStringField(TEXT("graphGuid"), GraphGuid)
@@ -104,7 +107,19 @@ UnrealMCP::FMCPResponse FAddBlueprintFunctionParameterTool::Execute(const Unreal
     }
 
     Request.Params->TryGetStringField(TEXT("typeObjectPath"), TypeObjectPath);
+    Request.Params->TryGetStringField(TEXT("containerType"), ContainerTypeName);
+    Request.Params->TryGetStringField(TEXT("valueType"), ValueTypeName);
+    Request.Params->TryGetStringField(TEXT("valueTypeObjectPath"), ValueTypeObjectPath);
     const bool bIsArray = UnrealMCP::BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("isArray"), false);
+    if (ContainerTypeName.IsEmpty())
+    {
+        ContainerTypeName = bIsArray ? TEXT("array") : TEXT("none");
+    }
+    if (bIsArray && !ContainerTypeName.Equals(TEXT("array"), ESearchCase::IgnoreCase))
+    {
+        return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams,
+            TEXT("isArray=true conflicts with a non-array containerType."));
+    }
     const bool bDryRun = UnrealMCP::BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("dryRun"), false);
     const bool bSave = UnrealMCP::BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("saveAfterEdit"), false);
 
@@ -147,7 +162,8 @@ UnrealMCP::FMCPResponse FAddBlueprintFunctionParameterTool::Execute(const Unreal
             }
 
             FEdGraphPinType PinType;
-            if (!UnrealMCP::BlueprintEditToolUtils::BuildPinType(TypeName, TypeObjectPath, bIsArray, PinType, OutError))
+            if (!UnrealMCP::BlueprintEditToolUtils::BuildContainerPinType(
+                    TypeName, TypeObjectPath, ContainerTypeName, ValueTypeName, ValueTypeObjectPath, PinType, OutError))
             {
                 return false;
             }
@@ -286,7 +302,10 @@ UnrealMCP::FMCPResponse FAddBlueprintFunctionParameterTool::Execute(const Unreal
     Result->SetStringField(TEXT("direction"), bIsInput ? TEXT("input") : TEXT("output"));
     Result->SetStringField(TEXT("type"), TypeName);
     Result->SetStringField(TEXT("typeObjectPath"), TypeObjectPath);
-    Result->SetBoolField(TEXT("isArray"), bIsArray);
+    Result->SetStringField(TEXT("containerType"), ContainerTypeName.ToLower());
+    Result->SetStringField(TEXT("valueType"), ValueTypeName);
+    Result->SetStringField(TEXT("valueTypeObjectPath"), ValueTypeObjectPath);
+    Result->SetBoolField(TEXT("isArray"), ContainerTypeName.Equals(TEXT("array"), ESearchCase::IgnoreCase));
     Result->SetBoolField(TEXT("dryRun"), bDryRun);
     Result->SetBoolField(TEXT("added"), !bDryRun);
     Result->SetBoolField(TEXT("saved"), bSave && !bDryRun);
@@ -308,9 +327,12 @@ TSharedPtr<FJsonObject> FAddBlueprintFunctionParameterTool::BuildInputSchema() c
     Properties->SetObjectField(TEXT("graphGuid"), BuildStringProperty(TEXT("Stable GUID of the target function graph.")));
     Properties->SetObjectField(TEXT("parameterName"), BuildStringProperty(TEXT("Unique function parameter name.")));
     Properties->SetObjectField(TEXT("direction"), BuildStringProperty(TEXT("Parameter direction: input or output.")));
-    Properties->SetObjectField(TEXT("type"), BuildStringProperty(TEXT("bool, float, int, string, name, text, object, or class.")));
+    Properties->SetObjectField(TEXT("type"), BuildStringProperty(TEXT("Scalar type, or Map key type.")));
     Properties->SetObjectField(TEXT("typeObjectPath"), BuildStringProperty(TEXT("Required class path for object/class types.")));
-    Properties->SetObjectField(TEXT("isArray"), BuildBoolProperty(TEXT("Create an array parameter.")));
+    Properties->SetObjectField(TEXT("containerType"), BuildStringProperty(TEXT("none, array, set, or map.")));
+    Properties->SetObjectField(TEXT("valueType"), BuildStringProperty(TEXT("Required Map value type.")));
+    Properties->SetObjectField(TEXT("valueTypeObjectPath"), BuildStringProperty(TEXT("Class path for object/class Map values.")));
+    Properties->SetObjectField(TEXT("isArray"), BuildBoolProperty(TEXT("Backward-compatible alias for containerType=array.")));
     Properties->SetObjectField(TEXT("dryRun"), BuildBoolProperty(TEXT("Validate without mutation.")));
     Properties->SetObjectField(TEXT("saveAfterEdit"), BuildBoolProperty(TEXT("Save and partially refresh the index after mutation.")));
     Schema->SetObjectField(TEXT("properties"), Properties);

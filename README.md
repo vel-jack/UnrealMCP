@@ -46,6 +46,11 @@ This plugin embeds a minimal Model Context Protocol server directly into the Unr
 - `ValidateBlueprint`
 - `SaveBlueprint`
 - `AddBlueprintBranchNode`
+- `AddBlueprintMacroNode`
+- `AddBlueprintArrayOperationNode`
+- `AddBlueprintSetOperationNode`
+- `AddBlueprintMapOperationNode`
+- `AddBlueprintTypedOperatorNode`
 - `MoveBlueprintNode`
 - `ConnectBlueprintPins`
 - `SetBlueprintPinDefaultObject`
@@ -134,6 +139,14 @@ Output-bearing interface graph creation is regression-tested by `UnrealMCP.Bluep
 
 `WireBlueprintEventToFunction` is the first Phase 4 high-level workflow. It idempotently creates or reuses a Custom Event, adds one exact impure Blueprint-callable function call, optionally wires a Blueprint component/member variable into the call target, lays out the nodes, and performs at most one compile/save/index refresh. It refuses to replace an event's existing execution route or a function call's existing target connection. Use `dryRun=true` before applying changes to an unfamiliar Blueprint.
 
+`AddBlueprintMacroNode` adds macros from a Blueprint macro library and defaults to Unreal's `StandardMacros`. `AddBlueprintArrayOperationNode` adds typed native array `Contains`, `Add`, `AddUnique`, `RemoveItem`, `Clear`, `Length`, and indexed `Get` nodes. Supply `elementType`; object/class arrays also require `typeObjectPath`. Unlike a generic reflected function call, this tool resolves Unreal's wildcard array and item pins before connection and returns their container/subtype metadata for verification.
+
+`AddBlueprintSetOperationNode` adds persistent typed Set `Contains`, `Add`, `Remove`, and `Clear` nodes. `AddBlueprintMapOperationNode` adds persistent typed Map `Add`, `Find`, `Contains`, `Remove`, `Clear`, `Keys`, and `Values` nodes with independent key/value types. Their custom node class reapplies declared types after graph reconstruction, so unconnected authored nodes do not revert to wildcards after reopening the Blueprint.
+
+`AddBlueprintTypedOperatorNode` provides exact object equality/inequality, Boolean `AND`/`OR`/`NOT`, and Vector add/subtract/nearly-equal operations. Vector nearly-equal accepts an optional non-negative `tolerance`.
+
+`AddBlueprintVariable` and `AddBlueprintFunctionParameter` accept `containerType` values `none`, `array`, `set`, or `map`. For Maps, `type` describes the key and `valueType` describes the value; object/class terminals use their corresponding object-path fields. Existing `isArray=true` requests remain supported. `ConnectBlueprintPins` now returns pin types before and after connection, complete resolved node pin lists, and `wildcardResolved` when Unreal specializes a wildcard from the first typed connection.
+
 `InspectEnhancedInputActionWiring` reports every matching Enhanced Input Action node and the exact execution targets of its five phase pins. `WireEnhancedInputActionToComponent` inserts one exact component function call into one phase, preserves a single existing continuation after the new call, and is idempotent on retries. It rejects ambiguous action nodes, multiple phase routes, missing components, and non-callable functions. Use inspection and `dryRun=true` first; required data inputs are reported as `unconnectedInputPins` for explicit follow-up wiring.
 
 The workflow is regression-tested by `UnrealMCP.Blueprint.Authoring.WireEventToFunction.Live`, covering dry-run, exact execution and component-target pin links, compilation, idempotent retry, duplicate prevention, and temporary fixture cleanup.
@@ -171,13 +184,14 @@ The plugin includes a standalone adapter at `Adapter/UnrealMCP.Adapter`.
 
 The adapter is the recommended MCP entry point for coding agents:
 
-- speaks MCP over stdio
+- uses the official MCP C# SDK and newline-delimited JSON-RPC over stdio
 - discovers Unreal projects from a workspace
 - resolves Unreal Editor installs from `.uproject` `EngineAssociation`
 - supports explicit engine overrides for custom editor locations
 - connects to the in-editor named pipe transport
 - proxies Unreal tool calls
 - keeps answering adapter status tools when Unreal is down
+- caches the authoritative plugin tool catalog so client tasks retain Unreal tool schemas while the editor is closed
 
 ### Adapter Local Tools
 
@@ -214,21 +228,47 @@ The adapter is the single MCP entry point and is responsible for:
 dotnet build .\Adapter\UnrealMCP.Adapter\UnrealMCP.Adapter.csproj -c Release
 ```
 
-### Recommended MCP Config
+### Universal Setup
 
-Minimal:
+Run the built executable without arguments in a terminal for interactive setup, or configure clients explicitly:
+
+```powershell
+UnrealMCP.Adapter.exe
+UnrealMCP.Adapter.exe configure --all --dry-run
+UnrealMCP.Adapter.exe configure --client codex,cursor --yes
+UnrealMCP.Adapter.exe doctor --json
+```
+
+By default, setup registers `UnrealMCP.Adapter.exe` from its current directory and does not copy any files. Use `--install-dir <path>` only when the user explicitly chooses a separate installation location. Setup uses official client CLIs for Codex and Claude Code, and surgically merges only `mcpServers.unreal-mcp-adapter` for Cursor, Cline, and Antigravity. Existing unrelated configuration is preserved; conflicting UnrealMCP entries are refused rather than overwritten.
+
+Supported client targets:
+
+- Codex desktop/CLI
+- Claude Code
+- Cursor
+- Cline CLI and VS Code/Cursor extension storage
+- Antigravity
+
+The generated registration is project-agnostic:
 
 ```json
 {
   "mcpServers": {
-    "unreal": {
-      "command": "C:\\Users\\LTX_MSI\\Documents\\UE_544_MCP\\Plugins\\UnrealMCP\\Adapter\\UnrealMCP.Adapter\\bin\\Release\\net9.0-windows\\UnrealMCP.Adapter.exe"
+    "unreal-mcp-adapter": {
+      "command": "C:\\Path\\To\\Current\\UnrealMCP.Adapter.exe",
+      "args": ["serve"]
     }
   }
 }
 ```
 
-This is the recommended Codex setup.
+Do not put a `.uproject` path in MCP client configuration. The adapter discovers projects from the client-provided working directory, then agents select or launch a project with adapter-local tools.
+
+Optional user-selected copy:
+
+```powershell
+UnrealMCP.Adapter.exe configure --client codex,cursor --install-dir D:\Tools\UnrealMCP --yes
+```
 
 When `--workspace` is omitted, the adapter uses its current working directory as the discovery root. In Codex, that is intended to align with the chat's primary source folder / working directory.
 
@@ -238,7 +278,7 @@ With a default Unreal Editor path:
 {
   "mcpServers": {
     "unreal": {
-      "command": "C:\\Users\\LTX_MSI\\Documents\\UE_544_MCP\\Plugins\\UnrealMCP\\Adapter\\UnrealMCP.Adapter\\bin\\Release\\net9.0-windows\\UnrealMCP.Adapter.exe",
+      "command": "C:\\Path\\To\\Current\\UnrealMCP.Adapter.exe",
       "args": [
         "serve",
         "--engine-exe",
@@ -255,7 +295,7 @@ With an explicit workspace override:
 {
   "mcpServers": {
     "unreal": {
-      "command": "C:\\Users\\LTX_MSI\\Documents\\UE_544_MCP\\Plugins\\UnrealMCP\\Adapter\\UnrealMCP.Adapter\\bin\\Release\\net9.0-windows\\UnrealMCP.Adapter.exe",
+      "command": "C:\\Path\\To\\Current\\UnrealMCP.Adapter.exe",
       "args": [
         "serve",
         "--workspace",
@@ -314,6 +354,16 @@ UnrealMCP.Adapter.exe launch --project C:\Projects\MyGameRepo\MyGame.uproject
 ```powershell
 UnrealMCP.Adapter.exe status --workspace C:\Projects\MyGameRepo
 ```
+
+### Doctor And Removal
+
+```powershell
+UnrealMCP.Adapter.exe doctor --json
+UnrealMCP.Adapter.exe uninstall --client codex,cursor --dry-run
+UnrealMCP.Adapter.exe uninstall --client codex,cursor --yes
+```
+
+`doctor` starts a fresh adapter process and verifies MCP initialization framing. JSON configuration writes use a same-directory temporary file and preserve a `.unrealmcp.bak` backup before mutation. Removal only deletes an entry that still matches UnrealMCP's installed command.
 
 All standalone modes emit JSON to stdout.
 

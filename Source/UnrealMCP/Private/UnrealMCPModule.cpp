@@ -7,6 +7,11 @@
 #include "Tools/AddBlueprintComponentTool.h"
 #include "Tools/AddBlueprintComponentsTool.h"
 #include "Tools/AddBlueprintBranchNodeTool.h"
+#include "Tools/AddBlueprintMacroNodeTool.h"
+#include "Tools/AddBlueprintArrayOperationNodeTool.h"
+#include "Tools/AddBlueprintSetOperationNodeTool.h"
+#include "Tools/AddBlueprintMapOperationNodeTool.h"
+#include "Tools/AddBlueprintTypedOperatorNodeTool.h"
 #include "Tools/AddBlueprintCastNodeTool.h"
 #include "Tools/AddBlueprintCommentNodeTool.h"
 #include "Tools/AddBlueprintCustomEventNodeTool.h"
@@ -301,6 +306,11 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FSaveBlueprintTool>());
     Registry.RegisterTool(MakeShared<FValidateBlueprintTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintBranchNodeTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintMacroNodeTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintArrayOperationNodeTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintSetOperationNodeTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintMapOperationNodeTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintTypedOperatorNodeTool>());
     Registry.RegisterTool(MakeShared<FMoveBlueprintNodeTool>());
     Registry.RegisterTool(MakeShared<FConnectBlueprintPinsTool>());
     Registry.RegisterTool(MakeShared<FSetBlueprintPinDefaultObjectTool>());

@@ -6,8 +6,46 @@ internal sealed class McpRequestDispatcher(AdapterOptions options)
 {
     private readonly UnrealSessionManager _sessionManager = new(options);
     private readonly IReadOnlyList<McpToolDefinition> _localTools = BuildLocalTools();
+    private readonly ToolCatalogService _toolCatalog = new();
 
     public UnrealSessionManager SessionManager => _sessionManager;
+
+    public async Task<IReadOnlyList<McpToolDefinition>> GetToolDefinitionsAsync(CancellationToken cancellationToken)
+    {
+        var tools = new List<McpToolDefinition>(_localTools);
+        var remoteTools = await _sessionManager.GetMirroredToolListAsync(cancellationToken);
+        if (remoteTools.Count > 0)
+        {
+            _toolCatalog.Save(remoteTools);
+        }
+
+        var catalog = remoteTools.Count > 0
+            ? remoteTools.OfType<JsonObject>().ToArray()
+            : _toolCatalog.Load();
+        foreach (var remoteTool in catalog)
+        {
+            var name = remoteTool["name"]?.GetValue<string>();
+            if (string.IsNullOrWhiteSpace(name) || tools.Any(tool => tool.Name.Equals(name, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            var description = remoteTool["description"]?.GetValue<string>() ?? string.Empty;
+            var inputSchema = remoteTool["inputSchema"] as JsonObject ?? new JsonObject { ["type"] = "object" };
+            tools.Add(new McpToolDefinition(name, description, (JsonObject)inputSchema.DeepClone()));
+        }
+
+        return tools;
+    }
+
+    public async Task<(JsonObject Payload, bool IsError)> InvokeToolPayloadAsync(
+        string toolName,
+        JsonNode? arguments,
+        CancellationToken cancellationToken)
+    {
+        var localPayload = await TryInvokeLocalToolPayloadAsync(toolName, arguments, cancellationToken);
+        return localPayload ?? await _sessionManager.InvokeUnrealToolAsync(toolName, arguments, cancellationToken);
+    }
 
     public async Task<JsonObject?> DispatchAsync(string rawMessage, CancellationToken cancellationToken)
     {
@@ -47,15 +85,9 @@ internal sealed class McpRequestDispatcher(AdapterOptions options)
     private async Task<JsonObject> HandleToolsListAsync(JsonNode? id, CancellationToken cancellationToken)
     {
         var tools = new JsonArray();
-        foreach (var localTool in _localTools)
+        foreach (var tool in await GetToolDefinitionsAsync(cancellationToken))
         {
-            tools.Add(localTool.ToJson());
-        }
-
-        var remoteTools = await _sessionManager.GetMirroredToolListAsync(cancellationToken);
-        foreach (var remoteTool in remoteTools)
-        {
-            tools.Add(remoteTool?.DeepClone());
+            tools.Add(tool.ToJson());
         }
 
         return McpProtocol.CreateJsonRpcResponse(id, new JsonObject
@@ -84,17 +116,14 @@ internal sealed class McpRequestDispatcher(AdapterOptions options)
 
     private async Task<JsonObject> InvokeToolAsync(string toolName, JsonNode? arguments, CancellationToken cancellationToken)
     {
-        var localToolResult = await TryInvokeLocalToolAsync(toolName, arguments, cancellationToken);
-        if (localToolResult is not null)
-        {
-            return localToolResult;
-        }
-
-        var (payload, isError) = await _sessionManager.InvokeUnrealToolAsync(toolName, arguments, cancellationToken);
+        var (payload, isError) = await InvokeToolPayloadAsync(toolName, arguments, cancellationToken);
         return McpProtocol.CreateToolCallResult(payload, isError);
     }
 
-    private async Task<JsonObject?> TryInvokeLocalToolAsync(string toolName, JsonNode? arguments, CancellationToken cancellationToken)
+    private async Task<(JsonObject Payload, bool IsError)?> TryInvokeLocalToolPayloadAsync(
+        string toolName,
+        JsonNode? arguments,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -113,9 +142,15 @@ internal sealed class McpRequestDispatcher(AdapterOptions options)
                 _ => null
             };
 
-            return payload is null
-                ? null
-                : McpProtocol.CreateToolCallResult(payload, payload["success"] is JsonValue successValue && successValue.TryGetValue<bool>(out var success) && !success);
+            if (payload is null)
+            {
+                return null;
+            }
+
+            var isError = payload["success"] is JsonValue successValue
+                && successValue.TryGetValue<bool>(out var success)
+                && !success;
+            return (payload, isError);
         }
         catch (Exception exception)
         {
@@ -125,7 +160,7 @@ internal sealed class McpRequestDispatcher(AdapterOptions options)
                 ["errorCode"] = "adapter_invalid_request",
                 ["message"] = exception.Message
             };
-            return McpProtocol.CreateToolCallResult(payload, true);
+            return (payload, true);
         }
     }
 

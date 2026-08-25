@@ -105,6 +105,62 @@ namespace UnrealMCP::BlueprintEditToolUtils
         return true;
     }
 
+    bool BuildContainerPinType(
+        const FString& TypeName,
+        const FString& TypeObjectPath,
+        const FString& ContainerTypeName,
+        const FString& ValueTypeName,
+        const FString& ValueTypeObjectPath,
+        FEdGraphPinType& OutPinType,
+        FString& OutError)
+    {
+        if (!BuildPinType(TypeName, TypeObjectPath, false, OutPinType, OutError))
+        {
+            return false;
+        }
+
+        const FString NormalizedContainer = ContainerTypeName.IsEmpty()
+            ? TEXT("none")
+            : ContainerTypeName.ToLower();
+        if (NormalizedContainer == TEXT("none") || NormalizedContainer == TEXT("scalar"))
+        {
+            OutPinType.ContainerType = EPinContainerType::None;
+        }
+        else if (NormalizedContainer == TEXT("array"))
+        {
+            OutPinType.ContainerType = EPinContainerType::Array;
+        }
+        else if (NormalizedContainer == TEXT("set"))
+        {
+            OutPinType.ContainerType = EPinContainerType::Set;
+        }
+        else if (NormalizedContainer == TEXT("map"))
+        {
+            if (ValueTypeName.IsEmpty())
+            {
+                OutError = TEXT("Map container types require valueType.");
+                return false;
+            }
+            FEdGraphPinType ValuePinType;
+            if (!BuildPinType(ValueTypeName, ValueTypeObjectPath, false, ValuePinType, OutError))
+            {
+                return false;
+            }
+            OutPinType.ContainerType = EPinContainerType::Map;
+            OutPinType.PinValueType.TerminalCategory = ValuePinType.PinCategory;
+            OutPinType.PinValueType.TerminalSubCategory = ValuePinType.PinSubCategory;
+            OutPinType.PinValueType.TerminalSubCategoryObject = ValuePinType.PinSubCategoryObject;
+        }
+        else
+        {
+            OutError = FString::Printf(
+                TEXT("Unsupported containerType '%s'. Use none, array, set, or map."),
+                *ContainerTypeName);
+            return false;
+        }
+        return true;
+    }
+
     bool GetOptionalBool(const TSharedPtr<FJsonObject>& Params, const TCHAR* Name, bool DefaultValue)
     {
         bool Value = DefaultValue;

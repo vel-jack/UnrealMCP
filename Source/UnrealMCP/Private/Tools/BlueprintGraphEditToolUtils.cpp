@@ -167,6 +167,18 @@ namespace UnrealMCP::BlueprintGraphEditToolUtils
             Item->SetStringField(TEXT("pinId"), GetPinId(Pin)); Item->SetStringField(TEXT("pinName"), Pin->PinName.ToString());
             Item->SetStringField(TEXT("direction"), Pin->Direction == EGPD_Input ? TEXT("input") : TEXT("output"));
             Item->SetStringField(TEXT("category"), Pin->PinType.PinCategory.ToString());
+            Item->SetStringField(TEXT("subCategory"), Pin->PinType.PinSubCategory.ToString());
+            Item->SetStringField(TEXT("subCategoryObjectPath"),
+                Pin->PinType.PinSubCategoryObject.IsValid() ? Pin->PinType.PinSubCategoryObject->GetPathName() : FString());
+            Item->SetStringField(TEXT("containerType"),
+                StaticEnum<EPinContainerType>()->GetNameStringByValue(static_cast<int64>(Pin->PinType.ContainerType)));
+            Item->SetBoolField(TEXT("isReference"), Pin->PinType.bIsReference);
+            Item->SetStringField(TEXT("valueCategory"), Pin->PinType.PinValueType.TerminalCategory.ToString());
+            Item->SetStringField(TEXT("valueSubCategory"), Pin->PinType.PinValueType.TerminalSubCategory.ToString());
+            Item->SetStringField(TEXT("valueSubCategoryObjectPath"),
+                Pin->PinType.PinValueType.TerminalSubCategoryObject.IsValid()
+                    ? Pin->PinType.PinValueType.TerminalSubCategoryObject->GetPathName()
+                    : FString());
             Item->SetStringField(TEXT("defaultValue"), GetEffectivePinDefaultValue(Pin));
             Item->SetStringField(TEXT("literalDefaultValue"), Pin->DefaultValue);
             Item->SetStringField(TEXT("defaultObjectPath"), GetPinDefaultObjectPath(Pin));

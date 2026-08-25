@@ -1,5 +1,7 @@
 #include "Tools/ConnectBlueprintPinsTool.h"
+
 #include "Dom/JsonObject.h"
+#include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -7,6 +9,201 @@
 #include "Tools/BlueprintEditToolUtils.h"
 #include "Tools/BlueprintGraphEditToolUtils.h"
 #include "Tools/BlueprintToolUtils.h"
-FConnectBlueprintPinsTool::FConnectBlueprintPinsTool():FMCPToolBase(TEXT("ConnectBlueprintPins"),TEXT("Validates and connects an output pin to an input pin in one Blueprint graph using stable node/pin identities. Supports dry-run and optional save.")){}
-UnrealMCP::FMCPResponse FConnectBlueprintPinsTool::Execute(const UnrealMCP::FMCPRequest&Request)const{FString O,G,GG,SN,SP,SPN,TN,TP,TPN;if(!Request.Params.IsValid()||!Request.Params->TryGetStringField(TEXT("objectPath"),O)||!Request.Params->TryGetStringField(TEXT("sourceNodeGuid"),SN)||!Request.Params->TryGetStringField(TEXT("targetNodeGuid"),TN))return BuildError(Request,UnrealMCP::EMCPErrorCode::InvalidParams,TEXT("ConnectBlueprintPins requires objectPath, sourceNodeGuid, targetNodeGuid, graphName/graphGuid, and pin ids or names."));Request.Params->TryGetStringField(TEXT("graphName"),G);Request.Params->TryGetStringField(TEXT("graphGuid"),GG);Request.Params->TryGetStringField(TEXT("sourcePinId"),SP);Request.Params->TryGetStringField(TEXT("sourcePinName"),SPN);Request.Params->TryGetStringField(TEXT("targetPinId"),TP);Request.Params->TryGetStringField(TEXT("targetPinName"),TPN);if(G.IsEmpty()&&GG.IsEmpty())return BuildError(Request,UnrealMCP::EMCPErrorCode::InvalidParams,TEXT("ConnectBlueprintPins requires graphName or graphGuid."));bool Dry=UnrealMCP::BlueprintEditToolUtils::GetOptionalBool(Request.Params,TEXT("dryRun"),false),Save=UnrealMCP::BlueprintEditToolUtils::GetOptionalBool(Request.Params,TEXT("saveAfterEdit"),false),Already=false;FString File,IdxErr,ExecErr,Message;bool Idx=false;bool Ok=UnrealMCP::BlueprintToolUtils::ExecuteOnGameThreadSync([&](FString&E){UBlueprint*B=nullptr;if(!UnrealMCP::BlueprintEditToolUtils::ResolveBlueprint(O,B,E))return false;UEdGraph*Graph=nullptr;if(!UnrealMCP::BlueprintGraphEditToolUtils::ResolveGraph(B,G,GG,Graph,E))return false;UEdGraphNode*S=nullptr,*T=nullptr;if(!UnrealMCP::BlueprintGraphEditToolUtils::ResolveNode(Graph,SN,S,E)||!UnrealMCP::BlueprintGraphEditToolUtils::ResolveNode(Graph,TN,T,E))return false;UEdGraphPin*SO=nullptr,*TI=nullptr;if(!UnrealMCP::BlueprintGraphEditToolUtils::ResolvePin(S,SP,SPN,TEXT("output"),SO,E)||!UnrealMCP::BlueprintGraphEditToolUtils::ResolvePin(T,TP,TPN,TEXT("input"),TI,E))return false;Already=SO->LinkedTo.Contains(TI);const UEdGraphSchema_K2*Schema=Cast<UEdGraphSchema_K2>(Graph->GetSchema());if(!Schema){E=TEXT("Graph does not use the K2 schema.");return false;}const FPinConnectionResponse Compatibility=Schema->CanCreateConnection(SO,TI);Message=Compatibility.Message.ToString();if(Compatibility.Response==CONNECT_RESPONSE_DISALLOW){E=FString::Printf(TEXT("Pins are incompatible: %s"),*Message);return false;}if(Dry||Already)return true;const FScopedTransaction Tx(NSLOCTEXT("UnrealMCP","ConnectBlueprintPins","UnrealMCP Connect Blueprint Pins"));B->Modify();Graph->Modify();S->Modify();T->Modify();if(!Schema->TryCreateConnection(SO,TI)){E=TEXT("Unreal rejected the pin connection.");return false;}FBlueprintEditorUtils::MarkBlueprintAsModified(B);return UnrealMCP::BlueprintGraphEditToolUtils::SaveAndRefreshIfRequested(B,O,Save,File,Idx,IdxErr,E);},ExecErr);if(!Ok)return BuildError(Request,UnrealMCP::EMCPErrorCode::InvalidParams,ExecErr);UnrealMCP::FMCPResponse R;R.Id=Request.Id;auto J=BuildBooleanResult(true);J->SetBoolField(TEXT("dryRun"),Dry);J->SetBoolField(TEXT("compatible"),true);J->SetBoolField(TEXT("alreadyConnected"),Already);J->SetBoolField(TEXT("connected"),!Dry&&!Already);J->SetStringField(TEXT("compatibilityMessage"),Message);J->SetStringField(TEXT("sourceNodeGuid"),SN);J->SetStringField(TEXT("sourcePinId"),SP);J->SetStringField(TEXT("targetNodeGuid"),TN);J->SetStringField(TEXT("targetPinId"),TP);J->SetBoolField(TEXT("saved"),Save&&!Dry&&!Already);J->SetBoolField(TEXT("indexRefreshed"),Idx);J->SetStringField(TEXT("indexRefreshError"),IdxErr);R.Result=J;return R;}
-TSharedPtr<FJsonObject>FConnectBlueprintPinsTool::BuildInputSchema()const{using namespace UnrealMCP::BlueprintEditToolUtils;auto S=MakeShared<FJsonObject>();S->SetStringField(TEXT("type"),TEXT("object"));auto P=MakeShared<FJsonObject>();for(const TCHAR*N:{TEXT("objectPath"),TEXT("graphName"),TEXT("graphGuid"),TEXT("sourceNodeGuid"),TEXT("sourcePinId"),TEXT("sourcePinName"),TEXT("targetNodeGuid"),TEXT("targetPinId"),TEXT("targetPinName")})P->SetObjectField(N,BuildStringProperty(TEXT("Stable Blueprint graph/node/pin selector.")));P->SetObjectField(TEXT("dryRun"),BuildBoolProperty(TEXT("Validate without connection.")));P->SetObjectField(TEXT("saveAfterEdit"),BuildBoolProperty(TEXT("Save and refresh after connection.")));S->SetObjectField(TEXT("properties"),P);TArray<TSharedPtr<FJsonValue>>Q{MakeShared<FJsonValueString>(TEXT("objectPath")),MakeShared<FJsonValueString>(TEXT("sourceNodeGuid")),MakeShared<FJsonValueString>(TEXT("targetNodeGuid"))};S->SetArrayField(TEXT("required"),Q);return S;}
+
+namespace
+{
+    TSharedRef<FJsonObject> SerializePinType(const UEdGraphPin* Pin)
+    {
+        TSharedRef<FJsonObject> Result = MakeShared<FJsonObject>();
+        if (Pin == nullptr) return Result;
+        Result->SetStringField(TEXT("pinId"), UnrealMCP::BlueprintGraphEditToolUtils::GetPinId(Pin));
+        Result->SetStringField(TEXT("pinName"), Pin->PinName.ToString());
+        Result->SetStringField(TEXT("category"), Pin->PinType.PinCategory.ToString());
+        Result->SetStringField(TEXT("subCategory"), Pin->PinType.PinSubCategory.ToString());
+        Result->SetStringField(TEXT("subCategoryObjectPath"),
+            Pin->PinType.PinSubCategoryObject.IsValid() ? Pin->PinType.PinSubCategoryObject->GetPathName() : FString());
+        Result->SetStringField(TEXT("containerType"),
+            StaticEnum<EPinContainerType>()->GetNameStringByValue(static_cast<int64>(Pin->PinType.ContainerType)));
+        Result->SetStringField(TEXT("valueCategory"), Pin->PinType.PinValueType.TerminalCategory.ToString());
+        Result->SetStringField(TEXT("valueSubCategory"), Pin->PinType.PinValueType.TerminalSubCategory.ToString());
+        Result->SetStringField(TEXT("valueSubCategoryObjectPath"),
+            Pin->PinType.PinValueType.TerminalSubCategoryObject.IsValid()
+                ? Pin->PinType.PinValueType.TerminalSubCategoryObject->GetPathName()
+                : FString());
+        Result->SetNumberField(TEXT("linkedPinCount"), Pin->LinkedTo.Num());
+        return Result;
+    }
+
+    bool IsUnresolvedWildcard(const UEdGraphPin* Pin)
+    {
+        return Pin != nullptr
+            && (Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Wildcard
+                || (Pin->PinType.ContainerType == EPinContainerType::Map
+                    && Pin->PinType.PinValueType.TerminalCategory == UEdGraphSchema_K2::PC_Wildcard));
+    }
+}
+
+FConnectBlueprintPinsTool::FConnectBlueprintPinsTool()
+    : FMCPToolBase(
+        TEXT("ConnectBlueprintPins"),
+        TEXT("Validates and transactionally connects Blueprint pins, returning their resolved post-connection type model."))
+{
+}
+
+UnrealMCP::FMCPResponse FConnectBlueprintPinsTool::Execute(const UnrealMCP::FMCPRequest& Request) const
+{
+    FString ObjectPath, GraphName, GraphGuid;
+    FString SourceNodeGuid, SourcePinId, SourcePinName;
+    FString TargetNodeGuid, TargetPinId, TargetPinName;
+    if (!Request.Params.IsValid()
+        || !Request.Params->TryGetStringField(TEXT("objectPath"), ObjectPath)
+        || !Request.Params->TryGetStringField(TEXT("sourceNodeGuid"), SourceNodeGuid)
+        || !Request.Params->TryGetStringField(TEXT("targetNodeGuid"), TargetNodeGuid))
+    {
+        return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams,
+            TEXT("ConnectBlueprintPins requires objectPath, sourceNodeGuid, targetNodeGuid, graphName/graphGuid, and pin ids or names."));
+    }
+
+    Request.Params->TryGetStringField(TEXT("graphName"), GraphName);
+    Request.Params->TryGetStringField(TEXT("graphGuid"), GraphGuid);
+    Request.Params->TryGetStringField(TEXT("sourcePinId"), SourcePinId);
+    Request.Params->TryGetStringField(TEXT("sourcePinName"), SourcePinName);
+    Request.Params->TryGetStringField(TEXT("targetPinId"), TargetPinId);
+    Request.Params->TryGetStringField(TEXT("targetPinName"), TargetPinName);
+    if (GraphName.IsEmpty() && GraphGuid.IsEmpty())
+    {
+        return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams,
+            TEXT("ConnectBlueprintPins requires graphName or graphGuid."));
+    }
+
+    const bool bDryRun = UnrealMCP::BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("dryRun"), false);
+    const bool bSave = UnrealMCP::BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("saveAfterEdit"), false);
+    bool bAlreadyConnected = false;
+    bool bIndexRefreshed = false;
+    bool bWildcardResolved = false;
+    FString SavedFilename, IndexError, ExecutionError, CompatibilityMessage;
+    TSharedPtr<FJsonObject> SourceBefore, TargetBefore, SourceAfter, TargetAfter;
+    TArray<TSharedPtr<FJsonValue>> SourceNodePinsAfter, TargetNodePinsAfter;
+
+    const bool bSucceeded = UnrealMCP::BlueprintToolUtils::ExecuteOnGameThreadSync([&](FString& OutError)
+    {
+        UBlueprint* Blueprint = nullptr;
+        if (!UnrealMCP::BlueprintEditToolUtils::ResolveBlueprint(ObjectPath, Blueprint, OutError)) return false;
+        UEdGraph* Graph = nullptr;
+        if (!UnrealMCP::BlueprintGraphEditToolUtils::ResolveGraph(Blueprint, GraphName, GraphGuid, Graph, OutError)) return false;
+        UEdGraphNode* SourceNode = nullptr;
+        UEdGraphNode* TargetNode = nullptr;
+        if (!UnrealMCP::BlueprintGraphEditToolUtils::ResolveNode(Graph, SourceNodeGuid, SourceNode, OutError)
+            || !UnrealMCP::BlueprintGraphEditToolUtils::ResolveNode(Graph, TargetNodeGuid, TargetNode, OutError))
+        {
+            return false;
+        }
+        UEdGraphPin* SourcePin = nullptr;
+        UEdGraphPin* TargetPin = nullptr;
+        if (!UnrealMCP::BlueprintGraphEditToolUtils::ResolvePin(
+                SourceNode, SourcePinId, SourcePinName, TEXT("output"), SourcePin, OutError)
+            || !UnrealMCP::BlueprintGraphEditToolUtils::ResolvePin(
+                TargetNode, TargetPinId, TargetPinName, TEXT("input"), TargetPin, OutError))
+        {
+            return false;
+        }
+
+        SourceBefore = SerializePinType(SourcePin);
+        TargetBefore = SerializePinType(TargetPin);
+        const bool bHadWildcard = IsUnresolvedWildcard(SourcePin) || IsUnresolvedWildcard(TargetPin);
+        bAlreadyConnected = SourcePin->LinkedTo.Contains(TargetPin);
+        const UEdGraphSchema_K2* Schema = Cast<UEdGraphSchema_K2>(Graph->GetSchema());
+        if (Schema == nullptr)
+        {
+            OutError = TEXT("Graph does not use the K2 schema.");
+            return false;
+        }
+        const FPinConnectionResponse Compatibility = Schema->CanCreateConnection(SourcePin, TargetPin);
+        CompatibilityMessage = Compatibility.Message.ToString();
+        if (Compatibility.Response == CONNECT_RESPONSE_DISALLOW)
+        {
+            OutError = FString::Printf(TEXT("Pins are incompatible: %s"), *CompatibilityMessage);
+            return false;
+        }
+
+        if (!bDryRun && !bAlreadyConnected)
+        {
+            const FScopedTransaction Transaction(NSLOCTEXT(
+                "UnrealMCP", "ConnectBlueprintPins", "UnrealMCP Connect Blueprint Pins"));
+            Blueprint->Modify();
+            Graph->Modify();
+            SourceNode->Modify();
+            TargetNode->Modify();
+            if (!Schema->TryCreateConnection(SourcePin, TargetPin))
+            {
+                OutError = TEXT("Unreal rejected the pin connection.");
+                return false;
+            }
+            FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+        }
+
+        SourceAfter = SerializePinType(SourcePin);
+        TargetAfter = SerializePinType(TargetPin);
+        SourceNodePinsAfter = UnrealMCP::BlueprintGraphEditToolUtils::SerializePins(SourceNode);
+        TargetNodePinsAfter = UnrealMCP::BlueprintGraphEditToolUtils::SerializePins(TargetNode);
+        bWildcardResolved = bHadWildcard
+            && !IsUnresolvedWildcard(SourcePin)
+            && !IsUnresolvedWildcard(TargetPin);
+
+        if (bDryRun || bAlreadyConnected) return true;
+        return UnrealMCP::BlueprintGraphEditToolUtils::SaveAndRefreshIfRequested(
+            Blueprint, ObjectPath, bSave, SavedFilename, bIndexRefreshed, IndexError, OutError);
+    }, ExecutionError);
+
+    if (!bSucceeded)
+    {
+        return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, ExecutionError);
+    }
+
+    UnrealMCP::FMCPResponse Response;
+    Response.Id = Request.Id;
+    TSharedRef<FJsonObject> Result = BuildBooleanResult(true);
+    Result->SetBoolField(TEXT("dryRun"), bDryRun);
+    Result->SetBoolField(TEXT("compatible"), true);
+    Result->SetBoolField(TEXT("alreadyConnected"), bAlreadyConnected);
+    Result->SetBoolField(TEXT("connected"), !bDryRun && !bAlreadyConnected);
+    Result->SetBoolField(TEXT("wildcardResolved"), bWildcardResolved);
+    Result->SetStringField(TEXT("compatibilityMessage"), CompatibilityMessage);
+    Result->SetStringField(TEXT("sourceNodeGuid"), SourceNodeGuid);
+    Result->SetStringField(TEXT("sourcePinId"), SourcePinId);
+    Result->SetStringField(TEXT("targetNodeGuid"), TargetNodeGuid);
+    Result->SetStringField(TEXT("targetPinId"), TargetPinId);
+    Result->SetObjectField(TEXT("sourcePinBefore"), SourceBefore.ToSharedRef());
+    Result->SetObjectField(TEXT("targetPinBefore"), TargetBefore.ToSharedRef());
+    Result->SetObjectField(TEXT("sourcePinAfter"), SourceAfter.ToSharedRef());
+    Result->SetObjectField(TEXT("targetPinAfter"), TargetAfter.ToSharedRef());
+    Result->SetArrayField(TEXT("sourceNodePinsAfter"), SourceNodePinsAfter);
+    Result->SetArrayField(TEXT("targetNodePinsAfter"), TargetNodePinsAfter);
+    Result->SetBoolField(TEXT("saved"), bSave && !bDryRun && !bAlreadyConnected);
+    Result->SetBoolField(TEXT("indexRefreshed"), bIndexRefreshed);
+    Result->SetStringField(TEXT("indexRefreshError"), IndexError);
+    Response.Result = Result;
+    return Response;
+}
+
+TSharedPtr<FJsonObject> FConnectBlueprintPinsTool::BuildInputSchema() const
+{
+    using namespace UnrealMCP::BlueprintEditToolUtils;
+    TSharedRef<FJsonObject> Schema = MakeShared<FJsonObject>();
+    Schema->SetStringField(TEXT("type"), TEXT("object"));
+    TSharedRef<FJsonObject> Properties = MakeShared<FJsonObject>();
+    for (const TCHAR* FieldName : {TEXT("objectPath"), TEXT("graphName"), TEXT("graphGuid"),
+        TEXT("sourceNodeGuid"), TEXT("sourcePinId"), TEXT("sourcePinName"),
+        TEXT("targetNodeGuid"), TEXT("targetPinId"), TEXT("targetPinName")})
+    {
+        Properties->SetObjectField(FieldName, BuildStringProperty(TEXT("Stable Blueprint graph/node/pin selector.")));
+    }
+    Properties->SetObjectField(TEXT("dryRun"), BuildBoolProperty(TEXT("Validate without connection.")));
+    Properties->SetObjectField(TEXT("saveAfterEdit"), BuildBoolProperty(TEXT("Save and refresh after connection.")));
+    Schema->SetObjectField(TEXT("properties"), Properties);
+    Schema->SetArrayField(TEXT("required"), {
+        MakeShared<FJsonValueString>(TEXT("objectPath")),
+        MakeShared<FJsonValueString>(TEXT("sourceNodeGuid")),
+        MakeShared<FJsonValueString>(TEXT("targetNodeGuid"))});
+    return Schema;
+}

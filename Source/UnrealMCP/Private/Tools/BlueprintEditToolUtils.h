@@ -19,6 +19,14 @@ namespace UnrealMCP::BlueprintEditToolUtils
         bool bIsArray,
         FEdGraphPinType& OutPinType,
         FString& OutError);
+    bool BuildContainerPinType(
+        const FString& TypeName,
+        const FString& TypeObjectPath,
+        const FString& ContainerTypeName,
+        const FString& ValueTypeName,
+        const FString& ValueTypeObjectPath,
+        FEdGraphPinType& OutPinType,
+        FString& OutError);
     bool GetOptionalBool(const TSharedPtr<FJsonObject>& Params, const TCHAR* Name, bool DefaultValue);
     TSharedRef<FJsonObject> BuildStringProperty(const FString& Description);
     TSharedRef<FJsonObject> BuildBoolProperty(const FString& Description);

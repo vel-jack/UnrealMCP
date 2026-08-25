@@ -4,10 +4,15 @@ namespace UnrealMCP.Adapter;
 
 internal enum AdapterMode
 {
+    Help,
+    Setup,
     Serve,
     Discover,
     Launch,
-    Status
+    Status,
+    Doctor,
+    Configure,
+    Uninstall
 }
 
 internal sealed class AdapterOptions
@@ -17,13 +22,25 @@ internal sealed class AdapterOptions
     public string? PipeNameOverride { get; init; }
     public string? DefaultEngineExecutablePath { get; init; }
     public string? ProjectPath { get; init; }
+    public string? InstallDirectory { get; init; }
     public TimeSpan PipeConnectTimeout { get; init; } = TimeSpan.FromSeconds(5);
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(10);
     public TimeSpan LaunchReadyTimeout { get; init; } = TimeSpan.FromSeconds(45);
+    public IReadOnlyList<string> Clients { get; init; } = [];
+    public bool DryRun { get; init; }
+    public bool AssumeYes { get; init; }
+    public bool JsonOutput { get; init; }
 
-    public static AdapterOptions Parse(string[] args)
+    public static AdapterOptions Parse(string[] args, bool? inputRedirected = null)
     {
-        var mode = AdapterMode.Serve;
+        if (args.Any(argument => argument is "--help" or "-h"))
+        {
+            return new AdapterOptions { Mode = AdapterMode.Help };
+        }
+
+        var mode = args.Length == 0 && !(inputRedirected ?? Console.IsInputRedirected)
+            ? AdapterMode.Setup
+            : AdapterMode.Serve;
         var index = 0;
         if (args.Length > 0 && (args[0].Length == 0 || args[0][0] != '-'))
         {
@@ -35,9 +52,14 @@ internal sealed class AdapterOptions
         string? pipeName = null;
         string? defaultEngineExecutablePath = null;
         string? projectPath = null;
+        string? installDirectory = null;
         TimeSpan pipeConnectTimeout = TimeSpan.FromSeconds(5);
         TimeSpan requestTimeout = TimeSpan.FromSeconds(10);
         TimeSpan launchReadyTimeout = TimeSpan.FromSeconds(45);
+        var clients = new List<string>();
+        var dryRun = false;
+        var assumeYes = false;
+        var jsonOutput = false;
 
         for (; index < args.Length; index++)
         {
@@ -56,6 +78,9 @@ internal sealed class AdapterOptions
                 case "--project":
                     projectPath = ReadValue(args, ref index, argument);
                     break;
+                case "--install-dir":
+                    installDirectory = Path.GetFullPath(ReadValue(args, ref index, argument));
+                    break;
                 case "--pipe-timeout-seconds":
                     pipeConnectTimeout = TimeSpan.FromSeconds(ParsePositiveDouble(ReadValue(args, ref index, argument), argument));
                     break;
@@ -65,9 +90,23 @@ internal sealed class AdapterOptions
                 case "--launch-timeout-seconds":
                     launchReadyTimeout = TimeSpan.FromSeconds(ParsePositiveDouble(ReadValue(args, ref index, argument), argument));
                     break;
-                case "--help":
-                case "-h":
-                    throw new AdapterOptionsException(BuildUsage());
+                case "--client":
+                    clients.AddRange(ReadValue(args, ref index, argument)
+                        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+                    break;
+                case "--all":
+                    clients.Add("all");
+                    break;
+                case "--dry-run":
+                    dryRun = true;
+                    break;
+                case "--yes":
+                case "-y":
+                    assumeYes = true;
+                    break;
+                case "--json":
+                    jsonOutput = true;
+                    break;
                 default:
                     throw new AdapterOptionsException($"Unknown argument '{argument}'.{Environment.NewLine}{BuildUsage()}");
             }
@@ -103,9 +142,14 @@ internal sealed class AdapterOptions
             PipeNameOverride = pipeName,
             DefaultEngineExecutablePath = defaultEngineExecutablePath,
             ProjectPath = projectPath,
+            InstallDirectory = installDirectory,
             PipeConnectTimeout = pipeConnectTimeout,
             RequestTimeout = requestTimeout,
-            LaunchReadyTimeout = launchReadyTimeout
+            LaunchReadyTimeout = launchReadyTimeout,
+            Clients = clients,
+            DryRun = dryRun,
+            AssumeYes = assumeYes,
+            JsonOutput = jsonOutput
         };
     }
 
@@ -141,16 +185,26 @@ internal sealed class AdapterOptions
         return string.Join(
             Environment.NewLine,
             "Usage:",
-            "  UnrealMCP.Adapter [serve] [--workspace <path>] [--engine-exe <UnrealEditor.exe path>] [--pipe <name>]",
-            "  UnrealMCP.Adapter discover [--workspace <path>] [--engine-exe <UnrealEditor.exe path>]",
-            "  UnrealMCP.Adapter launch --project <absolute .uproject path> [--engine-exe <UnrealEditor.exe path>] [--workspace <path>] [--pipe <name>]",
-            "  UnrealMCP.Adapter status [--workspace <path>] [--engine-exe <UnrealEditor.exe path>] [--pipe <name>]",
+            "  unrealmcp help",
+            "  unrealmcp                              Interactive setup when run in a terminal; MCP serve when stdin is redirected.",
+            "  unrealmcp [serve] [--workspace <path>] [--engine-exe <UnrealEditor.exe path>] [--pipe <name>]",
+            "  unrealmcp discover [--workspace <path>] [--engine-exe <UnrealEditor.exe path>]",
+            "  unrealmcp launch --project <absolute .uproject path> [--engine-exe <UnrealEditor.exe path>] [--workspace <path>] [--pipe <name>]",
+            "  unrealmcp status [--workspace <path>] [--engine-exe <UnrealEditor.exe path>] [--pipe <name>]",
+            "  unrealmcp doctor [--json]",
+            "  unrealmcp configure --client <name|all> [--install-dir <path>] [--dry-run] [--yes] [--json]",
+            "  unrealmcp uninstall --client <name|all> [--install-dir <path>] [--dry-run] [--yes] [--json]",
             "",
             "Modes:",
+            "  help       Print this help text.",
+            "  setup      Run the interactive client setup wizard.",
             "  serve      Start the stdio MCP server. Default when omitted.",
             "  discover   Print discovered Unreal projects and engine association info as JSON.",
             "  launch     Launch one Unreal project and print JSON status.",
             "  status     Print adapter/discovery status as JSON.",
+            "  doctor     Diagnose executable, protocol, projects, clients, and Unreal session state.",
+            "  configure  Add UnrealMCP to selected MCP clients.",
+            "  uninstall  Remove only UnrealMCP's entry from selected MCP clients.",
             "",
             "Options:",
             "  --workspace <path>              Optional discovery-root override. Otherwise the current working directory is used.",
@@ -159,17 +213,28 @@ internal sealed class AdapterOptions
             "  --pipe <name>                   Optional named pipe override. Otherwise the adapter derives UnrealMCP_<ProjectName>.",
             "  --pipe-timeout-seconds <n>      Pipe connection timeout. Defaults to 5.",
             "  --request-timeout-seconds <n>   Pipe request timeout. Defaults to 10.",
-            "  --launch-timeout-seconds <n>    Launch-and-ready timeout. Defaults to 45.");
+            "  --launch-timeout-seconds <n>    Launch-and-ready timeout. Defaults to 45.",
+            "  --install-dir <path>             Optional directory to copy the adapter into before client configuration.",
+            "  --client <name[,name...]>       Client(s): codex, claude, cursor, cline, antigravity.",
+            "  --all                           Select every detected MCP client.",
+            "  --dry-run                       Show planned changes without modifying client configuration.",
+            "  --yes, -y                       Apply configuration without an interactive confirmation.",
+            "  --json                          Print machine-readable command output.");
     }
 
     private static AdapterMode ParseMode(string value)
     {
         return value.ToLowerInvariant() switch
         {
+            "help" => AdapterMode.Help,
+            "setup" => AdapterMode.Setup,
             "serve" => AdapterMode.Serve,
             "discover" => AdapterMode.Discover,
             "launch" => AdapterMode.Launch,
             "status" => AdapterMode.Status,
+            "doctor" => AdapterMode.Doctor,
+            "configure" => AdapterMode.Configure,
+            "uninstall" => AdapterMode.Uninstall,
             _ => throw new AdapterOptionsException($"Unknown mode '{value}'.{Environment.NewLine}{BuildUsage()}")
         };
     }
