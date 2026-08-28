@@ -4,6 +4,7 @@
 #include "MCP/MCPServer.h"
 #include "Tools/AssetExistsTool.h"
 #include "Tools/ApplyBlueprintInteractionPlanTool.h"
+#include "Tools/ApplyBlueprintGraphPatchTool.h"
 #include "Tools/AddBlueprintComponentTool.h"
 #include "Tools/AddBlueprintComponentsTool.h"
 #include "Tools/AddBlueprintBranchNodeTool.h"
@@ -68,6 +69,7 @@
 #include "Tools/InspectBlueprintNodeTool.h"
 #include "Tools/InspectEnhancedInputActionWiringTool.h"
 #include "Tools/GetLevelActorDependenciesTool.h"
+#include "Tools/GetMutationRequestStatusTool.h"
 #include "Tools/GetParentBlueprintTool.h"
 #include "Tools/GetReferencersTool.h"
 #include "Tools/GetServerInfoTool.h"
@@ -82,6 +84,7 @@
 #include "Tools/ListBlueprintVariablesTool.h"
 #include "Tools/ListChildBlueprintsTool.h"
 #include "Tools/ListFoldersTool.h"
+#include "Tools/ListUnrealMCPAutomationTestsTool.h"
 #include "Tools/ListSelectedActorsTool.h"
 #include "Tools/ListToolsTool.h"
 #include "Tools/LayoutBlueprintNodesTool.h"
@@ -95,7 +98,10 @@
 #include "Tools/SetBlueprintFunctionMetadataTool.h"
 #include "Tools/SetBlueprintNodeCommentTool.h"
 #include "Tools/SetBlueprintSequenceOutputsTool.h"
+#include "Tools/SpliceBlueprintExecFlowTool.h"
 #include "Tools/SaveBlueprintTool.h"
+#include "Tools/RunUnrealMCPAutomationTestTool.h"
+#include "Tools/RunUnrealMCPAutomationTestsTool.h"
 #include "Tools/SummarizeBlueprintClusterTool.h"
 #include "Tools/TraceBlueprintFlowTool.h"
 #include "Tools/TraceFeatureFlowTool.h"
@@ -247,6 +253,7 @@ void FUnrealMCPModule::RegisterCoreTools()
     FMCPToolRegistry& Registry = GetServer().GetToolRegistry();
     Registry.RegisterTool(MakeShared<FHealthCheckTool>());
     Registry.RegisterTool(MakeShared<FGetServerInfoTool>());
+    Registry.RegisterTool(MakeShared<FGetMutationRequestStatusTool>());
     Registry.RegisterTool(MakeShared<FGetIndexStatusTool>());
     Registry.RegisterTool(MakeShared<FBuildProjectIndexTool>());
     Registry.RegisterTool(MakeShared<FRefreshProjectIndexTool>());
@@ -304,6 +311,9 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FSetBlueprintComponentDefaultsTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintVariableTool>());
     Registry.RegisterTool(MakeShared<FSaveBlueprintTool>());
+    Registry.RegisterTool(MakeShared<FListUnrealMCPAutomationTestsTool>());
+    Registry.RegisterTool(MakeShared<FRunUnrealMCPAutomationTestTool>());
+    Registry.RegisterTool(MakeShared<FRunUnrealMCPAutomationTestsTool>());
     Registry.RegisterTool(MakeShared<FValidateBlueprintTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintBranchNodeTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintMacroNodeTool>());
@@ -342,6 +352,8 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FSetBlueprintSequenceOutputsTool>());
     Registry.RegisterTool(MakeShared<FLayoutBlueprintNodesTool>());
     Registry.RegisterTool(MakeShared<FApplyBlueprintInteractionPlanTool>());
+    Registry.RegisterTool(MakeShared<FApplyBlueprintGraphPatchTool>());
+    Registry.RegisterTool(MakeShared<FSpliceBlueprintExecFlowTool>());
     Registry.RegisterTool(MakeShared<FWireBlueprintEventToFunctionTool>());
     Registry.RegisterTool(MakeShared<FWireEnhancedInputActionToComponentTool>());
     Registry.RegisterTool(MakeShared<FListToolsTool>(Registry));

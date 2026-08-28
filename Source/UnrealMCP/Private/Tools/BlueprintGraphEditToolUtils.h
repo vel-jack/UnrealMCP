@@ -6,6 +6,12 @@
 class UBlueprint;
 class UEdGraph;
 class UEdGraphNode;
+class UFunction;
+class UK2Node_CallFunction;
+class UK2Node_IfThenElse;
+class UK2Node_Knot;
+class UK2Node_VariableGet;
+class UK2Node_VariableSet;
 
 namespace UnrealMCP::BlueprintGraphEditToolUtils
 {
@@ -28,6 +34,18 @@ namespace UnrealMCP::BlueprintGraphEditToolUtils
     FString GetEffectivePinDefaultValue(const UEdGraphPin* Pin);
     FString GetPinDefaultValueSource(const UEdGraphPin* Pin);
     TArray<TSharedPtr<FJsonValue>> SerializePins(const UEdGraphNode* Node);
+    bool ResolveTypedOperatorFunction(
+        const FString& RequestedOperator,
+        FString& OutCanonicalName,
+        UFunction*& OutFunction,
+        bool& bOutSupportsTolerance,
+        FString& OutError);
+    FString ComputeGraphRevision(const UEdGraph* Graph);
+    UK2Node_CallFunction* CreateFunctionCallNode(UEdGraph* Graph, UFunction* Function, bool bDetached);
+    UK2Node_IfThenElse* CreateBranchNode(UEdGraph* Graph, bool bDetached);
+    UK2Node_VariableGet* CreateVariableGetNode(UEdGraph* Graph, FName VariableName, const FGuid& VariableGuid, bool bDetached);
+    UK2Node_VariableSet* CreateVariableSetNode(UEdGraph* Graph, FName VariableName, const FGuid& VariableGuid, bool bDetached);
+    UK2Node_Knot* CreateRerouteNode(UEdGraph* Graph, bool bDetached);
     void PlaceNewNode(UEdGraph* Graph, UEdGraphNode* Node, const FPlacement& Placement);
     bool SaveAndRefreshIfRequested(UBlueprint* Blueprint, const FString& ObjectPath, bool bSave, FString& OutFilename, bool& bOutIndexRefreshed, FString& OutIndexError, FString& OutError);
 }

@@ -13,50 +13,6 @@
 #include "Tools/BlueprintGraphEditToolUtils.h"
 #include "Tools/BlueprintToolUtils.h"
 
-namespace
-{
-    struct FTypedOperator
-    {
-        FString CanonicalName;
-        FName FunctionName;
-        bool bSupportsTolerance = false;
-    };
-
-    bool ResolveOperator(const FString& Requested, FTypedOperator& OutOperator, FString& OutError)
-    {
-        FString Normalized = Requested;
-        Normalized.TrimStartAndEndInline();
-        Normalized.ReplaceInline(TEXT("_"), TEXT(""));
-        Normalized.ReplaceInline(TEXT(" "), TEXT(""));
-        Normalized = Normalized.ToLower();
-
-        if (Normalized == TEXT("objectequal") || Normalized == TEXT("objectequals"))
-            OutOperator = {TEXT("ObjectEqual"), GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, EqualEqual_ObjectObject), false};
-        else if (Normalized == TEXT("objectnotequal"))
-            OutOperator = {TEXT("ObjectNotEqual"), GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, NotEqual_ObjectObject), false};
-        else if (Normalized == TEXT("booleanand") || Normalized == TEXT("booland"))
-            OutOperator = {TEXT("BooleanAnd"), GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, BooleanAND), false};
-        else if (Normalized == TEXT("booleanor") || Normalized == TEXT("boolor"))
-            OutOperator = {TEXT("BooleanOr"), GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, BooleanOR), false};
-        else if (Normalized == TEXT("booleannot") || Normalized == TEXT("boolnot") || Normalized == TEXT("not"))
-            OutOperator = {TEXT("BooleanNot"), GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, Not_PreBool), false};
-        else if (Normalized == TEXT("vectoradd"))
-            OutOperator = {TEXT("VectorAdd"), GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, Add_VectorVector), false};
-        else if (Normalized == TEXT("vectorsubtract") || Normalized == TEXT("vectorsub"))
-            OutOperator = {TEXT("VectorSubtract"), GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, Subtract_VectorVector), false};
-        else if (Normalized == TEXT("vectornearlyequal") || Normalized == TEXT("vectorequal"))
-            OutOperator = {TEXT("VectorNearlyEqual"), GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, EqualEqual_VectorVector), true};
-        else
-        {
-            OutError = FString::Printf(
-                TEXT("Unsupported typed operator '%s'. Use ObjectEqual, ObjectNotEqual, BooleanAnd, BooleanOr, BooleanNot, VectorAdd, VectorSubtract, or VectorNearlyEqual."),
-                *Requested);
-            return false;
-        }
-        return true;
-    }
-}
-
 FAddBlueprintTypedOperatorNodeTool::FAddBlueprintTypedOperatorNodeTool()
     : FMCPToolBase(
         TEXT("AddBlueprintTypedOperatorNode"),
@@ -81,19 +37,22 @@ UnrealMCP::FMCPResponse FAddBlueprintTypedOperatorNodeTool::Execute(const Unreal
         return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, TEXT("Graph selector is required."));
     }
 
-    FTypedOperator Operator;
+    FString CanonicalOperator;
+    UFunction* OperatorFunction = nullptr;
+    bool bSupportsTolerance = false;
     FString ValidationError;
-    if (!ResolveOperator(RequestedOperator, Operator, ValidationError))
+    if (!UnrealMCP::BlueprintGraphEditToolUtils::ResolveTypedOperatorFunction(
+        RequestedOperator, CanonicalOperator, OperatorFunction, bSupportsTolerance, ValidationError))
     {
         return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, ValidationError);
     }
 
     double RequestedTolerance = 0.0;
     const bool bHasTolerance = Request.Params->TryGetNumberField(TEXT("tolerance"), RequestedTolerance);
-    if (bHasTolerance && (!Operator.bSupportsTolerance || RequestedTolerance < 0.0))
+    if (bHasTolerance && (!bSupportsTolerance || RequestedTolerance < 0.0))
     {
         return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams,
-            Operator.bSupportsTolerance
+            bSupportsTolerance
                 ? TEXT("tolerance must be zero or greater.")
                 : TEXT("tolerance is only valid for VectorNearlyEqual."));
     }
@@ -111,22 +70,43 @@ UnrealMCP::FMCPResponse FAddBlueprintTypedOperatorNodeTool::Execute(const Unreal
         if (!UnrealMCP::BlueprintEditToolUtils::ResolveBlueprint(ObjectPath, Blueprint, OutError)) return false;
         UEdGraph* Graph = nullptr;
         if (!UnrealMCP::BlueprintGraphEditToolUtils::ResolveGraph(Blueprint, GraphName, GraphGuid, Graph, OutError)) return false;
-        UFunction* Function = UKismetMathLibrary::StaticClass()->FindFunctionByName(Operator.FunctionName);
-        if (Function == nullptr)
-        {
-            OutError = FString::Printf(TEXT("Could not resolve Kismet operator function '%s'."), *Operator.FunctionName.ToString());
-            return false;
-        }
-
         Placement = UnrealMCP::BlueprintGraphEditToolUtils::ResolvePlacement(Graph, Request.Params, OutError);
-        if (!OutError.IsEmpty() || bDryRun) return OutError.IsEmpty();
+        if (!OutError.IsEmpty()) return false;
+        if (bDryRun)
+        {
+            UK2Node_CallFunction* Preview = UnrealMCP::BlueprintGraphEditToolUtils::CreateFunctionCallNode(Graph, OperatorFunction, true);
+            if (Preview == nullptr)
+            {
+                OutError = TEXT("Could not create the detached typed-operator preview.");
+                return false;
+            }
+            if (bHasTolerance)
+            {
+                UEdGraphPin* TolerancePin = Preview->FindPin(TEXT("ErrorTolerance"), EGPD_Input);
+                const UEdGraphSchema_K2* Schema = Cast<UEdGraphSchema_K2>(Graph->GetSchema());
+                if (TolerancePin == nullptr || Schema == nullptr)
+                {
+                    OutError = TEXT("VectorNearlyEqual did not expose its ErrorTolerance input.");
+                    return false;
+                }
+                Schema->TrySetDefaultValue(*TolerancePin, FString::SanitizeFloat(RequestedTolerance));
+                AppliedTolerance = TolerancePin->DefaultValue;
+            }
+            NodeClass = Preview->GetClass()->GetPathName();
+            Pins = UnrealMCP::BlueprintGraphEditToolUtils::SerializePins(Preview);
+            return true;
+        }
 
         const FScopedTransaction Transaction(NSLOCTEXT(
             "UnrealMCP", "AddTypedOperatorNode", "UnrealMCP Add Typed Operator Node"));
         Blueprint->Modify();
         Graph->Modify();
-        UK2Node_CallFunction* Node = NewObject<UK2Node_CallFunction>(Graph);
-        Node->SetFromFunction(Function);
+        UK2Node_CallFunction* Node = UnrealMCP::BlueprintGraphEditToolUtils::CreateFunctionCallNode(Graph, OperatorFunction, false);
+        if (Node == nullptr)
+        {
+            OutError = TEXT("Could not create the typed-operator node.");
+            return false;
+        }
         UnrealMCP::BlueprintGraphEditToolUtils::PlaceNewNode(Graph, Node, Placement);
 
         if (bHasTolerance)
@@ -160,11 +140,12 @@ UnrealMCP::FMCPResponse FAddBlueprintTypedOperatorNodeTool::Execute(const Unreal
     UnrealMCP::FMCPResponse Response;
     Response.Id = Request.Id;
     TSharedRef<FJsonObject> Result = BuildBooleanResult(true);
-    Result->SetStringField(TEXT("operator"), Operator.CanonicalName);
-    Result->SetStringField(TEXT("functionName"), Operator.FunctionName.ToString());
+    Result->SetStringField(TEXT("operator"), CanonicalOperator);
+    Result->SetStringField(TEXT("functionName"), OperatorFunction != nullptr ? OperatorFunction->GetName() : FString());
     Result->SetStringField(TEXT("nodeGuid"), NodeGuid);
     Result->SetStringField(TEXT("nodeClass"), NodeClass);
     Result->SetBoolField(TEXT("dryRun"), bDryRun);
+    Result->SetBoolField(TEXT("pinsPredicted"), bDryRun);
     Result->SetBoolField(TEXT("added"), !bDryRun);
     Result->SetNumberField(TEXT("positionX"), Placement.X);
     Result->SetNumberField(TEXT("positionY"), Placement.Y);

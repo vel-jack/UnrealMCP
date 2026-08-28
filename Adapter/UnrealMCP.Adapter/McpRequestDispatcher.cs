@@ -31,8 +31,23 @@ internal sealed class McpRequestDispatcher(AdapterOptions options)
             }
 
             var description = remoteTool["description"]?.GetValue<string>() ?? string.Empty;
-            var inputSchema = remoteTool["inputSchema"] as JsonObject ?? new JsonObject { ["type"] = "object" };
-            tools.Add(new McpToolDefinition(name, description, (JsonObject)inputSchema.DeepClone()));
+            var inputSchema = (JsonObject)(remoteTool["inputSchema"]?.DeepClone()
+                ?? new JsonObject { ["type"] = "object" });
+            if (UnrealSessionManager.IsMutationTool(name))
+            {
+                var properties = inputSchema["properties"] as JsonObject;
+                if (properties is null)
+                {
+                    properties = new JsonObject();
+                    inputSchema["properties"] = properties;
+                }
+                properties["operationId"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "Optional stable retry ID. Reuse only for an identical request; query GetMutationRequestStatus after an uncertain timeout."
+                };
+            }
+            tools.Add(new McpToolDefinition(name, description, inputSchema));
         }
 
         return tools;

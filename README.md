@@ -2,6 +2,10 @@
 
 This plugin embeds a minimal Model Context Protocol server directly into the Unreal Editor.
 
+## Development Context
+
+Coding agents and contributors should read [AGENTS.md](AGENTS.md) before changing the plugin. Current milestone status, priority order, and acceptance criteria are tracked in [ROADMAP.md](ROADMAP.md).
+
 ## Current Scope
 
 - Editor plugin module
@@ -45,6 +49,10 @@ This plugin embeds a minimal Model Context Protocol server directly into the Unr
 - `ListBlueprintGraphs`
 - `ValidateBlueprint`
 - `SaveBlueprint`
+- `ListUnrealMCPAutomationTests`
+- `RunUnrealMCPAutomationTest`
+- `RunUnrealMCPAutomationTests`
+- `GetMutationRequestStatus`
 - `AddBlueprintBranchNode`
 - `AddBlueprintMacroNode`
 - `AddBlueprintArrayOperationNode`
@@ -84,6 +92,8 @@ This plugin embeds a minimal Model Context Protocol server directly into the Unr
 - `WireBlueprintEventToFunction`
 - `WireEnhancedInputActionToComponent`
 - `ApplyBlueprintInteractionPlan`
+- `ApplyBlueprintGraphPatch`
+- `SpliceBlueprintExecFlow`
 - `GetIndexStatus`
 - `BuildProjectIndex`
 - `FindCircularDependencies`
@@ -145,6 +155,8 @@ Output-bearing interface graph creation is regression-tested by `UnrealMCP.Bluep
 
 `AddBlueprintTypedOperatorNode` provides exact object equality/inequality, Boolean `AND`/`OR`/`NOT`, and Vector add/subtract/nearly-equal operations. Vector nearly-equal accepts an optional non-negative `tolerance`.
 
+Function-call, typed-operator, Branch, Variable Get/Set, and Reroute dry-runs now return complete predicted pin arrays from detached preview nodes without changing the graph. Each serialized pin includes its direction, full scalar/container type, default source/value, exec/data classification, self-pin classification, hidden state, wildcard state through its category, and `requiresExplicitTarget` for external instance calls. These tools report `pinsPredicted`, while function calls also report top-level `requiresExplicitTarget`, allowing declarative graph-patch preflight to validate complete planned wiring before mutation.
+
 `AddBlueprintVariable` and `AddBlueprintFunctionParameter` accept `containerType` values `none`, `array`, `set`, or `map`. For Maps, `type` describes the key and `valueType` describes the value; object/class terminals use their corresponding object-path fields. Existing `isArray=true` requests remain supported. `ConnectBlueprintPins` now returns pin types before and after connection, complete resolved node pin lists, and `wildcardResolved` when Unreal specializes a wildcard from the first typed connection.
 
 `InspectEnhancedInputActionWiring` reports every matching Enhanced Input Action node and the exact execution targets of its five phase pins. `WireEnhancedInputActionToComponent` inserts one exact component function call into one phase, preserves a single existing continuation after the new call, and is idempotent on retries. It rejects ambiguous action nodes, multiple phase routes, missing components, and non-callable functions. Use inspection and `dryRun=true` first; required data inputs are reported as `unconnectedInputPins` for explicit follow-up wiring.
@@ -158,6 +170,22 @@ A `sequence` node can safely extend one occupied execution output by specifying 
 Plan nodes also accept `inputDefaults` entries with either `defaultValue` or `defaultObjectPath`. Defaults are applied before connection validation, enabling typed nodes such as `Get Component by Class` to connect safely in the same transaction. `executionInsertions` atomically insert one impure node into an exact existing exec link and validate the completed route on retry.
 
 The declarative workflow is regression-tested by `UnrealMCP.Blueprint.Authoring.InteractionPlan.Live`, covering complete dry-run preflight, exact existing-node anchors, four-node/three-link application, component-target data wiring, legacy-route-preserving Sequence insertion, compilation, idempotent retry, duplicate prevention, and temporary fixture cleanup.
+
+`ApplyBlueprintGraphPatch` is the atomic Phase 4B patch primitive. It supports `existingNode`, `functionCall`, `variableGet`, `variableSet`, `typedOperator`, `branch`, and `reroute` nodes; literal/object input defaults; exact named-pin connections and confirmed disconnections; node positions and comments; and explicitly confirmed replacement of one exact occupied data link. `patchId` plus each plan-local node `id` produce deterministic node GUIDs, so a retry cannot create duplicate nodes. Optional `expectedGraphRevision` rejects stale plans before mutation.
+
+Patch dry-runs return the current graph revision, deterministic future node GUIDs, and complete predicted pins. Preflight duplicates the graph transiently and applies planned disconnections and connections in mutation order, allowing Unreal's K2 schema to predict wildcard specialization across multi-node chains without changing the live asset. Connection results report wildcard state before and after simulation plus `wildcardResolved`; the result also reports `wildcardResolvedConnectionCount`. Real patches execute in one editor transaction, compile before any save, immediately undo on an operation or compile failure, and default to compile-without-save. A requested save occurs only after successful compilation and is followed by a partial index refresh. Results include created/reused identities, complete final pins, changed/replaced/disconnected links, compile evidence, dirty-preserving save state, and final graph revision.
+
+`UnrealMCP.Blueprint.Authoring.GraphPatch.CompileRollback.Live` provides the focused negative-path fixture for compile-before-save rollback. It starts from an intentionally compiler-invalid temporary Blueprint, applies a valid deterministic patch with saving requested, and verifies the compile error reports immediate rollback, restores the exact node count and graph revision, and never creates the package on disk.
+
+`RunUnrealMCPAutomationTest` runs one exact registered synchronous `UnrealMCP.*` editor automation test through the adapter, covering both product- and engine-filtered plugin tests. It requires `confirm=true`, rejects non-UnrealMCP test names and concurrent or latent test execution, and returns structured pass state, duration, errors, warnings, and execution entries. A failed test returns `success=false`, so MCP clients surface the call as failed while preserving its complete diagnostics. This provides a UI-free static verification path while keeping editor launch, attachment, and shutdown under adapter control.
+
+`ListUnrealMCPAutomationTests` discovers the registered product- and engine-filtered plugin tests with an optional name substring and bounded result limit. `RunUnrealMCPAutomationTests` accepts an explicit preferred-order list of 1-64 discovered test names, requires `confirm=true`, and returns per-test evidence plus aggregate pass/fail, diagnostic, warning, duration, and early-stop counts. Isolation-sensitive negative compiler fixtures are stable-partitioned to the suite tail; `executionOrderAdjusted` and `executionOrder` make that behavior explicit. It never starts PIE and defaults to continuing after failures so one run produces complete bounded regression evidence; set `continueOnFailure=false` for fail-fast execution.
+
+The adapter assigns an `operationId` before every recognized mutation and exposes that optional field in mirrored mutation schemas. Unreal keeps a bounded in-editor request record with canonical request fingerprinting. Reusing the ID for the identical request replays its terminal response without executing again; reusing it for different arguments is rejected. `GetMutationRequestStatus(operationId)` returns the tool name, lifecycle state, timestamps, terminal flag, diagnostics, and stored terminal result/error. States are `queued`, `preflighting`, `mutating`, `compiling`, `completed`, `failed`, `rolled_back`, and `cancelled`; graph patches and exec splices publish their detailed phases while other mutations receive queued and terminal tracking.
+
+A mutation transport timeout no longer invalidates an otherwise healthy editor attachment. The adapter returns `mutation_request_timeout`, the preassigned `operationId`, `mutationMayStillBeRunning=true`, and `canRetry=false`. Query `GetMutationRequestStatus` with that ID before deciding whether any retry is necessary. Read-only request timeouts are retryable and likewise do not clear the session; reconnect only if a later health check shows the pipe is unavailable.
+
+`SpliceBlueprintExecFlow` atomically replaces one exact existing execution link with an ordered chain of existing nodes. It requires exact source, target, and inserted-node exec pin identities; preflights the whole route; rejects occupied inserted pins or a stale graph revision; and treats an already-complete route as an idempotent retry. Dry-run never changes the graph. Apply uses one transaction, restores the original route on mutation or compile failure, compiles before an optional save, and defaults to compile-without-save.
 
 ## Project Architecture Analysis
 

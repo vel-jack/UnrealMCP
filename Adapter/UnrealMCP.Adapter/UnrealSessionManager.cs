@@ -251,20 +251,39 @@ internal sealed class UnrealSessionManager
             }, true);
         }
 
+        var isMutation = IsMutationTool(toolName);
+        string? operationId = null;
+        if (isMutation)
+        {
+            if (requestParameters["operationId"] is JsonValue operationValue)
+            {
+                operationValue.TryGetValue(out operationId);
+            }
+            if (string.IsNullOrWhiteSpace(operationId))
+            {
+                operationId = Guid.NewGuid().ToString("N");
+                requestParameters["operationId"] = operationId;
+            }
+        }
+
         try
         {
             var response = await CreatePipeClient().SendRequestAsync(toolName, requestParameters, cancellationToken);
             if (response["error"] is JsonObject error)
             {
+                var errorData = error["data"] as JsonObject;
                 return (new JsonObject
                 {
                     ["success"] = false,
                     ["errorCode"] = error["code"]?.ToString(),
                     ["message"] = error["message"]?.GetValue<string>() ?? $"Unreal tool '{toolName}' failed.",
+                    ["operationId"] = errorData?["operationId"]?.DeepClone() ?? operationId,
+                    ["state"] = errorData?["state"]?.DeepClone(),
+                    ["mutationMayStillBeRunning"] = errorData?["mutationMayStillBeRunning"]?.DeepClone(),
                     ["projectPath"] = _activeProject?.ProjectPath,
                     ["pipeName"] = GetEffectivePipeName(),
                     ["pipeSource"] = GetPipeSource(),
-                    ["errorData"] = error["data"]?.DeepClone()
+                    ["errorData"] = errorData?.DeepClone()
                 }, true);
             }
 
@@ -276,14 +295,47 @@ internal sealed class UnrealSessionManager
         }
         catch (OperationCanceledException)
         {
-            var unavailable = SetUnavailable("unreal_request_timeout", $"Timed out while calling Unreal tool '{toolName}'.", true, "ReconnectUnreal", attach.Processes);
-            return (BuildAvailabilityErrorPayload(unavailable), true);
+            var processes = FindRunningEditorProcesses(_activeProject?.ProjectName);
+            return (new JsonObject
+            {
+                ["success"] = false,
+                ["errorCode"] = isMutation ? "mutation_request_timeout" : "unreal_request_timeout",
+                ["message"] = $"Timed out while calling Unreal tool '{toolName}'.",
+                ["operationId"] = operationId,
+                ["mutationMayStillBeRunning"] = isMutation,
+                ["canRetry"] = !isMutation,
+                ["sessionState"] = _sessionState,
+                ["unrealRunning"] = processes.Count > 0,
+                ["attached"] = _cachedInitializeResult is not null,
+                ["projectPath"] = _activeProject?.ProjectPath,
+                ["pipeName"] = GetEffectivePipeName(),
+                ["pipeSource"] = GetPipeSource(),
+                ["recommendedAction"] = isMutation
+                    ? "Call GetMutationRequestStatus with operationId; do not retry the mutation while its state is unknown."
+                    : "Retry the read request. ReconnectUnreal only if a subsequent health check fails."
+            }, true);
         }
         catch (Exception exception)
         {
             var unavailable = SetUnavailable("unreal_connection_lost", $"Lost connection to Unreal while calling '{toolName}': {exception.Message}", true, "ReconnectUnreal", attach.Processes);
             return (BuildAvailabilityErrorPayload(unavailable), true);
         }
+    }
+
+    internal static bool IsMutationTool(string toolName)
+    {
+        if (toolName.Equals("GetMutationRequestStatus", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        string[] mutationPrefixes =
+        [
+            "Add", "Apply", "Compile", "Connect", "Create", "Delete", "Disconnect",
+            "Layout", "Move", "Refresh", "RunUnrealMCPAutomationTest", "Save", "Set",
+            "Splice", "Wire"
+        ];
+        return mutationPrefixes.Any(prefix => toolName.StartsWith(prefix, StringComparison.Ordinal));
     }
 
     public async Task<JsonArray> GetMirroredToolListAsync(CancellationToken cancellationToken)
