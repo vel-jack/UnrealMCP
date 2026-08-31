@@ -7,6 +7,149 @@
 #include "Tools/BlueprintEditToolUtils.h"
 #include "Tools/BlueprintGraphEditToolUtils.h"
 #include "Tools/BlueprintToolUtils.h"
-FDisconnectBlueprintPinsTool::FDisconnectBlueprintPinsTool():FMCPToolBase(TEXT("DisconnectBlueprintPins"),TEXT("Disconnects one exact Blueprint pin link or all links on one pin. Requires confirmation unless dry-run and reports affected links.")){}
-UnrealMCP::FMCPResponse FDisconnectBlueprintPinsTool::Execute(const UnrealMCP::FMCPRequest&Request)const{FString O,G,GG,SN,SP,SPN,TN,TP,TPN;if(!Request.Params.IsValid()||!Request.Params->TryGetStringField(TEXT("objectPath"),O)||!Request.Params->TryGetStringField(TEXT("sourceNodeGuid"),SN))return BuildError(Request,UnrealMCP::EMCPErrorCode::InvalidParams,TEXT("DisconnectBlueprintPins requires objectPath, graph selector, sourceNodeGuid, and source pin selector."));Request.Params->TryGetStringField(TEXT("graphName"),G);Request.Params->TryGetStringField(TEXT("graphGuid"),GG);Request.Params->TryGetStringField(TEXT("sourcePinId"),SP);Request.Params->TryGetStringField(TEXT("sourcePinName"),SPN);Request.Params->TryGetStringField(TEXT("targetNodeGuid"),TN);Request.Params->TryGetStringField(TEXT("targetPinId"),TP);Request.Params->TryGetStringField(TEXT("targetPinName"),TPN);if(G.IsEmpty()&&GG.IsEmpty())return BuildError(Request,UnrealMCP::EMCPErrorCode::InvalidParams,TEXT("Graph selector is required."));bool Dry=UnrealMCP::BlueprintEditToolUtils::GetOptionalBool(Request.Params,TEXT("dryRun"),false),Confirm=UnrealMCP::BlueprintEditToolUtils::GetOptionalBool(Request.Params,TEXT("confirm"),false),Save=UnrealMCP::BlueprintEditToolUtils::GetOptionalBool(Request.Params,TEXT("saveAfterEdit"),false);if(!Dry&&!Confirm)return BuildError(Request,UnrealMCP::EMCPErrorCode::InvalidParams,TEXT("DisconnectBlueprintPins requires confirm=true unless dryRun=true."));int32 Affected=0;bool All=TN.IsEmpty();FString File,IdxErr,ExecErr;bool Idx=false;bool Ok=UnrealMCP::BlueprintToolUtils::ExecuteOnGameThreadSync([&](FString&E){UBlueprint*B=nullptr;if(!UnrealMCP::BlueprintEditToolUtils::ResolveBlueprint(O,B,E))return false;UEdGraph*Graph=nullptr;if(!UnrealMCP::BlueprintGraphEditToolUtils::ResolveGraph(B,G,GG,Graph,E))return false;UEdGraphNode*S=nullptr;if(!UnrealMCP::BlueprintGraphEditToolUtils::ResolveNode(Graph,SN,S,E))return false;UEdGraphPin*Source=nullptr;if(!UnrealMCP::BlueprintGraphEditToolUtils::ResolvePin(S,SP,SPN,FString(),Source,E))return false;UEdGraphPin*Target=nullptr;if(All)Affected=Source->LinkedTo.Num();else{UEdGraphNode*T=nullptr;if(!UnrealMCP::BlueprintGraphEditToolUtils::ResolveNode(Graph,TN,T,E)||!UnrealMCP::BlueprintGraphEditToolUtils::ResolvePin(T,TP,TPN,FString(),Target,E))return false;Affected=Source->LinkedTo.Contains(Target)?1:0;}if(Dry||Affected==0)return true;const UEdGraphSchema_K2*Schema=Cast<UEdGraphSchema_K2>(Graph->GetSchema());if(!Schema){E=TEXT("Graph does not use K2 schema.");return false;}const FScopedTransaction Tx(NSLOCTEXT("UnrealMCP","DisconnectPins","UnrealMCP Disconnect Blueprint Pins"));B->Modify();Graph->Modify();S->Modify();if(All)Schema->BreakPinLinks(*Source,true);else Schema->BreakSinglePinLink(Source,Target);FBlueprintEditorUtils::MarkBlueprintAsModified(B);return UnrealMCP::BlueprintGraphEditToolUtils::SaveAndRefreshIfRequested(B,O,Save,File,Idx,IdxErr,E);},ExecErr);if(!Ok)return BuildError(Request,UnrealMCP::EMCPErrorCode::InternalError,ExecErr);UnrealMCP::FMCPResponse R;R.Id=Request.Id;auto J=BuildBooleanResult(true);J->SetBoolField(TEXT("dryRun"),Dry);J->SetBoolField(TEXT("allLinks"),All);J->SetNumberField(TEXT("affectedLinkCount"),Affected);J->SetBoolField(TEXT("disconnected"),!Dry&&Affected>0);J->SetBoolField(TEXT("saved"),Save&&!Dry&&Affected>0);J->SetBoolField(TEXT("indexRefreshed"),Idx);J->SetStringField(TEXT("indexRefreshError"),IdxErr);R.Result=J;return R;}
-TSharedPtr<FJsonObject>FDisconnectBlueprintPinsTool::BuildInputSchema()const{using namespace UnrealMCP::BlueprintEditToolUtils;auto S=MakeShared<FJsonObject>();S->SetStringField(TEXT("type"),TEXT("object"));auto P=MakeShared<FJsonObject>();for(const TCHAR*N:{TEXT("objectPath"),TEXT("graphName"),TEXT("graphGuid"),TEXT("sourceNodeGuid"),TEXT("sourcePinId"),TEXT("sourcePinName"),TEXT("targetNodeGuid"),TEXT("targetPinId"),TEXT("targetPinName")})P->SetObjectField(N,BuildStringProperty(TEXT("Stable graph/node/pin selector. Omit target selectors to disconnect all source-pin links.")));P->SetObjectField(TEXT("confirm"),BuildBoolProperty(TEXT("Required for mutation.")));P->SetObjectField(TEXT("dryRun"),BuildBoolProperty(TEXT("Report affected links only.")));P->SetObjectField(TEXT("saveAfterEdit"),BuildBoolProperty(TEXT("Save and refresh.")));S->SetObjectField(TEXT("properties"),P);TArray<TSharedPtr<FJsonValue>>Q{MakeShared<FJsonValueString>(TEXT("objectPath")),MakeShared<FJsonValueString>(TEXT("sourceNodeGuid"))};S->SetArrayField(TEXT("required"),Q);return S;}
+
+FDisconnectBlueprintPinsTool::FDisconnectBlueprintPinsTool()
+    : FMCPToolBase(TEXT("DisconnectBlueprintPins"), TEXT("Disconnects one exact Blueprint pin link or all links on one pin. Requires confirmation unless dry-run and reports affected links.")) {}
+
+UnrealMCP::FMCPResponse FDisconnectBlueprintPinsTool::Execute(const UnrealMCP::FMCPRequest& Request) const
+{
+    FString O, G, GG, SN, SP, SPN, TN, TP, TPN;
+    if (!Request.Params.IsValid() || !Request.Params->TryGetStringField(TEXT("objectPath"), O) || !Request.Params->TryGetStringField(TEXT("sourceNodeGuid"), SN))
+    {
+        return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, TEXT("DisconnectBlueprintPins requires objectPath, graph selector, sourceNodeGuid, and source pin selector."));
+    }
+
+    Request.Params->TryGetStringField(TEXT("graphName"), G);
+    Request.Params->TryGetStringField(TEXT("graphGuid"), GG);
+    Request.Params->TryGetStringField(TEXT("sourcePinId"), SP);
+    Request.Params->TryGetStringField(TEXT("sourcePinName"), SPN);
+    Request.Params->TryGetStringField(TEXT("targetNodeGuid"), TN);
+    Request.Params->TryGetStringField(TEXT("targetPinId"), TP);
+    Request.Params->TryGetStringField(TEXT("targetPinName"), TPN);
+    if (G.IsEmpty() && GG.IsEmpty())
+    {
+        return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, TEXT("Graph selector is required."));
+    }
+
+    bool Dry = UnrealMCP::BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("dryRun"), false);
+    bool Confirm = UnrealMCP::BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("confirm"), false);
+    bool Save = UnrealMCP::BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("saveAfterEdit"), false);
+    if (!Dry && !Confirm)
+    {
+        return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, TEXT("DisconnectBlueprintPins requires confirm=true unless dryRun=true."));
+    }
+
+    int32 Affected = 0;
+    bool All = TN.IsEmpty();
+    FString File, IdxErr, ExecErr;
+    bool Idx = false;
+
+    bool Ok = UnrealMCP::BlueprintToolUtils::ExecuteOnGameThreadSync([&](FString& E)
+    {
+        UBlueprint* B = nullptr;
+        if (!UnrealMCP::BlueprintEditToolUtils::ResolveBlueprint(O, B, E))
+        {
+            return false;
+        }
+
+        UEdGraph* Graph = nullptr;
+        if (!UnrealMCP::BlueprintGraphEditToolUtils::ResolveGraph(B, G, GG, Graph, E))
+        {
+            return false;
+        }
+
+        UEdGraphNode* S = nullptr;
+        if (!UnrealMCP::BlueprintGraphEditToolUtils::ResolveNode(Graph, SN, S, E))
+        {
+            return false;
+        }
+
+        UEdGraphPin* Source = nullptr;
+        if (!UnrealMCP::BlueprintGraphEditToolUtils::ResolvePin(S, SP, SPN, FString(), Source, E))
+        {
+            return false;
+        }
+
+        UEdGraphPin* Target = nullptr;
+        if (All)
+        {
+            Affected = Source->LinkedTo.Num();
+        }
+        else
+        {
+            UEdGraphNode* T = nullptr;
+            if (!UnrealMCP::BlueprintGraphEditToolUtils::ResolveNode(Graph, TN, T, E) || !UnrealMCP::BlueprintGraphEditToolUtils::ResolvePin(T, TP, TPN, FString(), Target, E))
+            {
+                return false;
+            }
+
+            Affected = Source->LinkedTo.Contains(Target) ? 1 : 0;
+        }
+
+        if (Dry || Affected == 0)
+        {
+            return true;
+        }
+
+        const UEdGraphSchema_K2* Schema = Cast<UEdGraphSchema_K2>(Graph->GetSchema());
+        if (!Schema)
+        {
+            E = TEXT("Graph does not use K2 schema.");
+            return false;
+        }
+
+        const FScopedTransaction Tx(NSLOCTEXT("UnrealMCP", "DisconnectPins", "UnrealMCP Disconnect Blueprint Pins"));
+        B->Modify();
+        Graph->Modify();
+        S->Modify();
+        if (All)
+        {
+            Schema->BreakPinLinks(*Source, true);
+        }
+        else
+        {
+            Schema->BreakSinglePinLink(Source, Target);
+        }
+
+        FBlueprintEditorUtils::MarkBlueprintAsModified(B);
+        return UnrealMCP::BlueprintGraphEditToolUtils::SaveAndRefreshIfRequested(B, O, Save, File, Idx, IdxErr, E);
+    }, ExecErr);
+
+    if (!Ok)
+    {
+        return BuildError(Request, UnrealMCP::EMCPErrorCode::InternalError, ExecErr);
+    }
+
+    UnrealMCP::FMCPResponse R;
+    R.Id = Request.Id;
+    auto J = BuildBooleanResult(true);
+    J->SetBoolField(TEXT("dryRun"), Dry);
+    J->SetBoolField(TEXT("allLinks"), All);
+    J->SetNumberField(TEXT("affectedLinkCount"), Affected);
+    J->SetBoolField(TEXT("disconnected"), !Dry && Affected > 0);
+    J->SetBoolField(TEXT("saved"), Save && !Dry && Affected > 0);
+    J->SetBoolField(TEXT("indexRefreshed"), Idx);
+    J->SetStringField(TEXT("indexRefreshError"), IdxErr);
+    R.Result = J;
+    return R;
+}
+
+TSharedPtr<FJsonObject> FDisconnectBlueprintPinsTool::BuildInputSchema() const
+{
+    using namespace UnrealMCP::BlueprintEditToolUtils;
+    auto S = MakeShared<FJsonObject>();
+    S->SetStringField(TEXT("type"), TEXT("object"));
+    auto P = MakeShared<FJsonObject>();
+    for (const TCHAR* N : { TEXT("objectPath"), TEXT("graphName"), TEXT("graphGuid"), TEXT("sourceNodeGuid"), TEXT("sourcePinId"), TEXT("sourcePinName"), TEXT("targetNodeGuid"), TEXT("targetPinId"), TEXT("targetPinName") })
+    {
+        P->SetObjectField(N, BuildStringProperty(TEXT("Stable graph/node/pin selector. Omit target selectors to disconnect all source-pin links.")));
+    }
+
+    P->SetObjectField(TEXT("confirm"), BuildBoolProperty(TEXT("Required for mutation.")));
+    P->SetObjectField(TEXT("dryRun"), BuildBoolProperty(TEXT("Report affected links only.")));
+    P->SetObjectField(TEXT("saveAfterEdit"), BuildBoolProperty(TEXT("Save and refresh.")));
+    S->SetObjectField(TEXT("properties"), P);
+    TArray<TSharedPtr<FJsonValue>> Q{ MakeShared<FJsonValueString>(TEXT("objectPath")), MakeShared<FJsonValueString>(TEXT("sourceNodeGuid")) };
+    S->SetArrayField(TEXT("required"), Q);
+    return S;
+}

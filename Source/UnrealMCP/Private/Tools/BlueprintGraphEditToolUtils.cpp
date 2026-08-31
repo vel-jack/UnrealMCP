@@ -11,8 +11,11 @@
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "Kismet2/BlueprintEditorUtils.h"
 #include "Misc/SecureHash.h"
+#include "ScopedTransaction.h"
 #include "Tools/BlueprintEditToolUtils.h"
+#include "Tools/BlueprintToolUtils.h"
 
 namespace UnrealMCP::BlueprintGraphEditToolUtils
 {
@@ -369,5 +372,80 @@ namespace UnrealMCP::BlueprintGraphEditToolUtils
         if (!BlueprintEditToolUtils::SaveAsset(Blueprint, OutFilename, OutError)) return false;
         bOutIndexRefreshed = BlueprintEditToolUtils::RefreshAssetIndex(ObjectPath, OutIndexError);
         return true;
+    }
+
+    FNodeAdditionResult AddSimpleGraphNode(
+        const FString& ObjectPath,
+        const FString& GraphName,
+        const FString& GraphGuid,
+        const TSharedPtr<FJsonObject>& Params,
+        bool bDryRun,
+        bool bSave,
+        const FText& TransactionDescription,
+        FGraphNodeFactory CreateNode)
+    {
+        FNodeAdditionResult Result;
+        FString ExecutionError;
+        const bool bSucceeded = UnrealMCP::BlueprintToolUtils::ExecuteOnGameThreadSync([&](FString& OutError)
+        {
+            UBlueprint* Blueprint = nullptr;
+            if (!BlueprintEditToolUtils::ResolveBlueprint(ObjectPath, Blueprint, OutError))
+            {
+                return false;
+            }
+
+            UEdGraph* Graph = nullptr;
+            if (!ResolveGraph(Blueprint, GraphName, GraphGuid, Graph, OutError))
+            {
+                return false;
+            }
+
+            Result.Placement = ResolvePlacement(Graph, Params, OutError);
+            if (!OutError.IsEmpty())
+            {
+                return false;
+            }
+
+            if (bDryRun)
+            {
+                FString FactoryError;
+                UEdGraphNode* Preview = CreateNode(Blueprint, Graph, true, FactoryError);
+                if (!Preview)
+                {
+                    OutError = FactoryError;
+                    return false;
+                }
+
+                Result.Pins = SerializePins(Preview);
+                return true;
+            }
+
+            const FScopedTransaction Transaction(TransactionDescription);
+            Blueprint->Modify();
+            Graph->Modify();
+            FString FactoryError;
+            UEdGraphNode* Node = CreateNode(Blueprint, Graph, false, FactoryError);
+            if (!Node)
+            {
+                OutError = FactoryError;
+                return false;
+            }
+
+            PlaceNewNode(Graph, Node, Result.Placement);
+            FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+            Result.NodeGuid = GetNodeGuid(Node);
+            Result.Pins = SerializePins(Node);
+            Result.bAdded = true;
+            return SaveAndRefreshIfRequested(Blueprint, ObjectPath, bSave, Result.SavedFilename, Result.bIndexRefreshed, Result.IndexRefreshError, OutError);
+        }, ExecutionError);
+
+        Result.bSucceeded = bSucceeded;
+        Result.bSaved = bSave && !bDryRun;
+        if (!bSucceeded)
+        {
+            Result.ErrorMessage = ExecutionError;
+        }
+
+        return Result;
     }
 }

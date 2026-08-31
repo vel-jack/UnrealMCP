@@ -186,6 +186,11 @@ internal sealed class ClientConfigurationService(McpLaunchDefinition launch)
     {
         var current = Path.Combine(home, ".gemini", "config", "mcp_config.json");
         var legacy = Path.Combine(home, ".gemini", "antigravity", "mcp_config.json");
+
+        // Antigravity moved its config to `current` at some point; `.migrated` is a
+        // sentinel file it writes once that move has happened for this install, so a
+        // fresh config-less machine (no `current`, no `.migrated`, but a `legacy` file
+        // present) still resolves to the old path instead of writing a second config.
         return File.Exists(current) || File.Exists(Path.Combine(home, ".gemini", "config", ".migrated")) || !File.Exists(legacy) ? current : legacy;
     }
 

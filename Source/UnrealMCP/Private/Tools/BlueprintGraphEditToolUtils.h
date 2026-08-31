@@ -48,4 +48,35 @@ namespace UnrealMCP::BlueprintGraphEditToolUtils
     UK2Node_Knot* CreateRerouteNode(UEdGraph* Graph, bool bDetached);
     void PlaceNewNode(UEdGraph* Graph, UEdGraphNode* Node, const FPlacement& Placement);
     bool SaveAndRefreshIfRequested(UBlueprint* Blueprint, const FString& ObjectPath, bool bSave, FString& OutFilename, bool& bOutIndexRefreshed, FString& OutIndexError, FString& OutError);
+
+    // Shared 8-step sequence used by the AddBlueprint*NodeTool family: resolve blueprint/graph,
+    // resolve placement, create a detached preview node on dry-run (or the real node inside one
+    // transaction otherwise), place it, mark the Blueprint modified, and save/refresh if requested.
+    // CreateNode receives the resolved Blueprint and Graph so factories needing extra Blueprint-level
+    // resolution (e.g. a member variable GUID lookup) can do it without a separate pass.
+    struct FNodeAdditionResult
+    {
+        bool bSucceeded = false;
+        FString ErrorMessage;
+        FString NodeGuid;
+        FPlacement Placement;
+        TArray<TSharedPtr<FJsonValue>> Pins;
+        bool bAdded = false;
+        bool bSaved = false;
+        FString SavedFilename;
+        bool bIndexRefreshed = false;
+        FString IndexRefreshError;
+    };
+
+    using FGraphNodeFactory = TFunctionRef<UEdGraphNode* (UBlueprint* Blueprint, UEdGraph* Graph, bool bDetached, FString& OutError)>;
+
+    FNodeAdditionResult AddSimpleGraphNode(
+        const FString& ObjectPath,
+        const FString& GraphName,
+        const FString& GraphGuid,
+        const TSharedPtr<FJsonObject>& Params,
+        bool bDryRun,
+        bool bSave,
+        const FText& TransactionDescription,
+        FGraphNodeFactory CreateNode);
 }

@@ -49,6 +49,7 @@ Coding agents and contributors should read [AGENTS.md](AGENTS.md) before changin
 - `ListBlueprintGraphs`
 - `ValidateBlueprint`
 - `SaveBlueprint`
+- `SaveAllDirtyPackages`
 - `ListUnrealMCPAutomationTests`
 - `RunUnrealMCPAutomationTest`
 - `RunUnrealMCPAutomationTests`
@@ -233,6 +234,8 @@ The adapter is the recommended MCP entry point for coding agents:
 - `unreal.adapter.AttachToUnrealProject`
 - `unreal.adapter.ReconnectUnreal`
 - `unreal.adapter.RequestUnrealShutdown`
+
+`unreal.adapter.RequestUnrealShutdown` first calls `SaveAllDirtyPackages` on a best-effort basis before closing the editor window, so a routine shutdown does not block on the editor's native "Save Content" confirmation dialog. `SaveAllDirtyPackages` saves every dirty package directly to its existing on-disk path (no picker, no prompt); pass `dryRun=true` to list dirty packages without saving.
 
 ## Agent Integration
 

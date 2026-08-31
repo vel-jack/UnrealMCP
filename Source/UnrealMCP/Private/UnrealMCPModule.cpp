@@ -100,6 +100,7 @@
 #include "Tools/SetBlueprintSequenceOutputsTool.h"
 #include "Tools/SpliceBlueprintExecFlowTool.h"
 #include "Tools/SaveBlueprintTool.h"
+#include "Tools/SaveAllDirtyPackagesTool.h"
 #include "Tools/RunUnrealMCPAutomationTestTool.h"
 #include "Tools/RunUnrealMCPAutomationTestsTool.h"
 #include "Tools/SummarizeBlueprintClusterTool.h"
@@ -311,6 +312,7 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FSetBlueprintComponentDefaultsTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintVariableTool>());
     Registry.RegisterTool(MakeShared<FSaveBlueprintTool>());
+    Registry.RegisterTool(MakeShared<FSaveAllDirtyPackagesTool>());
     Registry.RegisterTool(MakeShared<FListUnrealMCPAutomationTestsTool>());
     Registry.RegisterTool(MakeShared<FRunUnrealMCPAutomationTestTool>());
     Registry.RegisterTool(MakeShared<FRunUnrealMCPAutomationTestsTool>());

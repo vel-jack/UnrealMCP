@@ -97,7 +97,7 @@ Every tool must provide:
 
 Never return plain `Done` text when structured evidence is available.
 
-Tool implementations belong in separate header/source files under `Public/Tools` and `Private/Tools`. Shared Blueprint behavior belongs in the Blueprint/edit utility modules rather than duplicated across tools.
+Tool implementations belong in separate header/source files under `Public/Tools` and `Private/Tools`. Shared Blueprint editing behavior belongs in the `Tools/BlueprintEditToolUtils`, `Tools/BlueprintGraphEditToolUtils`, and `Tools/BlueprintToolUtils` modules rather than duplicated across tools. `Public/Blueprint`/`Private/Blueprint` hold Blueprint-specific K2Node subclass implementations, not shared editing utilities.
 
 ## Blueprint Mutation Safety
 
@@ -180,7 +180,7 @@ After a tool-schema change, connect to a live test editor and refresh the adapte
 - Prefer Asset Registry metadata and indexed queries over loading every asset.
 - Never iterate all UObjects when a registry/index query can answer the question.
 - Keep transport code isolated from tool behavior.
-- Keep source files focused; split files that materially exceed roughly 600 lines when responsibilities can be separated cleanly.
+- Keep source files focused; split files when responsibilities can be separated cleanly.
 - Add comments only for non-obvious invariants, transaction boundaries, or Unreal-specific behavior.
 - Preserve unrelated user changes in dirty worktrees.
 

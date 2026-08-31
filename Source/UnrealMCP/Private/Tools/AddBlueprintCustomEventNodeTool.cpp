@@ -7,6 +7,119 @@
 #include "Tools/BlueprintEditToolUtils.h"
 #include "Tools/BlueprintGraphEditToolUtils.h"
 #include "Tools/BlueprintToolUtils.h"
-FAddBlueprintCustomEventNodeTool::FAddBlueprintCustomEventNodeTool():FMCPToolBase(TEXT("AddBlueprintCustomEventNode"),TEXT("Adds a uniquely named Custom Event to a stable Blueprint graph with collision-aware layout, dry-run, and optional save.")){}
-UnrealMCP::FMCPResponse FAddBlueprintCustomEventNodeTool::Execute(const UnrealMCP::FMCPRequest&Request)const{FString O,G,GG,EventName;if(!Request.Params.IsValid()||!Request.Params->TryGetStringField(TEXT("objectPath"),O)||!Request.Params->TryGetStringField(TEXT("eventName"),EventName)||EventName.IsEmpty())return BuildError(Request,UnrealMCP::EMCPErrorCode::InvalidParams,TEXT("AddBlueprintCustomEventNode requires objectPath, eventName, and graphName or graphGuid."));Request.Params->TryGetStringField(TEXT("graphName"),G);Request.Params->TryGetStringField(TEXT("graphGuid"),GG);if(G.IsEmpty()&&GG.IsEmpty())return BuildError(Request,UnrealMCP::EMCPErrorCode::InvalidParams,TEXT("Graph selector is required."));bool Dry=UnrealMCP::BlueprintEditToolUtils::GetOptionalBool(Request.Params,TEXT("dryRun"),false),Save=UnrealMCP::BlueprintEditToolUtils::GetOptionalBool(Request.Params,TEXT("saveAfterEdit"),false),Exists=false;UnrealMCP::BlueprintGraphEditToolUtils::FPlacement P;FString NG,File,IdxErr,ExecErr;bool Idx=false;TArray<TSharedPtr<FJsonValue>>Pins;bool Ok=UnrealMCP::BlueprintToolUtils::ExecuteOnGameThreadSync([&](FString&E){UBlueprint*B=nullptr;if(!UnrealMCP::BlueprintEditToolUtils::ResolveBlueprint(O,B,E))return false;UEdGraph*Graph=nullptr;if(!UnrealMCP::BlueprintGraphEditToolUtils::ResolveGraph(B,G,GG,Graph,E))return false;for(UEdGraphNode*Existing:Graph->Nodes)if(const auto*Event=Cast<UK2Node_CustomEvent>(Existing);Event&&Event->CustomFunctionName.ToString().Equals(EventName,ESearchCase::IgnoreCase)){Exists=true;NG=UnrealMCP::BlueprintGraphEditToolUtils::GetNodeGuid(Event);return true;}P=UnrealMCP::BlueprintGraphEditToolUtils::ResolvePlacement(Graph,Request.Params,E);if(!E.IsEmpty()||Dry)return E.IsEmpty();const FScopedTransaction T(NSLOCTEXT("UnrealMCP","AddCustomEvent","UnrealMCP Add Custom Event"));B->Modify();Graph->Modify();auto*Node=NewObject<UK2Node_CustomEvent>(Graph);Node->CustomFunctionName=*EventName;UnrealMCP::BlueprintGraphEditToolUtils::PlaceNewNode(Graph,Node,P);FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(B);NG=UnrealMCP::BlueprintGraphEditToolUtils::GetNodeGuid(Node);Pins=UnrealMCP::BlueprintGraphEditToolUtils::SerializePins(Node);return UnrealMCP::BlueprintGraphEditToolUtils::SaveAndRefreshIfRequested(B,O,Save,File,Idx,IdxErr,E);},ExecErr);if(!Ok)return BuildError(Request,UnrealMCP::EMCPErrorCode::InternalError,ExecErr);UnrealMCP::FMCPResponse R;R.Id=Request.Id;auto J=BuildBooleanResult(true);J->SetStringField(TEXT("eventName"),EventName);J->SetStringField(TEXT("nodeGuid"),NG);J->SetBoolField(TEXT("alreadyExists"),Exists);J->SetBoolField(TEXT("dryRun"),Dry);J->SetBoolField(TEXT("added"),!Dry&&!Exists);J->SetNumberField(TEXT("positionX"),P.X);J->SetNumberField(TEXT("positionY"),P.Y);J->SetBoolField(TEXT("collisionAdjusted"),P.bCollisionAdjusted);J->SetArrayField(TEXT("pins"),Pins);J->SetBoolField(TEXT("saved"),Save&&!Dry&&!Exists);J->SetBoolField(TEXT("indexRefreshed"),Idx);J->SetStringField(TEXT("indexRefreshError"),IdxErr);R.Result=J;return R;}
-TSharedPtr<FJsonObject>FAddBlueprintCustomEventNodeTool::BuildInputSchema()const{using namespace UnrealMCP::BlueprintEditToolUtils;auto S=MakeShared<FJsonObject>();S->SetStringField(TEXT("type"),TEXT("object"));auto P=MakeShared<FJsonObject>();P->SetObjectField(TEXT("objectPath"),BuildStringProperty(TEXT("Target Blueprint.")));P->SetObjectField(TEXT("graphName"),BuildStringProperty(TEXT("Stable graph name.")));P->SetObjectField(TEXT("graphGuid"),BuildStringProperty(TEXT("Exact graph GUID.")));P->SetObjectField(TEXT("eventName"),BuildStringProperty(TEXT("Unique custom event name.")));P->SetObjectField(TEXT("relativeToNodeGuid"),BuildStringProperty(TEXT("Optional placement anchor.")));auto I=MakeShared<FJsonObject>();I->SetStringField(TEXT("type"),TEXT("integer"));P->SetObjectField(TEXT("positionX"),I);P->SetObjectField(TEXT("positionY"),I);P->SetObjectField(TEXT("dryRun"),BuildBoolProperty(TEXT("Validate and preview.")));P->SetObjectField(TEXT("saveAfterEdit"),BuildBoolProperty(TEXT("Save and refresh.")));S->SetObjectField(TEXT("properties"),P);TArray<TSharedPtr<FJsonValue>>Q{MakeShared<FJsonValueString>(TEXT("objectPath")),MakeShared<FJsonValueString>(TEXT("eventName"))};S->SetArrayField(TEXT("required"),Q);return S;}
+
+FAddBlueprintCustomEventNodeTool::FAddBlueprintCustomEventNodeTool()
+    : FMCPToolBase(TEXT("AddBlueprintCustomEventNode"), TEXT("Adds a uniquely named Custom Event to a stable Blueprint graph with collision-aware layout, dry-run, and optional save.")) {}
+
+UnrealMCP::FMCPResponse FAddBlueprintCustomEventNodeTool::Execute(const UnrealMCP::FMCPRequest& Request) const
+{
+    FString O, G, GG, EventName;
+    if (!Request.Params.IsValid() || !Request.Params->TryGetStringField(TEXT("objectPath"), O) || !Request.Params->TryGetStringField(TEXT("eventName"), EventName) || EventName.IsEmpty())
+    {
+        return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, TEXT("AddBlueprintCustomEventNode requires objectPath, eventName, and graphName or graphGuid."));
+    }
+
+    Request.Params->TryGetStringField(TEXT("graphName"), G);
+    Request.Params->TryGetStringField(TEXT("graphGuid"), GG);
+    if (G.IsEmpty() && GG.IsEmpty())
+    {
+        return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, TEXT("Graph selector is required."));
+    }
+
+    bool Dry = UnrealMCP::BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("dryRun"), false);
+    bool Save = UnrealMCP::BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("saveAfterEdit"), false);
+    bool Exists = false;
+
+    UnrealMCP::BlueprintGraphEditToolUtils::FPlacement P;
+    FString NG, File, IdxErr, ExecErr;
+    bool Idx = false;
+    TArray<TSharedPtr<FJsonValue>> Pins;
+
+    bool Ok = UnrealMCP::BlueprintToolUtils::ExecuteOnGameThreadSync([&](FString& E)
+    {
+        UBlueprint* B = nullptr;
+        if (!UnrealMCP::BlueprintEditToolUtils::ResolveBlueprint(O, B, E))
+        {
+            return false;
+        }
+
+        UEdGraph* Graph = nullptr;
+        if (!UnrealMCP::BlueprintGraphEditToolUtils::ResolveGraph(B, G, GG, Graph, E))
+        {
+            return false;
+        }
+
+        for (UEdGraphNode* Existing : Graph->Nodes)
+        {
+            if (const auto* Event = Cast<UK2Node_CustomEvent>(Existing); Event && Event->CustomFunctionName.ToString().Equals(EventName, ESearchCase::IgnoreCase))
+            {
+                Exists = true;
+                NG = UnrealMCP::BlueprintGraphEditToolUtils::GetNodeGuid(Event);
+                return true;
+            }
+        }
+
+        P = UnrealMCP::BlueprintGraphEditToolUtils::ResolvePlacement(Graph, Request.Params, E);
+        if (!E.IsEmpty() || Dry)
+        {
+            return E.IsEmpty();
+        }
+
+        const FScopedTransaction T(NSLOCTEXT("UnrealMCP", "AddCustomEvent", "UnrealMCP Add Custom Event"));
+        B->Modify();
+        Graph->Modify();
+        auto* Node = NewObject<UK2Node_CustomEvent>(Graph);
+        Node->CustomFunctionName = *EventName;
+        UnrealMCP::BlueprintGraphEditToolUtils::PlaceNewNode(Graph, Node, P);
+        FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(B);
+        NG = UnrealMCP::BlueprintGraphEditToolUtils::GetNodeGuid(Node);
+        Pins = UnrealMCP::BlueprintGraphEditToolUtils::SerializePins(Node);
+        return UnrealMCP::BlueprintGraphEditToolUtils::SaveAndRefreshIfRequested(B, O, Save, File, Idx, IdxErr, E);
+    }, ExecErr);
+
+    if (!Ok)
+    {
+        return BuildError(Request, UnrealMCP::EMCPErrorCode::InternalError, ExecErr);
+    }
+
+    UnrealMCP::FMCPResponse R;
+    R.Id = Request.Id;
+    auto J = BuildBooleanResult(true);
+    J->SetStringField(TEXT("eventName"), EventName);
+    J->SetStringField(TEXT("nodeGuid"), NG);
+    J->SetBoolField(TEXT("alreadyExists"), Exists);
+    J->SetBoolField(TEXT("dryRun"), Dry);
+    J->SetBoolField(TEXT("added"), !Dry && !Exists);
+    J->SetNumberField(TEXT("positionX"), P.X);
+    J->SetNumberField(TEXT("positionY"), P.Y);
+    J->SetBoolField(TEXT("collisionAdjusted"), P.bCollisionAdjusted);
+    J->SetArrayField(TEXT("pins"), Pins);
+    J->SetBoolField(TEXT("saved"), Save && !Dry && !Exists);
+    J->SetBoolField(TEXT("indexRefreshed"), Idx);
+    J->SetStringField(TEXT("indexRefreshError"), IdxErr);
+    R.Result = J;
+    return R;
+}
+
+TSharedPtr<FJsonObject> FAddBlueprintCustomEventNodeTool::BuildInputSchema() const
+{
+    using namespace UnrealMCP::BlueprintEditToolUtils;
+    auto S = MakeShared<FJsonObject>();
+    S->SetStringField(TEXT("type"), TEXT("object"));
+    auto P = MakeShared<FJsonObject>();
+    P->SetObjectField(TEXT("objectPath"), BuildStringProperty(TEXT("Target Blueprint.")));
+    P->SetObjectField(TEXT("graphName"), BuildStringProperty(TEXT("Stable graph name.")));
+    P->SetObjectField(TEXT("graphGuid"), BuildStringProperty(TEXT("Exact graph GUID.")));
+    P->SetObjectField(TEXT("eventName"), BuildStringProperty(TEXT("Unique custom event name.")));
+    P->SetObjectField(TEXT("relativeToNodeGuid"), BuildStringProperty(TEXT("Optional placement anchor.")));
+    auto I = MakeShared<FJsonObject>();
+    I->SetStringField(TEXT("type"), TEXT("integer"));
+    P->SetObjectField(TEXT("positionX"), I);
+    P->SetObjectField(TEXT("positionY"), I);
+    P->SetObjectField(TEXT("dryRun"), BuildBoolProperty(TEXT("Validate and preview.")));
+    P->SetObjectField(TEXT("saveAfterEdit"), BuildBoolProperty(TEXT("Save and refresh.")));
+    S->SetObjectField(TEXT("properties"), P);
+    TArray<TSharedPtr<FJsonValue>> Q{ MakeShared<FJsonValueString>(TEXT("objectPath")), MakeShared<FJsonValueString>(TEXT("eventName")) };
+    S->SetArrayField(TEXT("required"), Q);
+    return S;
+}
