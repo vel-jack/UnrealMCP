@@ -27,44 +27,58 @@ UnrealMCP::FMCPResponse FGetBlueprintInterfacesTool::Execute(const UnrealMCP::FM
     bool bIncludeInherited = false;
     Request.Params->TryGetBoolField(TEXT("includeInherited"), bIncludeInherited);
 
-    FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
-    UBlueprint* Blueprint = nullptr;
-    FAssetData AssetData;
-    if (!UnrealMCP::BlueprintToolUtils::ResolveBlueprintAssetData(AssetRegistryModule.Get(), ObjectPath, Blueprint, AssetData))
-    {
-        return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, TEXT("GetImplementedInterfaces could not load a Blueprint from params.objectPath."));
-    }
-
     TArray<TSharedPtr<FJsonValue>> Interfaces;
-    if (bIncludeInherited)
-    {
-        TArray<UClass*> ImplementedInterfaces;
-        FBlueprintEditorUtils::FindImplementedInterfaces(Blueprint, true, ImplementedInterfaces);
-        ImplementedInterfaces.Sort([](const UClass& Left, const UClass& Right)
-        {
-            return Left.GetPathName() < Right.GetPathName();
-        });
+    FString ExecutionError;
 
-        for (const UClass* InterfaceClass : ImplementedInterfaces)
+    const bool bSucceeded = UnrealMCP::BlueprintToolUtils::ExecuteOnGameThreadSync(
+        [&](FString& OutError)
         {
-            TSharedRef<FJsonObject> InterfaceObject = MakeShared<FJsonObject>();
-            InterfaceObject->SetStringField(TEXT("name"), InterfaceClass ? InterfaceClass->GetName() : FString());
-            InterfaceObject->SetStringField(TEXT("path"), InterfaceClass ? InterfaceClass->GetPathName() : FString());
-            InterfaceObject->SetStringField(TEXT("source"), TEXT("direct_or_inherited"));
-            Interfaces.Add(MakeShared<FJsonValueObject>(InterfaceObject));
-        }
-    }
-    else
+            FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+            UBlueprint* Blueprint = nullptr;
+            FAssetData AssetData;
+            if (!UnrealMCP::BlueprintToolUtils::ResolveBlueprintAssetData(AssetRegistryModule.Get(), ObjectPath, Blueprint, AssetData))
+            {
+                OutError = TEXT("GetImplementedInterfaces could not load a Blueprint from params.objectPath.");
+                return false;
+            }
+
+            if (bIncludeInherited)
+            {
+                TArray<UClass*> ImplementedInterfaces;
+                FBlueprintEditorUtils::FindImplementedInterfaces(Blueprint, true, ImplementedInterfaces);
+                ImplementedInterfaces.Sort([](const UClass& Left, const UClass& Right)
+                {
+                    return Left.GetPathName() < Right.GetPathName();
+                });
+
+                for (const UClass* InterfaceClass : ImplementedInterfaces)
+                {
+                    TSharedRef<FJsonObject> InterfaceObject = MakeShared<FJsonObject>();
+                    InterfaceObject->SetStringField(TEXT("name"), InterfaceClass ? InterfaceClass->GetName() : FString());
+                    InterfaceObject->SetStringField(TEXT("path"), InterfaceClass ? InterfaceClass->GetPathName() : FString());
+                    InterfaceObject->SetStringField(TEXT("source"), TEXT("direct_or_inherited"));
+                    Interfaces.Add(MakeShared<FJsonValueObject>(InterfaceObject));
+                }
+            }
+            else
+            {
+                for (const FBPInterfaceDescription& InterfaceDescription : Blueprint->ImplementedInterfaces)
+                {
+                    TSharedRef<FJsonObject> InterfaceObject = MakeShared<FJsonObject>();
+                    InterfaceObject->SetStringField(TEXT("name"), InterfaceDescription.Interface ? InterfaceDescription.Interface->GetName() : FString());
+                    InterfaceObject->SetStringField(TEXT("path"), InterfaceDescription.Interface ? InterfaceDescription.Interface->GetPathName() : FString());
+                    InterfaceObject->SetStringField(TEXT("source"), TEXT("direct"));
+                    InterfaceObject->SetNumberField(TEXT("graphCount"), InterfaceDescription.Graphs.Num());
+                    Interfaces.Add(MakeShared<FJsonValueObject>(InterfaceObject));
+                }
+            }
+            return true;
+        },
+        ExecutionError);
+
+    if (!bSucceeded)
     {
-        for (const FBPInterfaceDescription& InterfaceDescription : Blueprint->ImplementedInterfaces)
-        {
-            TSharedRef<FJsonObject> InterfaceObject = MakeShared<FJsonObject>();
-            InterfaceObject->SetStringField(TEXT("name"), InterfaceDescription.Interface ? InterfaceDescription.Interface->GetName() : FString());
-            InterfaceObject->SetStringField(TEXT("path"), InterfaceDescription.Interface ? InterfaceDescription.Interface->GetPathName() : FString());
-            InterfaceObject->SetStringField(TEXT("source"), TEXT("direct"));
-            InterfaceObject->SetNumberField(TEXT("graphCount"), InterfaceDescription.Graphs.Num());
-            Interfaces.Add(MakeShared<FJsonValueObject>(InterfaceObject));
-        }
+        return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, ExecutionError.IsEmpty() ? TEXT("GetImplementedInterfaces could not load a Blueprint from params.objectPath.") : ExecutionError);
     }
 
     UnrealMCP::FMCPResponse Response;

@@ -24,42 +24,55 @@ UnrealMCP::FMCPResponse FListBlueprintFunctionsTool::Execute(const UnrealMCP::FM
         return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, TEXT("ListFunctions requires a non-empty params.objectPath."));
     }
 
-    FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
-    UBlueprint* Blueprint = nullptr;
-    FAssetData AssetData;
-    if (!UnrealMCP::BlueprintToolUtils::ResolveBlueprintAssetData(AssetRegistryModule.Get(), ObjectPath, Blueprint, AssetData))
-    {
-        return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, TEXT("ListFunctions could not load a Blueprint from params.objectPath."));
-    }
-
     TArray<TSharedPtr<FJsonValue>> Functions;
+    FString ExecutionError;
 
-    TArray<UEdGraph*> SortedFunctionGraphs = Blueprint->FunctionGraphs;
-    SortedFunctionGraphs.Sort([](const UEdGraph& Left, const UEdGraph& Right)
-    {
-        return Left.GetName() < Right.GetName();
-    });
-
-    for (const UEdGraph* Graph : SortedFunctionGraphs)
-    {
-        TSharedRef<FJsonObject> FunctionObject = MakeShared<FJsonObject>();
-        FunctionObject->SetStringField(TEXT("name"), Graph ? Graph->GetName() : FString());
-        FunctionObject->SetStringField(TEXT("displayName"), Graph ? Graph->GetFName().ToString() : FString());
-        FunctionObject->SetStringField(TEXT("source"), TEXT("functionGraph"));
-        Functions.Add(MakeShared<FJsonValueObject>(FunctionObject));
-    }
-
-    for (const FBPInterfaceDescription& InterfaceDescription : Blueprint->ImplementedInterfaces)
-    {
-        for (const UEdGraph* Graph : InterfaceDescription.Graphs)
+    const bool bSucceeded = UnrealMCP::BlueprintToolUtils::ExecuteOnGameThreadSync(
+        [&](FString& OutError)
         {
-            TSharedRef<FJsonObject> FunctionObject = MakeShared<FJsonObject>();
-            FunctionObject->SetStringField(TEXT("name"), Graph ? Graph->GetName() : FString());
-            FunctionObject->SetStringField(TEXT("displayName"), Graph ? Graph->GetFName().ToString() : FString());
-            FunctionObject->SetStringField(TEXT("source"), TEXT("interfaceGraph"));
-            FunctionObject->SetStringField(TEXT("interfacePath"), InterfaceDescription.Interface ? InterfaceDescription.Interface->GetPathName() : FString());
-            Functions.Add(MakeShared<FJsonValueObject>(FunctionObject));
-        }
+            FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+            UBlueprint* Blueprint = nullptr;
+            FAssetData AssetData;
+            if (!UnrealMCP::BlueprintToolUtils::ResolveBlueprintAssetData(AssetRegistryModule.Get(), ObjectPath, Blueprint, AssetData))
+            {
+                OutError = TEXT("ListFunctions could not load a Blueprint from params.objectPath.");
+                return false;
+            }
+
+            TArray<UEdGraph*> SortedFunctionGraphs = Blueprint->FunctionGraphs;
+            SortedFunctionGraphs.Sort([](const UEdGraph& Left, const UEdGraph& Right)
+            {
+                return Left.GetName() < Right.GetName();
+            });
+
+            for (const UEdGraph* Graph : SortedFunctionGraphs)
+            {
+                TSharedRef<FJsonObject> FunctionObject = MakeShared<FJsonObject>();
+                FunctionObject->SetStringField(TEXT("name"), Graph ? Graph->GetName() : FString());
+                FunctionObject->SetStringField(TEXT("displayName"), Graph ? Graph->GetFName().ToString() : FString());
+                FunctionObject->SetStringField(TEXT("source"), TEXT("functionGraph"));
+                Functions.Add(MakeShared<FJsonValueObject>(FunctionObject));
+            }
+
+            for (const FBPInterfaceDescription& InterfaceDescription : Blueprint->ImplementedInterfaces)
+            {
+                for (const UEdGraph* Graph : InterfaceDescription.Graphs)
+                {
+                    TSharedRef<FJsonObject> FunctionObject = MakeShared<FJsonObject>();
+                    FunctionObject->SetStringField(TEXT("name"), Graph ? Graph->GetName() : FString());
+                    FunctionObject->SetStringField(TEXT("displayName"), Graph ? Graph->GetFName().ToString() : FString());
+                    FunctionObject->SetStringField(TEXT("source"), TEXT("interfaceGraph"));
+                    FunctionObject->SetStringField(TEXT("interfacePath"), InterfaceDescription.Interface ? InterfaceDescription.Interface->GetPathName() : FString());
+                    Functions.Add(MakeShared<FJsonValueObject>(FunctionObject));
+                }
+            }
+            return true;
+        },
+        ExecutionError);
+
+    if (!bSucceeded)
+    {
+        return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, ExecutionError.IsEmpty() ? TEXT("ListFunctions could not load a Blueprint from params.objectPath.") : ExecutionError);
     }
 
     UnrealMCP::FMCPResponse Response;

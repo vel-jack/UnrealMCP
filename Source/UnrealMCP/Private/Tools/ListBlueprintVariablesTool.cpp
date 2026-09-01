@@ -22,19 +22,33 @@ UnrealMCP::FMCPResponse FListBlueprintVariablesTool::Execute(const UnrealMCP::FM
         return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, TEXT("ListVariables requires a non-empty params.objectPath."));
     }
 
-    FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
-    UBlueprint* Blueprint = nullptr;
-    FAssetData AssetData;
-    if (!UnrealMCP::BlueprintToolUtils::ResolveBlueprintAssetData(AssetRegistryModule.Get(), ObjectPath, Blueprint, AssetData))
-    {
-        return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, TEXT("ListVariables could not load a Blueprint from params.objectPath."));
-    }
-
     TArray<TSharedPtr<FJsonValue>> Variables;
-    Variables.Reserve(Blueprint->NewVariables.Num());
-    for (const FBPVariableDescription& Variable : Blueprint->NewVariables)
+    FString ExecutionError;
+
+    const bool bSucceeded = UnrealMCP::BlueprintToolUtils::ExecuteOnGameThreadSync(
+        [&](FString& OutError)
+        {
+            FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+            UBlueprint* Blueprint = nullptr;
+            FAssetData AssetData;
+            if (!UnrealMCP::BlueprintToolUtils::ResolveBlueprintAssetData(AssetRegistryModule.Get(), ObjectPath, Blueprint, AssetData))
+            {
+                OutError = TEXT("ListVariables could not load a Blueprint from params.objectPath.");
+                return false;
+            }
+
+            Variables.Reserve(Blueprint->NewVariables.Num());
+            for (const FBPVariableDescription& Variable : Blueprint->NewVariables)
+            {
+                Variables.Add(MakeShared<FJsonValueObject>(UnrealMCP::BlueprintToolUtils::SerializeVariable(Variable)));
+            }
+            return true;
+        },
+        ExecutionError);
+
+    if (!bSucceeded)
     {
-        Variables.Add(MakeShared<FJsonValueObject>(UnrealMCP::BlueprintToolUtils::SerializeVariable(Variable)));
+        return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, ExecutionError.IsEmpty() ? TEXT("ListVariables could not load a Blueprint from params.objectPath.") : ExecutionError);
     }
 
     UnrealMCP::FMCPResponse Response;

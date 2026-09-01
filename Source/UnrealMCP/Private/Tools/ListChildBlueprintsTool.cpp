@@ -27,54 +27,72 @@ UnrealMCP::FMCPResponse FListChildBlueprintsTool::Execute(const UnrealMCP::FMCPR
     bool bRecursive = false;
     Request.Params->TryGetBoolField(TEXT("recursive"), bRecursive);
 
-    FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
-    UBlueprint* Blueprint = nullptr;
-    FAssetData AssetData;
-    if (!UnrealMCP::BlueprintToolUtils::ResolveBlueprintAssetData(AssetRegistryModule.Get(), ObjectPath, Blueprint, AssetData))
-    {
-        return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, TEXT("ListChildBlueprints could not load a Blueprint from params.objectPath."));
-    }
+    FString RootGeneratedClassPath;
+    TArray<TSharedPtr<FJsonValue>> Children;
+    FString ExecutionError;
+    UnrealMCP::EMCPErrorCode ErrorCode = UnrealMCP::EMCPErrorCode::InvalidParams;
 
-    const FString RootGeneratedClassPath = AssetData.GetTagValueRef<FString>(FBlueprintTags::GeneratedClassPath);
-    if (RootGeneratedClassPath.IsEmpty())
-    {
-        return BuildError(Request, UnrealMCP::EMCPErrorCode::InternalError, TEXT("ListChildBlueprints could not resolve GeneratedClass asset tag for the Blueprint."));
-    }
-
-    TArray<FAssetData> ChildAssets;
-    if (bRecursive)
-    {
-        TSet<FString> VisitedGeneratedClasses;
-        TQueue<FString> PendingGeneratedClasses;
-        PendingGeneratedClasses.Enqueue(RootGeneratedClassPath);
-        VisitedGeneratedClasses.Add(RootGeneratedClassPath);
-
-        FString CurrentGeneratedClass;
-        while (PendingGeneratedClasses.Dequeue(CurrentGeneratedClass))
+    const bool bSucceeded = UnrealMCP::BlueprintToolUtils::ExecuteOnGameThreadSync(
+        [&](FString& OutError)
         {
-            const TArray<FAssetData> DirectChildren = UnrealMCP::BlueprintToolUtils::FindBlueprintAssetsByParentGeneratedClass(AssetRegistryModule.Get(), CurrentGeneratedClass);
-            for (const FAssetData& ChildAsset : DirectChildren)
+            FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+            UBlueprint* Blueprint = nullptr;
+            FAssetData AssetData;
+            if (!UnrealMCP::BlueprintToolUtils::ResolveBlueprintAssetData(AssetRegistryModule.Get(), ObjectPath, Blueprint, AssetData))
             {
-                ChildAssets.Add(ChildAsset);
-                const FString ChildGeneratedClass = ChildAsset.GetTagValueRef<FString>(FBlueprintTags::GeneratedClassPath);
-                if (!ChildGeneratedClass.IsEmpty() && !VisitedGeneratedClasses.Contains(ChildGeneratedClass))
+                OutError = TEXT("ListChildBlueprints could not load a Blueprint from params.objectPath.");
+                return false;
+            }
+
+            RootGeneratedClassPath = AssetData.GetTagValueRef<FString>(FBlueprintTags::GeneratedClassPath);
+            if (RootGeneratedClassPath.IsEmpty())
+            {
+                OutError = TEXT("ListChildBlueprints could not resolve GeneratedClass asset tag for the Blueprint.");
+                ErrorCode = UnrealMCP::EMCPErrorCode::InternalError;
+                return false;
+            }
+
+            TArray<FAssetData> ChildAssets;
+            if (bRecursive)
+            {
+                TSet<FString> VisitedGeneratedClasses;
+                TQueue<FString> PendingGeneratedClasses;
+                PendingGeneratedClasses.Enqueue(RootGeneratedClassPath);
+                VisitedGeneratedClasses.Add(RootGeneratedClassPath);
+
+                FString CurrentGeneratedClass;
+                while (PendingGeneratedClasses.Dequeue(CurrentGeneratedClass))
                 {
-                    VisitedGeneratedClasses.Add(ChildGeneratedClass);
-                    PendingGeneratedClasses.Enqueue(ChildGeneratedClass);
+                    const TArray<FAssetData> DirectChildren = UnrealMCP::BlueprintToolUtils::FindBlueprintAssetsByParentGeneratedClass(AssetRegistryModule.Get(), CurrentGeneratedClass);
+                    for (const FAssetData& ChildAsset : DirectChildren)
+                    {
+                        ChildAssets.Add(ChildAsset);
+                        const FString ChildGeneratedClass = ChildAsset.GetTagValueRef<FString>(FBlueprintTags::GeneratedClassPath);
+                        if (!ChildGeneratedClass.IsEmpty() && !VisitedGeneratedClasses.Contains(ChildGeneratedClass))
+                        {
+                            VisitedGeneratedClasses.Add(ChildGeneratedClass);
+                            PendingGeneratedClasses.Enqueue(ChildGeneratedClass);
+                        }
+                    }
                 }
             }
-        }
-    }
-    else
-    {
-        ChildAssets = UnrealMCP::BlueprintToolUtils::FindBlueprintAssetsByParentGeneratedClass(AssetRegistryModule.Get(), RootGeneratedClassPath);
-    }
+            else
+            {
+                ChildAssets = UnrealMCP::BlueprintToolUtils::FindBlueprintAssetsByParentGeneratedClass(AssetRegistryModule.Get(), RootGeneratedClassPath);
+            }
 
-    TArray<TSharedPtr<FJsonValue>> Children;
-    Children.Reserve(ChildAssets.Num());
-    for (const FAssetData& ChildAsset : ChildAssets)
+            Children.Reserve(ChildAssets.Num());
+            for (const FAssetData& ChildAsset : ChildAssets)
+            {
+                Children.Add(MakeShared<FJsonValueObject>(UnrealMCP::BlueprintToolUtils::SerializeBlueprintAssetReference(ChildAsset)));
+            }
+            return true;
+        },
+        ExecutionError);
+
+    if (!bSucceeded)
     {
-        Children.Add(MakeShared<FJsonValueObject>(UnrealMCP::BlueprintToolUtils::SerializeBlueprintAssetReference(ChildAsset)));
+        return BuildError(Request, ErrorCode, ExecutionError.IsEmpty() ? TEXT("ListChildBlueprints could not load a Blueprint from params.objectPath.") : ExecutionError);
     }
 
     UnrealMCP::FMCPResponse Response;

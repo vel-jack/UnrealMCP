@@ -54,6 +54,9 @@ Coding agents and contributors should read [AGENTS.md](AGENTS.md) before changin
 - `RunUnrealMCPAutomationTest`
 - `RunUnrealMCPAutomationTests`
 - `GetMutationRequestStatus`
+- `RefreshBlueprintCallSites`
+- `SaveValidatedBlueprints`
+- `WireSelectionWorkflow`
 - `AddBlueprintBranchNode`
 - `AddBlueprintMacroNode`
 - `AddBlueprintArrayOperationNode`

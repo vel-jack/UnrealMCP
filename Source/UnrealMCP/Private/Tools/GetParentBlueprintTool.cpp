@@ -23,37 +23,53 @@ UnrealMCP::FMCPResponse FGetParentBlueprintTool::Execute(const UnrealMCP::FMCPRe
         return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, TEXT("GetParentBlueprint requires a non-empty params.objectPath."));
     }
 
-    FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
-    UBlueprint* Blueprint = nullptr;
-    FAssetData AssetData;
-    if (!UnrealMCP::BlueprintToolUtils::ResolveBlueprintAssetData(AssetRegistryModule.Get(), ObjectPath, Blueprint, AssetData))
-    {
-        return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, TEXT("GetParentBlueprint could not load a Blueprint from params.objectPath."));
-    }
-
-    const FString ParentClassTag = AssetData.GetTagValueRef<FString>(FBlueprintTags::ParentClassPath);
-    const FString ParentClassObjectPath = ParentClassTag.IsEmpty() ? FString() : FPackageName::ExportTextPathToObjectPath(ParentClassTag);
-
+    FString ParentClassPath, ParentClassTag, ParentClassObjectPath;
     TSharedPtr<FJsonObject> ParentBlueprintObject;
-    if (!ParentClassTag.IsEmpty())
-    {
-        TArray<FAssetData> AllAssets;
-        AssetRegistryModule.Get().GetAllAssets(AllAssets, true);
-        for (const FAssetData& Candidate : AllAssets)
+    FString ExecutionError;
+
+    const bool bSucceeded = UnrealMCP::BlueprintToolUtils::ExecuteOnGameThreadSync(
+        [&](FString& OutError)
         {
-            if (Candidate.GetTagValueRef<FString>(FBlueprintTags::GeneratedClassPath) == ParentClassTag)
+            FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+            UBlueprint* Blueprint = nullptr;
+            FAssetData AssetData;
+            if (!UnrealMCP::BlueprintToolUtils::ResolveBlueprintAssetData(AssetRegistryModule.Get(), ObjectPath, Blueprint, AssetData))
             {
-                ParentBlueprintObject = UnrealMCP::BlueprintToolUtils::SerializeBlueprintAssetReference(Candidate);
-                break;
+                OutError = TEXT("GetParentBlueprint could not load a Blueprint from params.objectPath.");
+                return false;
             }
-        }
+
+            ParentClassPath = Blueprint->ParentClass ? Blueprint->ParentClass->GetPathName() : FString();
+            ParentClassTag = AssetData.GetTagValueRef<FString>(FBlueprintTags::ParentClassPath);
+            ParentClassObjectPath = ParentClassTag.IsEmpty() ? FString() : FPackageName::ExportTextPathToObjectPath(ParentClassTag);
+
+            if (!ParentClassTag.IsEmpty())
+            {
+                TArray<FAssetData> AllAssets;
+                AssetRegistryModule.Get().GetAllAssets(AllAssets, true);
+                for (const FAssetData& Candidate : AllAssets)
+                {
+                    if (Candidate.GetTagValueRef<FString>(FBlueprintTags::GeneratedClassPath) == ParentClassTag)
+                    {
+                        ParentBlueprintObject = UnrealMCP::BlueprintToolUtils::SerializeBlueprintAssetReference(Candidate);
+                        break;
+                    }
+                }
+            }
+            return true;
+        },
+        ExecutionError);
+
+    if (!bSucceeded)
+    {
+        return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, ExecutionError.IsEmpty() ? TEXT("GetParentBlueprint could not load a Blueprint from params.objectPath.") : ExecutionError);
     }
 
     UnrealMCP::FMCPResponse Response;
     Response.Id = Request.Id;
     TSharedRef<FJsonObject> Result = BuildBooleanResult(true);
     Result->SetStringField(TEXT("objectPath"), ObjectPath);
-    Result->SetStringField(TEXT("parentClassPath"), Blueprint->ParentClass ? Blueprint->ParentClass->GetPathName() : FString());
+    Result->SetStringField(TEXT("parentClassPath"), ParentClassPath);
     Result->SetStringField(TEXT("parentClassTag"), ParentClassTag);
     Result->SetStringField(TEXT("parentClassObjectPath"), ParentClassObjectPath);
     Result->SetBoolField(TEXT("isNativeParent"), ParentBlueprintObject == nullptr);

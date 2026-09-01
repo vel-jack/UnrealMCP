@@ -90,6 +90,7 @@
 #include "Tools/LayoutBlueprintNodesTool.h"
 #include "Tools/MoveBlueprintNodeTool.h"
 #include "Tools/PlanProjectRefactorTool.h"
+#include "Tools/RefreshBlueprintCallSitesTool.h"
 #include "Tools/RefreshProjectIndexTool.h"
 #include "Tools/SearchAssetsTool.h"
 #include "Tools/SetBlueprintPinDefaultObjectTool.h"
@@ -100,6 +101,7 @@
 #include "Tools/SetBlueprintSequenceOutputsTool.h"
 #include "Tools/SpliceBlueprintExecFlowTool.h"
 #include "Tools/SaveBlueprintTool.h"
+#include "Tools/SaveValidatedBlueprintsTool.h"
 #include "Tools/SaveAllDirtyPackagesTool.h"
 #include "Tools/RunUnrealMCPAutomationTestTool.h"
 #include "Tools/RunUnrealMCPAutomationTestsTool.h"
@@ -109,6 +111,7 @@
 #include "Tools/ValidateBlueprintTool.h"
 #include "Tools/WireBlueprintEventToFunctionTool.h"
 #include "Tools/WireEnhancedInputActionToComponentTool.h"
+#include "Tools/WireSelectionWorkflowTool.h"
 #include "Transport/NamedPipeMCPTransport.h"
 #include "UnrealMCPLog.h"
 #include "UnrealMCPSettings.h"
@@ -312,6 +315,7 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FSetBlueprintComponentDefaultsTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintVariableTool>());
     Registry.RegisterTool(MakeShared<FSaveBlueprintTool>());
+    Registry.RegisterTool(MakeShared<FSaveValidatedBlueprintsTool>());
     Registry.RegisterTool(MakeShared<FSaveAllDirtyPackagesTool>());
     Registry.RegisterTool(MakeShared<FListUnrealMCPAutomationTestsTool>());
     Registry.RegisterTool(MakeShared<FRunUnrealMCPAutomationTestTool>());
@@ -332,6 +336,7 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FAddBlueprintCustomEventNodeTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintFunctionCallNodeTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintFunctionParameterTool>());
+    Registry.RegisterTool(MakeShared<FRefreshBlueprintCallSitesTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintInterfaceEventNodeTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintInterfaceFunctionGraphTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintOverrideEventNodeTool>());
@@ -358,6 +363,7 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FSpliceBlueprintExecFlowTool>());
     Registry.RegisterTool(MakeShared<FWireBlueprintEventToFunctionTool>());
     Registry.RegisterTool(MakeShared<FWireEnhancedInputActionToComponentTool>());
+    Registry.RegisterTool(MakeShared<FWireSelectionWorkflowTool>());
     Registry.RegisterTool(MakeShared<FListToolsTool>(Registry));
 }
 
