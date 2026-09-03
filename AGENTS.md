@@ -64,19 +64,14 @@ By default, client configuration points to the adapter executable in its current
 
 ## Current Priority
 
-Milestone 9 is active. Phase 4A collection-aware graph authoring is complete for the current scope. The immediate work is Phase 4B transactional graph patching.
+Milestone 9 Phase 5, Enhanced Input Asset Authoring, is **complete and live-verified** (September 3, 2026). `CreateInputAction`, `CreateInputMappingContext`, `AddInputMappingContextMapping`, `RemoveInputMappingContextMapping`, and `GetInputMappingContextMappings` were verified end to end through the adapter against real `/Game/UnrealMCP_Test/` fixtures — dry-run/real creation, idempotent add, exact read-back, remove-then-verify-empty, correct zero-match rejection on a second remove, and correct rejection of an invalid `FKey` name. See `ROADMAP.md` Milestone 9 Status for full detail. A formal `UnrealMCP.*` automation test for this phase is still outstanding.
 
-Before implementing Phase 4C workflows, complete the Phase 4B requirements in `ROADMAP.md`, including:
+That verification pass surfaced a real adapter bug, now the top priority: `UnrealSessionManager.GetMirroredToolListAsync` (`Adapter/UnrealMCP.Adapter/UnrealSessionManager.cs`) only attempts a live tool-catalog refresh when `_activeProject` is already set, but `_activeProject` is only ever set by an in-session attach call, which necessarily happens *after* the MCP client's one-and-only `tools/list` handshake at session start. A newly registered native tool therefore can never reach a connected agent's tool manifest through normal usage, no matter how many times the session restarts — confirmed live across two independent agent sessions. The only workaround found was manually overwriting the adapter's on-disk cache (`%LocalAppData%\UnrealMCP\cache\unreal-tools.json`) with a fresh `ListTools` result from an attached session, which is not a real fix. Fix this properly: either have the adapter eagerly auto-attach to the single unambiguous discoverable project before answering its first `tools/list`, or add an MCP `notifications/tools/list_changed` push plus an in-session "refresh tool manifest" action once any attach succeeds. See Milestone 20's Universal MCP Distribution checklist.
 
-- atomic `ApplyBlueprintGraphPatch`
-- complete created-node pin prediction during dry-run
-- static and instance function-call targets
-- typed operators inside declarative patches
-- exact data-link replacement with confirmation
-- rollback and compile-before-save behavior
-- cross-Blueprint function-signature/call-site reconstruction
-- ordered multi-asset compile-without-save workflows
-- deterministic operation IDs and timeout/retry status
+After that, resume Milestone 9 Phase 4C's two remaining bullets (Phase 4A, 4B, 4B.1, 4B.2, and Phase 4C's helper-function scaffolding are already implemented per the Status Snapshot — do not re-do them):
+
+- wire the pointer-valid/modifier-held branch into an existing project hit-test event
+- the group-transform workflow (one primary target plus a bounded per-update transform delta, preserving relative offsets)
 
 The immediate acceptance scenario spans `AC_DragShapes`, `AC_ContextMenu`, and `BP_GIS_AdvancedPawn`. Do not hardcode those assets into generic plugin tools.
 

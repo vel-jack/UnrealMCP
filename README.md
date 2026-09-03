@@ -78,6 +78,11 @@ Coding agents and contributors should read [AGENTS.md](AGENTS.md) before changin
 - `AddBlueprintOverrideEventNode`
 - `AddEnhancedInputActionNode`
 - `InspectEnhancedInputActionWiring`
+- `CreateInputAction`
+- `CreateInputMappingContext`
+- `AddInputMappingContextMapping`
+- `RemoveInputMappingContextMapping`
+- `GetInputMappingContextMappings`
 - `SetBlueprintPinSplit`
 - `SetBlueprintSequenceOutputs`
 - `SetBlueprintNodeComment`
@@ -165,6 +170,8 @@ Function-call, typed-operator, Branch, Variable Get/Set, and Reroute dry-runs no
 
 `InspectEnhancedInputActionWiring` reports every matching Enhanced Input Action node and the exact execution targets of its five phase pins. `WireEnhancedInputActionToComponent` inserts one exact component function call into one phase, preserves a single existing continuation after the new call, and is idempotent on retries. It rejects ambiguous action nodes, multiple phase routes, missing components, and non-callable functions. Use inspection and `dryRun=true` first; required data inputs are reported as `unconnectedInputPins` for explicit follow-up wiring.
 
+`CreateInputAction` and `CreateInputMappingContext` create new `UInputAction`/`UInputMappingContext` data assets, following the same reject-overwrite/dry-run/optional-save pattern as `CreateBlueprintAsset`; `CreateInputAction` also sets `ValueType` (`Boolean`, `Axis1D`, `Axis2D`, `Axis3D`). `AddInputMappingContextMapping` and `RemoveInputMappingContextMapping` add or remove one exact key-mapping row in an existing `InputMappingContext` by calling the real `UInputMappingContext::MapKey`/`UnmapKey` functions through reflection, so Epic's own mutation logic runs unchanged; adding an already-present row is a no-op (`alreadyExists=true`), and removing a row that does not exist fails clearly instead of guessing. `GetInputMappingContextMappings` reads back every row (action, key, trigger/modifier classes) without loading the asset for editing. None of the five tools add Enhanced Input as a hard module dependency — `UInputAction`/`UInputMappingContext` are resolved at runtime the same way `AddEnhancedInputActionNode` resolves its node class.
+
 The workflow is regression-tested by `UnrealMCP.Blueprint.Authoring.WireEventToFunction.Live`, covering dry-run, exact execution and component-target pin links, compilation, idempotent retry, duplicate prevention, and temporary fixture cleanup.
 
 `ApplyBlueprintInteractionPlan` applies a complete declarative graph fragment in one preflighted operation. Its schema supports `existingNode` GUID anchors, `customEvent`, `functionCall`, `variableGet`, `branch`, and `sequence` nodes plus exact named-pin connections. Stable `workflowId` and node `id` values make retries idempotent. Existing target-pin or execution-route conflicts are rejected instead of replaced, and compile/save/index refresh run at most once after the plan.
@@ -239,6 +246,8 @@ The adapter is the recommended MCP entry point for coding agents:
 - `unreal.adapter.RequestUnrealShutdown`
 
 `unreal.adapter.RequestUnrealShutdown` first calls `SaveAllDirtyPackages` on a best-effort basis before closing the editor window, so a routine shutdown does not block on the editor's native "Save Content" confirmation dialog. `SaveAllDirtyPackages` saves every dirty package directly to its existing on-disk path (no picker, no prompt); pass `dryRun=true` to list dirty packages without saving.
+
+**Known limitation:** if you add and compile a brand-new native tool, an already-connected agent session will not see it. The adapter only refreshes its live tool catalog once a project is attached, but attachment happens through an in-session call that necessarily comes after that session's one-time `tools/list` handshake — so the newly added tool stays invisible until the session is restarted, and even then only if the on-disk cache (`%LocalAppData%\UnrealMCP\cache\unreal-tools.json`) already reflects it. See `ROADMAP.md`'s Universal MCP Distribution checklist for the tracked fix.
 
 ## Agent Integration
 

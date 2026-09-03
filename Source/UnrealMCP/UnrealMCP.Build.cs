@@ -24,6 +24,7 @@ public class UnrealMCP : ModuleRules
             {
                 "AssetRegistry",
                 "BlueprintGraph",
+                "InputCore",
                 "Json",
                 "JsonUtilities",
                 "LevelEditor",

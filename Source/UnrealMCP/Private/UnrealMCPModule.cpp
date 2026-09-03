@@ -35,11 +35,16 @@
 #include "Tools/AnalyzeProjectArchitectureTool.h"
 #include "Tools/BuildProjectIndexTool.h"
 #include "Tools/CompileAllBlueprintsTool.h"
+#include "Tools/AddInputMappingContextMappingTool.h"
 #include "Tools/ConnectBlueprintPinsTool.h"
 #include "Tools/CompileBlueprintTool.h"
 #include "Tools/CreateBlueprintAssetTool.h"
 #include "Tools/CreateBlueprintFunctionGraphTool.h"
+#include "Tools/CreateInputActionTool.h"
+#include "Tools/CreateInputMappingContextTool.h"
 #include "Tools/DeleteBlueprintNodeTool.h"
+#include "Tools/GetInputMappingContextMappingsTool.h"
+#include "Tools/RemoveInputMappingContextMappingTool.h"
 #include "Tools/DisconnectBlueprintPinsTool.h"
 #include "Tools/ExplainBlueprintRoleTool.h"
 #include "Tools/ExplainBlueprintTraceTool.h"
@@ -353,6 +358,11 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FCreateBlueprintFunctionGraphTool>());
     Registry.RegisterTool(MakeShared<FAddEnhancedInputActionNodeTool>());
     Registry.RegisterTool(MakeShared<FInspectEnhancedInputActionWiringTool>());
+    Registry.RegisterTool(MakeShared<FCreateInputActionTool>());
+    Registry.RegisterTool(MakeShared<FCreateInputMappingContextTool>());
+    Registry.RegisterTool(MakeShared<FAddInputMappingContextMappingTool>());
+    Registry.RegisterTool(MakeShared<FRemoveInputMappingContextMappingTool>());
+    Registry.RegisterTool(MakeShared<FGetInputMappingContextMappingsTool>());
     Registry.RegisterTool(MakeShared<FSetBlueprintPinSplitTool>());
     Registry.RegisterTool(MakeShared<FSetBlueprintFunctionMetadataTool>());
     Registry.RegisterTool(MakeShared<FSetBlueprintNodeCommentTool>());
