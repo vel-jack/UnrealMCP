@@ -9,6 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="UnrealMCP.Adapter.RegressionTests" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.8" />
     <PackageReference Include="ModelContextProtocol" Version="2.2.0" />
   </ItemGroup>

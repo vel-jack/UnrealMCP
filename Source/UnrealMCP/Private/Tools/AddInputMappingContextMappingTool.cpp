@@ -80,6 +80,11 @@ UnrealMCP::FMCPResponse FAddInputMappingContextMappingTool::Execute(const Unreal
         TArray<int32> ExistingIndices;
         const int32 ExistingCount = InputAssetToolUtils::CountMatchingMappings(
             ContextObject, MappingsProperty, ActionObject, Key, &ExistingIndices);
+        if (ExistingCount > 1)
+        {
+            OutError = TEXT("Multiple identical Action+Key rows already exist; refusing an ambiguous add.");
+            return false;
+        }
         if (ExistingCount > 0)
         {
             bAlreadyExists = true;

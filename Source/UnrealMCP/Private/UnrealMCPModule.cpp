@@ -44,6 +44,7 @@
 #include "Tools/CreateInputMappingContextTool.h"
 #include "Tools/DeleteBlueprintNodeTool.h"
 #include "Tools/GetInputMappingContextMappingsTool.h"
+#include "Tools/SetInputMappingContextMappingKeyTool.h"
 #include "Tools/RemoveInputMappingContextMappingTool.h"
 #include "Tools/DisconnectBlueprintPinsTool.h"
 #include "Tools/ExplainBlueprintRoleTool.h"
@@ -363,6 +364,7 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FAddInputMappingContextMappingTool>());
     Registry.RegisterTool(MakeShared<FRemoveInputMappingContextMappingTool>());
     Registry.RegisterTool(MakeShared<FGetInputMappingContextMappingsTool>());
+    Registry.RegisterTool(MakeShared<FSetInputMappingContextMappingKeyTool>());
     Registry.RegisterTool(MakeShared<FSetBlueprintPinSplitTool>());
     Registry.RegisterTool(MakeShared<FSetBlueprintFunctionMetadataTool>());
     Registry.RegisterTool(MakeShared<FSetBlueprintNodeCommentTool>());

@@ -13,6 +13,7 @@ internal static class SdkMcpServer
     public static async Task RunAsync(McpRequestDispatcher dispatcher, CancellationToken cancellationToken)
     {
         var builder = Host.CreateApplicationBuilder([]);
+        long publishedCatalogVersion = -1;
         builder.Logging.ClearProviders();
         builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
 
@@ -27,11 +28,16 @@ internal static class SdkMcpServer
                 options.ServerInstructions =
                     "UnrealMCP adapter lifecycle tools remain available when Unreal Editor is closed. " +
                     "Unreal-hosted tools execute only after a project is selected and its plugin is attached.";
+                options.Capabilities = new ServerCapabilities
+                {
+                    Tools = new ToolsCapability { ListChanged = true }
+                };
             })
             .WithStdioServerTransport()
             .WithListToolsHandler(async (_, requestCancellationToken) =>
             {
                 var definitions = await dispatcher.GetToolDefinitionsAsync(requestCancellationToken);
+                Interlocked.Exchange(ref publishedCatalogVersion, dispatcher.SessionManager.ToolCatalogVersion);
                 return new ListToolsResult
                 {
                     Tools = definitions.Select(ToProtocolTool).ToList()
@@ -47,6 +53,23 @@ internal static class SdkMcpServer
                     parameters.Name,
                     arguments,
                     requestCancellationToken);
+
+                var catalogVersion = dispatcher.SessionManager.ToolCatalogVersion;
+                var previousVersion = Interlocked.Exchange(ref publishedCatalogVersion, catalogVersion);
+                if (previousVersion != catalogVersion)
+                {
+                    try
+                    {
+                        await context.Server.SendNotificationAsync(
+                            NotificationMethods.ToolListChangedNotification, requestCancellationToken);
+                    }
+                    catch (Exception exception)
+                    {
+                        // Notification failure must not turn a completed mutation into a tool failure.
+                        Interlocked.CompareExchange(ref publishedCatalogVersion, previousVersion, catalogVersion);
+                        Console.Error.WriteLine($"Could not notify tool catalog change: {exception.Message}");
+                    }
+                }
 
                 return new CallToolResult
                 {

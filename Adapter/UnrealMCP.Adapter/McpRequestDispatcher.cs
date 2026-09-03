@@ -2,11 +2,11 @@ using System.Text.Json.Nodes;
 
 namespace UnrealMCP.Adapter;
 
-internal sealed class McpRequestDispatcher(AdapterOptions options)
+internal sealed class McpRequestDispatcher(AdapterOptions options, ToolCatalogService? toolCatalog = null)
 {
     private readonly UnrealSessionManager _sessionManager = new(options);
     private readonly IReadOnlyList<McpToolDefinition> _localTools = BuildLocalTools();
-    private readonly ToolCatalogService _toolCatalog = new();
+    private readonly ToolCatalogService _toolCatalog = toolCatalog ?? new();
 
     public UnrealSessionManager SessionManager => _sessionManager;
 
@@ -58,8 +58,14 @@ internal sealed class McpRequestDispatcher(AdapterOptions options)
         JsonNode? arguments,
         CancellationToken cancellationToken)
     {
+        var catalogVersion = _sessionManager.ToolCatalogVersion;
         var localPayload = await TryInvokeLocalToolPayloadAsync(toolName, arguments, cancellationToken);
-        return localPayload ?? await _sessionManager.InvokeUnrealToolAsync(toolName, arguments, cancellationToken);
+        var result = localPayload ?? await _sessionManager.InvokeUnrealToolAsync(toolName, arguments, cancellationToken);
+        if (_sessionManager.ToolCatalogVersion != catalogVersion)
+        {
+            _toolCatalog.Save(_sessionManager.GetCachedToolCatalog());
+        }
+        return result;
     }
 
     private async Task<(JsonObject Payload, bool IsError)?> TryInvokeLocalToolPayloadAsync(
@@ -80,6 +86,7 @@ internal sealed class McpRequestDispatcher(AdapterOptions options)
                 "unreal.adapter.LaunchUnrealProject" => await _sessionManager.LaunchProjectAsync(arguments, cancellationToken),
                 "unreal.adapter.AttachToUnrealProject" => await _sessionManager.AttachToProjectAsync(arguments, cancellationToken),
                 "unreal.adapter.ReconnectUnreal" => await _sessionManager.ReconnectAsync(cancellationToken),
+                "unreal.adapter.RefreshToolManifest" => await _sessionManager.AttachToProjectAsync(arguments, cancellationToken),
                 "unreal.adapter.RequestUnrealShutdown" => await _sessionManager.RequestShutdownAsync(cancellationToken),
                 _ => null
             };
@@ -150,6 +157,10 @@ internal sealed class McpRequestDispatcher(AdapterOptions options)
                 "unreal.adapter.ReconnectUnreal",
                 "Clears adapter caches and retries UnrealMCP attachment for the selected project.",
                 CreateObjectSchema()),
+            new McpToolDefinition(
+                "unreal.adapter.RefreshToolManifest",
+                "Refreshes the live native tool catalog without launching Unreal. Changed catalogs trigger an MCP tools/list_changed notification; clients must support re-listing tools.",
+                CreateObjectSchema(("projectPath", "string", "Optional absolute project path to select before refreshing.", false))),
             new McpToolDefinition(
                 "unreal.adapter.RequestUnrealShutdown",
                 "Requests a graceful shutdown for the selected Unreal Editor window.",

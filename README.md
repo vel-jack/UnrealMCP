@@ -82,6 +82,7 @@ Coding agents and contributors should read [AGENTS.md](AGENTS.md) before changin
 - `CreateInputMappingContext`
 - `AddInputMappingContextMapping`
 - `RemoveInputMappingContextMapping`
+- `SetInputMappingContextMappingKey`
 - `GetInputMappingContextMappings`
 - `SetBlueprintPinSplit`
 - `SetBlueprintSequenceOutputs`
@@ -172,6 +173,14 @@ Function-call, typed-operator, Branch, Variable Get/Set, and Reroute dry-runs no
 
 `CreateInputAction` and `CreateInputMappingContext` create new `UInputAction`/`UInputMappingContext` data assets, following the same reject-overwrite/dry-run/optional-save pattern as `CreateBlueprintAsset`; `CreateInputAction` also sets `ValueType` (`Boolean`, `Axis1D`, `Axis2D`, `Axis3D`). `AddInputMappingContextMapping` and `RemoveInputMappingContextMapping` add or remove one exact key-mapping row in an existing `InputMappingContext` by calling the real `UInputMappingContext::MapKey`/`UnmapKey` functions through reflection, so Epic's own mutation logic runs unchanged; adding an already-present row is a no-op (`alreadyExists=true`), and removing a row that does not exist fails clearly instead of guessing. `GetInputMappingContextMappings` reads back every row (action, key, trigger/modifier classes) without loading the asset for editing. None of the five tools add Enhanced Input as a hard module dependency — `UInputAction`/`UInputMappingContext` are resolved at runtime the same way `AddEnhancedInputActionNode` resolves its node class.
 
+Mapping removal now requires `confirm=true` for a real edit; inspect its `dryRun=true` response first. Add/remove reject ambiguous duplicate Action+Key rows. The adapter treats removal as a mutation: it assigns an `operationId` and directs an uncertain timeout to `GetMutationRequestStatus`, not a blind retry. Action value types reject enum sentinels as well as unknown names.
+
+`SetInputMappingContextMappingKey` takes `objectPath`, `inputActionPath`, `key` (expected current key), and `newKey`. Use `dryRun=true` first, then `confirm=true` for replacement. It changes only the key of one exact row, retaining row order, action, inline modifiers/triggers and player-mappable metadata; it rejects stale/ambiguous selectors and duplicate targets. Data validation uses a detached context preview, then a real edit uses one undoable transaction. `saveAfterEdit` defaults to false; an unchanged key is a no-op and does not save. A disk-save failure is reported separately (`changed=true`, `saved=false`, `errorCode=asset_save_failed`), so the in-memory edit is not mistaken for a rollback. Reuse the original operation ID for identical retries; replay is session-scoped. Custom IMC subclasses and runtime mapping rebuilds are outside this bounded tool's scope.
+
+Phase 5A is partial: action-property editing, key/class discovery, detailed settings readback, modifier/trigger authoring, player-mappable metadata editing, and batch edits are still planned. Deprecated input-config APIs are excluded. Runtime user settings and gameplay validation remain deferred.
+
+`UnrealMCP.EnhancedInput.AssetAuthoring.Live` covers the original five tools plus key replacement, dry-run/confirmation guards, invalid values/classes/keys, duplicate and ambiguous rows, multiple keys per action, inline-object/metadata preservation, one-step undo, dirty-state preservation, and operation replay. Fixtures are unique unsaved data assets, retired to the transient package after registry removal without forced GC. Explicit save/reload and injected post-mutation/save-failure regression cases remain pending.
+
 The workflow is regression-tested by `UnrealMCP.Blueprint.Authoring.WireEventToFunction.Live`, covering dry-run, exact execution and component-target pin links, compilation, idempotent retry, duplicate prevention, and temporary fixture cleanup.
 
 `ApplyBlueprintInteractionPlan` applies a complete declarative graph fragment in one preflighted operation. Its schema supports `existingNode` GUID anchors, `customEvent`, `functionCall`, `variableGet`, `branch`, and `sequence` nodes plus exact named-pin connections. Stable `workflowId` and node `id` values make retries idempotent. Existing target-pin or execution-route conflicts are rejected instead of replaced, and compile/save/index refresh run at most once after the plan.
@@ -243,11 +252,20 @@ The adapter is the recommended MCP entry point for coding agents:
 - `unreal.adapter.LaunchUnrealProject`
 - `unreal.adapter.AttachToUnrealProject`
 - `unreal.adapter.ReconnectUnreal`
+- `unreal.adapter.RefreshToolManifest`
 - `unreal.adapter.RequestUnrealShutdown`
 
 `unreal.adapter.RequestUnrealShutdown` first calls `SaveAllDirtyPackages` on a best-effort basis before closing the editor window, so a routine shutdown does not block on the editor's native "Save Content" confirmation dialog. `SaveAllDirtyPackages` saves every dirty package directly to its existing on-disk path (no picker, no prompt); pass `dryRun=true` to list dirty packages without saving.
 
-**Known limitation:** if you add and compile a brand-new native tool, an already-connected agent session will not see it. The adapter only refreshes its live tool catalog once a project is attached, but attachment happens through an in-session call that necessarily comes after that session's one-time `tools/list` handshake — so the newly added tool stays invisible until the session is restarted, and even then only if the on-disk cache (`%LocalAppData%\UnrealMCP\cache\unreal-tools.json`) already reflects it. See `ROADMAP.md`'s Universal MCP Distribution checklist for the tracked fix.
+The first `tools/list` automatically selects and attaches to the sole discoverable project, without launching the Editor. Ambiguous workspaces still require explicit selection. Once an attachment finds a changed native catalog, the adapter persists it and sends `notifications/tools/list_changed`; `unreal.adapter.RefreshToolManifest` also explicitly reattaches/refetches without launching. It accepts an optional `projectPath`. Clients must re-list tools after this notification; a client that ignores it still needs its own manifest refresh or reconnection. Running processes using an older adapter binary must load the new build once. Cache write failures do not hide live schemas, and unavailable Editors retain the last catalog.
+
+Adapter regression checks use isolated temporary catalogs and a simulated native pipe (no Editor required):
+
+```powershell
+dotnet run --project .\Adapter\UnrealMCP.Adapter.RegressionTests -c Release
+```
+
+If the configured adapter executable is locked by active MCP clients, build to a separate output directory with `dotnet build ... -o <verification-directory>` and run `UnrealMCP.Adapter.RegressionTests.exe` there. This does not replace/restart connected clients. The runner's optional `--live <adapter-exe> <project.uproject> [exact-test-name]` checks a running Editor's freshly discovered catalog and can invoke one explicitly selected static test through the adapter. It never launches PIE or starts the Editor itself.
 
 ## Agent Integration
 

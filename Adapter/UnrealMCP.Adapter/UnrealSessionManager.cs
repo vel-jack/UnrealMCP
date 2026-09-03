@@ -21,6 +21,11 @@ internal sealed partial class UnrealSessionManager
     private JsonArray _cachedRemoteTools = [];
     private DateTimeOffset? _lastAttachUtc;
     private IReadOnlyList<ProjectDescriptor> _lastDiscoveredProjects = [];
+    private bool _initialCatalogDiscoveryAttempted;
+    private long _toolCatalogVersion;
+
+    public long ToolCatalogVersion => Interlocked.Read(ref _toolCatalogVersion);
+    public JsonArray GetCachedToolCatalog() => (JsonArray)_cachedRemoteTools.DeepClone();
 
     public UnrealSessionManager(AdapterOptions options)
     {
@@ -87,6 +92,7 @@ internal sealed partial class UnrealSessionManager
     {
         cancellationToken.ThrowIfCancellationRequested();
         _activeProject = null;
+        _initialCatalogDiscoveryAttempted = true;
         _selectedEngineExecutablePath = null;
         _resolvedEngineExecutablePath = null;
         _cachedInitializeResult = null;
@@ -346,7 +352,7 @@ internal sealed partial class UnrealSessionManager
         string[] mutationPrefixes =
         [
             "Add", "Apply", "Compile", "Connect", "Create", "Delete", "Disconnect",
-            "Layout", "Move", "Refresh", "RunUnrealMCPAutomationTest", "Save", "Set",
+            "Layout", "Move", "Refresh", "Remove", "RunUnrealMCPAutomationTest", "Save", "Set",
             "Splice", "Wire"
         ];
         return mutationPrefixes.Any(prefix => toolName.StartsWith(prefix, StringComparison.Ordinal));
@@ -355,10 +361,9 @@ internal sealed partial class UnrealSessionManager
     public async Task<JsonArray> GetMirroredToolListAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (_activeProject is not null)
-        {
-            await EnsureAttachedAsync(false, null, cancellationToken);
-        }
+        // EnsureAttachedAsync itself auto-selects a single unambiguous project on the first
+        // call from any entry point (not just this one), then attempts to attach.
+        await EnsureAttachedAsync(false, null, cancellationToken);
 
         // The cached catalog is served regardless of attach outcome by design: a failed
         // attach leaves the previous successful catalog in place rather than clearing it,

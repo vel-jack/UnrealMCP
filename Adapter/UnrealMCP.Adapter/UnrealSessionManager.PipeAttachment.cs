@@ -15,15 +15,33 @@ internal sealed partial class UnrealSessionManager
             var requestedProjectPath = ReadOptionalString(argumentObject, "projectPath");
             if (!string.IsNullOrWhiteSpace(requestedProjectPath))
             {
-                _activeProject = _projectDiscovery.LoadProject(requestedProjectPath);
-                _cachedInitializeResult = null;
-                _cachedRemoteTools = [];
+                var project = _projectDiscovery.LoadProject(requestedProjectPath);
+                if (!string.Equals(_activeProject?.ProjectPath, project.ProjectPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    _cachedInitializeResult = null;
+                    _cachedRemoteTools = [];
+                }
+                _activeProject = project;
             }
 
             var requestedEngineExecutablePath = ReadOptionalString(argumentObject, "engineExe");
             if (!string.IsNullOrWhiteSpace(requestedEngineExecutablePath))
             {
                 _selectedEngineExecutablePath = AdapterOptions.NormalizeExecutablePath(requestedEngineExecutablePath, "engineExe");
+            }
+        }
+
+        if (_activeProject is null && !_initialCatalogDiscoveryAttempted)
+        {
+            // Auto-select a single unambiguous project once per adapter process, so a client whose
+            // first request is a tool call (not tools/list) can still attach without a manual
+            // SelectProject step. Any explicit ClearSelectedProject already marks this attempted so
+            // it doesn't override the user's choice to have no active project.
+            _initialCatalogDiscoveryAttempted = true;
+            var discoveredProjects = DiscoverProjects(GetEffectiveWorkspaceRoot());
+            if (discoveredProjects.Count == 1)
+            {
+                _activeProject = discoveredProjects[0];
             }
         }
 
@@ -96,7 +114,15 @@ internal sealed partial class UnrealSessionManager
                 }
 
                 _cachedInitializeResult = initializeResponse["result"]?.AsObject();
-                _cachedRemoteTools = toolsResponse["result"]?["tools"]?.AsArray() ?? [];
+                // Degrade to an empty catalog rather than fail the whole attach: a missing/malformed
+                // tools array must not turn a healthy pipe round-trip into a hard "unavailable" error,
+                // especially since a non-launch attach (allowLaunch=false) has no retry window left.
+                var remoteTools = toolsResponse["result"]?["tools"] as JsonArray ?? [];
+                if (!JsonNode.DeepEquals(_cachedRemoteTools, remoteTools))
+                {
+                    _cachedRemoteTools = remoteTools;
+                    Interlocked.Increment(ref _toolCatalogVersion);
+                }
                 _sessionState = "ready";
                 _lastAttachUtc = DateTimeOffset.UtcNow;
 

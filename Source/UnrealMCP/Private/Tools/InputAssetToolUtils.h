@@ -96,7 +96,10 @@ namespace UnrealMCP::InputAssetToolUtils
                 }
             }
         }
-        if (OutValue == INDEX_NONE)
+        const FString ResolvedName = Enum->GetNameStringByValue(OutValue);
+        if (OutValue == INDEX_NONE ||
+            (ResolvedName != TEXT("Boolean") && ResolvedName != TEXT("Axis1D") &&
+             ResolvedName != TEXT("Axis2D") && ResolvedName != TEXT("Axis3D")))
         {
             OutError = FString::Printf(
                 TEXT("Unknown InputAction value type '%s'. Expected one of: Boolean, Axis1D, Axis2D, Axis3D."),

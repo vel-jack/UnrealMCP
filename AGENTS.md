@@ -64,16 +64,13 @@ By default, client configuration points to the adapter executable in its current
 
 ## Current Priority
 
-Milestone 9 Phase 5, Enhanced Input Asset Authoring, is **complete and live-verified** (September 3, 2026). `CreateInputAction`, `CreateInputMappingContext`, `AddInputMappingContextMapping`, `RemoveInputMappingContextMapping`, and `GetInputMappingContextMappings` were verified end to end through the adapter against real `/Game/UnrealMCP_Test/` fixtures — dry-run/real creation, idempotent add, exact read-back, remove-then-verify-empty, correct zero-match rejection on a second remove, and correct rejection of an invalid `FKey` name. See `ROADMAP.md` Milestone 9 Status for full detail. A formal `UnrealMCP.*` automation test for this phase is still outstanding.
+The user-selected iteration is Milestone 9 Phase 5A (Enhanced Input Mapping Authoring Extension). Phase 5's original five tools remain implemented; do not redo them. Phase 5A's reliability prerequisites and exact mapping-key replacement are now implemented. Consult ROADMAP.md's Status Snapshot and Phase 5A checklist for remaining scope.
 
-That verification pass surfaced a real adapter bug, now the top priority: `UnrealSessionManager.GetMirroredToolListAsync` (`Adapter/UnrealMCP.Adapter/UnrealSessionManager.cs`) only attempts a live tool-catalog refresh when `_activeProject` is already set, but `_activeProject` is only ever set by an in-session attach call, which necessarily happens *after* the MCP client's one-and-only `tools/list` handshake at session start. A newly registered native tool therefore can never reach a connected agent's tool manifest through normal usage, no matter how many times the session restarts — confirmed live across two independent agent sessions. The only workaround found was manually overwriting the adapter's on-disk cache (`%LocalAppData%\UnrealMCP\cache\unreal-tools.json`) with a fresh `ListTools` result from an attached session, which is not a real fix. Fix this properly: either have the adapter eagerly auto-attach to the single unambiguous discoverable project before answering its first `tools/list`, or add an MCP `notifications/tools/list_changed` push plus an in-session "refresh tool manifest" action once any attach succeeds. See Milestone 20's Universal MCP Distribution checklist.
+The adapter now attempts an unambiguous initial project attach before tools/list, without launching Unreal. Late successful attachment of a changed catalog emits notifications/tools/list_changed and persists the catalog immediately. unreal.adapter.RefreshToolManifest provides explicit refresh. Clients must re-list after notifications; already-running old adapter processes need to load the updated binary once. No manual cache reseeding is part of this workflow.
 
-After that, resume Milestone 9 Phase 4C's two remaining bullets (Phase 4A, 4B, 4B.1, 4B.2, and Phase 4C's helper-function scaffolding are already implemented per the Status Snapshot — do not re-do them):
+Remove-prefixed native tools receive adapter operation IDs and non-retryable uncertain-timeout responses. RemoveInputMappingContextMapping now requires confirm=true outside dry-run. Add/remove reject ambiguous duplicate Action+Key rows. SetInputMappingContextMappingKey preserves the exact row except its key, validates a detached preview, uses one undoable transaction, and separates save failure from successful in-memory edits. Its static editor regression covers settings preservation and undo; explicit save/reload and injected mutation/save-failure coverage remain pending.
 
-- wire the pointer-valid/modifier-held branch into an existing project hit-test event
-- the group-transform workflow (one primary target plus a bounded per-update transform delta, preserving relative offsets)
-
-The immediate acceptance scenario spans `AC_DragShapes`, `AC_ContextMenu`, and `BP_GIS_AdvancedPawn`. Do not hardcode those assets into generic plugin tools.
+Next: supported Input Action property inspection/editing and bounded key/class/settings discovery, followed by inline modifiers/triggers, player-mappable metadata, and single-asset batches. Deprecated input config APIs are excluded. Phase 4C pointer-branch/group-transform work, Phase 4D graph coverage, and runtime settings are deferred for this iteration, not cancelled. Never hardcode host-project asset names into generic tools.
 
 ## Tool Design
 
@@ -209,3 +206,11 @@ Before ending a substantial development task:
 - list uncommitted files or provide a commit message when requested
 - identify the exact next milestone task
 
+### Latest Development Handoff (September 3, 2026)
+
+- Scope: Phase 5A reliability prerequisites, formal original-tool regression, and exact mapping-key replacement. Remaining action/settings/modifier/trigger/batch scope is tracked in ROADMAP.md.
+- Verification: native Development and isolated adapter Release builds passed; 17 adapter regression checks passed; EnhancedInput.AssetAuthoring.Live passed four consecutive final runs through the adapter, and MutationRequestReplay passed. Fresh live tools/list discovered the new native tool without an earlier attach. Full-suite, save/reload/fault-injection, and runtime acceptance were not run.
+- Unsaved input test fixtures are unregistered and moved to the transient package without forced GC. Do not apply this cleanup strategy to compiled Blueprint fixtures without a separate lifetime review.
+- Configured adapter processes had the executable locked; the latest verified build is in `%LocalAppData%/Temp/UnrealMCPAdapterRegression`. Normal adapter rebuild/restart is needed to deploy this source to already-connected clients. No client configuration or another project's plugin was changed.
+- No index schema change or full rebuild is required. No Computer Use, PIE, or gameplay testing was performed. No commit/push was made.
+- The UE_544_MCP test Editor was gracefully closed through the adapter at handoff; process absence was confirmed. All source/document changes remain uncommitted.

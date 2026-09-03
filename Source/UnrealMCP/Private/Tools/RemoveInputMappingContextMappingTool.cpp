@@ -103,6 +103,12 @@ UnrealMCP::FMCPResponse FRemoveInputMappingContextMappingTool::Execute(const Unr
             return true;
         }
 
+        if (!BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("confirm"), false))
+        {
+            OutError = TEXT("Inspect the exact mapping with dryRun=true, then supply confirm=true to remove it.");
+            return false;
+        }
+
         const FScopedTransaction Transaction(NSLOCTEXT("UnrealMCP", "RemoveInputMappingContextMapping", "UnrealMCP Remove Input Mapping Context Mapping"));
         ContextObject->Modify();
         if (!InputAssetToolUtils::CallMappingContextFunction(ContextObject, TEXT("UnmapKey"), ActionObject, &Key, OutError))
@@ -164,6 +170,7 @@ TSharedPtr<FJsonObject> FRemoveInputMappingContextMappingTool::BuildInputSchema(
     Properties->SetObjectField(TEXT("inputActionPath"), BuildStringProperty(TEXT("Exact UInputAction asset object path currently mapped.")));
     Properties->SetObjectField(TEXT("key"), BuildStringProperty(TEXT("FKey name of the exact row to remove, for example LeftMouseButton.")));
     Properties->SetObjectField(TEXT("dryRun"), BuildBoolProperty(TEXT("Validate and return the row that would be removed without removing it.")));
+    Properties->SetObjectField(TEXT("confirm"), BuildBoolProperty(TEXT("Required true for a real removal after inspecting the dry-run row.")));
     Properties->SetObjectField(TEXT("saveAfterEdit"), BuildBoolProperty(TEXT("Save and partially refresh the index.")));
     Schema->SetObjectField(TEXT("properties"), Properties);
     TArray<TSharedPtr<FJsonValue>> Required{
