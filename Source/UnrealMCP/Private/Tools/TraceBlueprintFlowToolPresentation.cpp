@@ -194,6 +194,7 @@ TSharedRef<FJsonObject> BuildTraceFlowOutput(
     const TArray<FTraceEdgeRecord>& TraversedEdges)
 {
     TSharedRef<FJsonObject> Result = MakeShared<FJsonObject>();
+    Result->SetStringField(TEXT("source"), TEXT("cached_index"));
     Result->SetBoolField(TEXT("success"), true);
     Result->SetStringField(TEXT("objectPath"), ObjectPath);
     Result->SetStringField(TEXT("graphName"), GraphNameFilter);

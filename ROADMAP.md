@@ -2,7 +2,9 @@
 
 ## Status Snapshot
 
-As of September 3, 2026:
+As of September 4, 2026:
+
+- Current user-selected priority in `work_dsm`: Milestone 8 Phase 4, Live Inspection of Embedded Level Blueprints (Annotation 1). Both tools are implemented, native-built, and live-tested on `BaseLevel_3D_AR_Collab`; the expanded regression passed with zero errors/warnings. The embedded camera-position chain is verified. The user confirmed concurrent Cesium experimentation explains the map dirty-state change; large transitive plan-loading traces still explicitly report truncation. See the verification report below. Remaining Milestone 9 Phase 5A work is deferred for this iteration, not cancelled.
 
 - Milestone 1 through Milestone 7 are implemented.
 - Milestone 8 is usable; latent, async, timeline, and timer boundaries now have indexed semantic and confidence reporting, while runtime callback confirmation remains.
@@ -14,14 +16,16 @@ As of September 3, 2026:
 - Milestone 9 Phase 5, Enhanced Input Asset Authoring, is complete and live-verified as of September 3, 2026. It was scoped on September 2 after the AR_GIS_MAP GIS globe navigation feature found that no existing tool can create a `UInputAction`/`UInputMappingContext` asset or edit an `InputMappingContext`'s key-mapping rows. All five tools (`CreateInputAction`, `CreateInputMappingContext`, `AddInputMappingContextMapping`, `RemoveInputMappingContextMapping`, `GetInputMappingContextMappings`) were implemented via reflection against the EnhancedInput plugin's exposed `UFUNCTION`s/`UPROPERTY`s (no hard EnhancedInput module dependency added), compiled clean, and live-verified end to end through the adapter against real `/Game/UnrealMCP_Test/` fixtures: dry-run and real `CreateInputAction`/`CreateInputMappingContext`, add-then-idempotent-re-add, read-back matching exactly, remove-then-verify-empty, remove-again correctly rejected as zero-match, and an invalid `FKey` name correctly rejected. See Milestone 9 Status for the full list.
 - Phase 5's adapter catalog-staleness bug is fixed in source: initial tools/list discovers and attaches to one unambiguous project without launching the Editor; changed catalogs after attachment emit notifications/tools/list_changed and are cached immediately. RefreshToolManifest provides an explicit in-session refresh. SDK stdio regressions cover warm/cold startup, late attachment, ambiguity, simulated new-tool registration/callability without restart, and removal timeout identities. Clients must support re-listing after notifications; already-running old adapter processes need replacement/restart once.
 
-- Milestone 9 Phase 5A is in progress (September 3, 2026), selected explicitly by the user for this iteration. Reliability prerequisites and exact mapping-key replacement are implemented. Action-property editing, bounded key/class discovery, detailed settings readback, inline modifier/trigger authoring, player-mappable metadata editing, and single-asset batches remain. Deprecated types stay excluded; deferred work is not cancelled.
+- Milestone 9 Phase 5A is partially implemented (September 3, 2026); remaining work is deferred behind Milestone 8 Phase 4 in this integration project. Reliability prerequisites and exact mapping-key replacement are implemented. Action-property editing, bounded key/class discovery, detailed settings readback, inline modifier/trigger authoring, player-mappable metadata editing, and single-asset batches remain. Deprecated types stay excluded; deferred work is not cancelled.
 
 ## Priority Timeline
+
+Current override (September 4, 2026): implement and verify Milestone 8 Phase 4 below first. The existing backlog order remains recorded here; Phase 5A resumes after this live Level Blueprint inspection capability.
 
 1. Completed prerequisite: fix adapter catalog refresh and add Enhanced Input baseline automation. See Phase 5A and the verification handoff below.
 2. Finish Milestone 9 Phase 4C's two remaining bullets: wiring the pointer-valid/modifier-held branch into an existing project hit-test event, and the group-transform workflow (one primary target plus a bounded per-update delta).
 3. Add Phase 4D automation coverage for vector-delta/group-transform graphs once Phase 4C lands. Phase 5 now has formal UnrealMCP.EnhancedInput.AssetAuthoring.Live coverage.
-4. Current user-selected iteration: continue Phase 5A after the implemented reliability/key-replacement slice with action properties and bounded key/class/settings inspection, then inline modifiers/triggers, player-mappable metadata, and single-asset batches. Phase 4C/4D remain deferred for this iteration, not cancelled.
+4. Resume Phase 5A after the implemented reliability/key-replacement slice with action properties and bounded key/class/settings inspection, then inline modifiers/triggers, player-mappable metadata, and single-asset batches. Phase 4C/4D remain deferred for that iteration, not cancelled.
 5. Complete the Milestone 8 token-efficient query contract and coverage reporting without changing the indexed graph model.
 6. Add Milestone 12 C++ build/hot-reload feedback (`BuildModule`, `GetCompilerErrors`) and Milestone 14's `InspectCppBlueprintAPI` — both were manually substituted for this session (shelling out to a build tool directly, hand-reading engine headers) while building Phase 5, confirming real value ahead of their prior position in this list.
 7. Extend Milestone 10 with focused project-health diagnostics while preserving its completed architecture-analysis core.
@@ -323,6 +327,51 @@ Build a tracing-first indexed Blueprint graph model so agents can explain real B
 - Partial graph refresh for dirty Blueprints completed
 - Trace summaries optimized for token efficiency
 - Future graph-aware editing support built on stable node identities
+
+### Phase 4 - Live Inspection of Embedded Level Blueprints (Annotation 1)
+
+Status (September 4, 2026): implemented, native-built, and live-tested in `work_dsm`. Camera-position wiring and expanded regression passed; the dirty-state concern is explained by user-confirmed concurrent Cesium editing. Exhaustive transitive coverage beyond the embedded Level Blueprint remains bounded/incomplete, so do not mark the entire phase complete yet. Detailed evidence: [Live Level Blueprint verification](docs/LiveLevelBlueprintVerification.md).
+
+Build on Milestone 7's existing current-level and selected-actor inspection context. Ordinary Blueprint and Enhanced Input assets are already accessible; this extension reaches the `LevelScriptBlueprint` embedded in a map's `.umap` package through the live editor world/level and exposes its graph to coding agents.
+
+#### Required scope
+
+- [x] Resolve the embedded Level Blueprint from the currently open editor level or an explicit loaded map path. Report the resolved world, level, map package, and Blueprint object paths; distinguish persistent/current/sublevel targets and reject ambiguity. Never create a missing Level Blueprint or silently switch the active map. If a requested map is unavailable for read-only resolution, return a structured diagnostic.
+- [x] Support direct live object-path inspection of Blueprints and graphs, including embedded `LevelScriptBlueprint` objects, without requiring an Asset Registry entry or indexed Blueprint row.
+- [x] Enumerate graphs and nodes with stable graph identities, node GUIDs, pin identities/types, authored default values/object references, and exact execution/data connections. Authored pin values are static evidence, not evaluated runtime values.
+- [x] Trace forward execution and relevant data dependencies from events such as `BeginPlay`. Follow connected outputs after delays and function calls; expand resolvable Blueprint function/macro graphs and report native, dynamic, or unavailable bodies as explicit boundaries while retaining the caller's downstream continuation.
+- [x] Expose connected target pin types, function/variable owners, data-producing nodes, and exact literal actor references. External declared instance bodies are labelled inferred; dynamic/unavailable bodies are explicit boundaries. Runtime camera/pawn instance identity is not inferred from an unresolved reference.
+- [x] Label graph/trace evidence with `live_editor` or `cached_index` provenance. Live inspection is independent of index availability and never silently falls back to cached facts. No mixed-source traversal is used.
+- [x] Bound traversal with depth/node limits, repeated-visit/cycle suppression, coverage/truncation reporting, and frontier evidence for retrieving remaining nodes. A bounded partial trace is never reported as complete.
+- [x] Keep inspection strictly read-only: no PIE, Blueprint compilation, graph reconstruction, asset modification, saving, or index rebuild/refresh. Execute UObject access on the game thread and preserve the active level, selection, and existing dirty state.
+
+#### Implementation and verification order
+
+1. Inspect the existing live world/selected-actor resolution, Blueprint object resolution, graph readers, and trace utilities. Reuse shared mechanisms and preserve existing tool contracts; select exact tool names/schema extensions after this review.
+2. Implement generic native live Level Blueprint resolution and graph extraction, then bounded execution/data traversal with explicit continuation boundaries and provenance. Keep project-specific map names out of tool implementations.
+3. Expose the capability through the adapter's mirrored tool catalog; update user-facing documentation. Build native code and any changed adapter code, then refresh the live catalog. Newly registered tools require an editor restart; coordinate deployment so unsaved project content is preserved and no save-on-shutdown workflow is invoked for this read-only acceptance run.
+4. Run focused static tests for embedded object resolution, exact pin links, delay/function continuation, cycles/truncation, missing-index behavior, and unchanged editor/package state. Use the controlled test host for plugin regression where applicable, then perform read-only live MCP acceptance in `work_dsm`.
+5. Record exact graph/node/pin evidence and remaining unresolved boundaries from the acceptance map. No index schema change or rebuild is planned.
+
+#### Acceptance criteria
+
+- [x] With `BaseLevel_3D_AR_Collab` open, resolve its embedded Level Blueprint directly from the editor context; repeat targeting by map path and returned live object path.
+- [x] Trace the connected `BeginPlay` to delayed saved-position restoration chain, including its JSON vector data source and `GetPlayerPawn(0).RootComponent` target. Separate camera-component/rotation restoration is not inferred from this branch.
+- [ ] Inspect every connected downstream node after `SetWorldLocation`, following additional bounded requests as needed; report any unresolved boundary or incomplete coverage explicitly.
+- [x] Results identify live-editor provenance and remain usable without index coverage of the embedded Blueprint.
+- [x] No PIE, compilation, explicit asset edits, or saves were invoked by inspection. Controlled regression verified dirty-state preservation; live graph revisions and selection stayed unchanged. The user confirmed concurrent Cesium experimentation explains the map's clean-to-dirty transition, so this live run is not a controlled clean-to-clean comparison.
+
+This acceptance verifies Blueprint wiring only. Camera behavior, timing, possession, and runtime restoration correctness require separate user testing.
+
+#### Implementation handoff (September 4, 2026)
+
+- Added `InspectLiveBlueprint` (paged graph/node inventory and exact pins) and `TraceLiveBlueprintFlow` (execution/data traversal, resident function/custom-event/macro/composite bodies, caller/body pin bindings, boundaries and frontier). Added source provenance to the existing three indexed graph/node/trace readers without changing their selection behavior.
+- Resident-only resolution uses the existing editor-world helper and reads `ULevel::LevelScriptBlueprint` directly: UE 5.4's `GetLevelScriptBlueprint(true)` still assigns `FriendlyName`, which is avoided here. No dependency, index schema, or adapter C# change was needed.
+- A normal `AR_GIS_MAPEditor Win64 Development` build passed after the user closed the editor. Later refinements and expanded tests passed a suffix build (`UnrealEditor-UnrealMCP-9043.dll`) while the reopened editor retained the earlier binary. Final live testing must use the latest binary after restart.
+- Through the adapter, the initial `UnrealMCP.Blueprint.LiveInspection.EmbeddedLevelAndTrace` regression passed with zero errors. Its first fixture produced 14 missing-self-scope warnings; the corrected fixture supplies a class scope and adds macro binding and dirty-package checks. Its rerun passed with zero errors and zero warnings. The fixture uses transient objects and never compiles or saves a Blueprint.
+- Fresh adapter `tools/list` exposed both tools, and a live call inspected `/Game/AR_GISMap/Maps/MainLevel_Login.MainLevel_Login:PersistentLevel.MainLevel_Login` with one graph, `source=live_editor`, `indexUsed=false`, and `packageDirty=false`. The editor had reopened the login map; no camera-map acceptance is claimed from this evidence.
+- Subsequent verification: latest binary loaded after restart; expanded regression passed with zero errors and zero warnings. Camera-map inspection covered all 11 graphs, all 154 EventGraph nodes, the 8-node command-line macro, and a complete 48-node/65-edge saved-state extraction trace. All Level Blueprint graph revisions and actor selection stayed unchanged. Broad transitive traces hit the 1,000-node limit and reported incomplete coverage. The user confirmed they were experimenting with Cesium settings during testing, explaining the logged tileset changes and map dirty-state transition. See the linked verification report. No other project's plugin was synchronized; the separate `UE_544_MCP` host was not used or changed.
+- No index rebuild, Blueprint compilation, PIE, asset edits/saves, commit, or push was performed by the inspection workflow. Existing unrelated project and plugin edits are preserved.
 
 ### Token-efficient query contract
 

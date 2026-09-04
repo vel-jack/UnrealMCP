@@ -47,6 +47,8 @@ Coding agents and contributors should read [AGENTS.md](AGENTS.md) before changin
 - `SetBlueprintComponentDefaults`
 - `AddBlueprintVariable`
 - `ListBlueprintGraphs`
+- `InspectLiveBlueprint`
+- `TraceLiveBlueprintFlow`
 - `ValidateBlueprint`
 - `SaveBlueprint`
 - `SaveAllDirtyPackages`
@@ -128,6 +130,36 @@ Current indexed data:
 - Blueprint SCS component hierarchy summaries
 - package dependency edges
 - stable Blueprint graph identities and component usage metadata
+
+## Live Level Blueprint Inspection
+
+`InspectLiveBlueprint` and `TraceLiveBlueprintFlow` read resident editor objects, including the `LevelScriptBlueprint` embedded in a `.umap`. They build on the current editor-world context used by level/selected-actor inspection. They do not require an Asset Registry entry or a project index, and include unsaved in-memory graph changes.
+
+Target either the current level (omit selectors), `level: "persistent"`, an exact loaded `mapPath` (package/world/level path), or a resident Blueprint/graph `objectPath`. Use only one target selector. `graphPath` optionally narrows the resolved Blueprint to one exact graph, avoiding duplicate graph-name ambiguity. A missing map/object returns a structured diagnostic; these tools never load an asset, create a Level Blueprint, or switch the active map.
+
+Example calls (tool name followed by JSON arguments):
+
+```text
+InspectLiveBlueprint {"level":"current"}
+InspectLiveBlueprint {"mapPath":"/Game/Maps/MyMap","mode":"nodes","query":"SetWorldLocation","limit":20}
+InspectLiveBlueprint {"objectPath":"<returned Blueprint objectPath>","graphPath":"<returned graphPath>","nodeGuid":"<returned nodeGuid>"}
+TraceLiveBlueprintFlow {"startEvent":"BeginPlay","maxNodes":200,"maxDepth":128}
+TraceLiveBlueprintFlow {"objectPath":"<returned Blueprint objectPath>","graphPath":"<returned graphPath>","startNodeGuid":"<returned nodeGuid>"}
+```
+
+Inspection defaults to paginated graph inventory. `mode: "nodes"`, `query`, or `nodeGuid` returns nodes with GUIDs, exact linked endpoints, pin types, split-pin relationships, literal/object/text defaults, function/variable owner information, and direct level-actor references where present. Defaults are authored values, not evaluated runtime values. `offset` and `limit` (default 50, maximum 200) page the selected graph/node inventory; use `nextOffset` while `hasMore` is true. Graph inventory includes revisions for before/after comparison.
+
+Tracing defaults to `BeginPlay` (`ReceiveBeginPlay`), or accepts an exact event member name or `startNodeGuid`. It follows outgoing execution/data links and incoming data dependencies, including the connected continuation after delays and function calls. Data producers do not imply their execution successors ran. Resident Blueprint function, custom-event, macro, and collapsed-graph bodies are expanded with caller/body pin bindings; native implementations, unavailable bodies, and dynamic interface dispatch are explicit boundaries. Declared external instance bodies are static candidates, not proof of runtime dispatch. Caller continuation is retained even when a body is unavailable or expansion is bounded.
+
+Trace defaults are `maxNodes: 100`, `maxDepth: 128`, and `maxCallDepth: 4` (maximums 1000, 512, and 16). `includePins: false` reduces output; inspect individual nodes for full pins. Cycles/repeated visits are deduplicated. `frontier`, `hasMore`, `truncated`, and `coverageComplete` expose traversal limits and unresolved boundaries. Increase bounds or inspect/trace the returned frontier nodes; partial traces are never proof of complete coverage. This is a static connected subgraph, not an execution timeline or runtime-value simulation.
+
+Live results explicitly report `source: "live_editor"`, `readOnly: true`, `indexUsed: false`, and package dirty state. Existing `ListBlueprintGraphs`, `InspectBlueprintNode`, and `TraceBlueprintFlow` keep their indexed behavior and report `source: "cached_index"`; the live tools never silently fall back to them.
+
+Inspection does not start PIE, compile, reconstruct nodes, edit assets, save packages, or refresh/rebuild the index. Even the Level Blueprint resolver reads the existing pointer directly because UE 5.4's `GetLevelScriptBlueprint(true)` assigns its friendly name. All object access runs on the game thread. Runtime camera behavior still requires separate testing.
+
+The focused static regression is `UnrealMCP.Blueprint.LiveInspection.EmbeddedLevelAndTrace`. It constructs an unregistered transient object tree without compiling or saving a Blueprint and exercises embedded paths, pin evidence, delay/function continuation, downstream nodes, cycle and budget handling, data dependency isolation, and unchanged graph/dirty/compile state.
+
+New tool registration requires loading the rebuilt plugin in a fresh editor session, then refreshing the adapter's live tool catalog. Preserve unsaved work before restarting; the adapter's generic shutdown command saves dirty packages and is unsuitable for a strict read-only inspection handoff.
 
 ## Safe Blueprint Authoring
 

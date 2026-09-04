@@ -64,13 +64,13 @@ By default, client configuration points to the adapter executable in its current
 
 ## Current Priority
 
-The user-selected iteration is Milestone 9 Phase 5A (Enhanced Input Mapping Authoring Extension). Phase 5's original five tools remain implemented; do not redo them. Phase 5A's reliability prerequisites and exact mapping-key replacement are now implemented. Consult ROADMAP.md's Status Snapshot and Phase 5A checklist for remaining scope.
+The user-selected iteration in this `work_dsm` integration copy is Milestone 8 Phase 4 (Live Inspection of Embedded Level Blueprints). Consult ROADMAP.md for implementation/acceptance status. Preserve the existing current-level/selected-actor editor context and keep inspection read-only, including no Blueprint compilation, saving, or index refresh. Remaining Milestone 9 Phase 5A work is deferred; its original tools and implemented reliability/key-replacement slice remain in place.
 
 The adapter now attempts an unambiguous initial project attach before tools/list, without launching Unreal. Late successful attachment of a changed catalog emits notifications/tools/list_changed and persists the catalog immediately. unreal.adapter.RefreshToolManifest provides explicit refresh. Clients must re-list after notifications; already-running old adapter processes need to load the updated binary once. No manual cache reseeding is part of this workflow.
 
 Remove-prefixed native tools receive adapter operation IDs and non-retryable uncertain-timeout responses. RemoveInputMappingContextMapping now requires confirm=true outside dry-run. Add/remove reject ambiguous duplicate Action+Key rows. SetInputMappingContextMappingKey preserves the exact row except its key, validates a detached preview, uses one undoable transaction, and separates save failure from successful in-memory edits. Its static editor regression covers settings preservation and undo; explicit save/reload and injected mutation/save-failure coverage remain pending.
 
-Next: supported Input Action property inspection/editing and bounded key/class/settings discovery, followed by inline modifiers/triggers, player-mappable metadata, and single-asset batches. Deprecated input config APIs are excluded. Phase 4C pointer-branch/group-transform work, Phase 4D graph coverage, and runtime settings are deferred for this iteration, not cancelled. Never hardcode host-project asset names into generic tools.
+After live Level Blueprint inspection: resume supported Input Action property inspection/editing and bounded key/class/settings discovery, followed by inline modifiers/triggers, player-mappable metadata, and single-asset batches. Deprecated input config APIs are excluded. Phase 4C pointer-branch/group-transform work, Phase 4D graph coverage, and runtime settings remain deferred, not cancelled. Never hardcode host-project asset names into generic tools.
 
 ## Tool Design
 

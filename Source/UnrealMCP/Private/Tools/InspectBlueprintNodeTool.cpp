@@ -385,6 +385,7 @@ UnrealMCP::FMCPResponse FInspectBlueprintNodeTool::Execute(const UnrealMCP::FMCP
     Response.Id = Request.Id;
 
     TSharedRef<FJsonObject> Result = BuildBooleanResult(true);
+    Result->SetStringField(TEXT("source"), TEXT("cached_index"));
     Result->SetStringField(TEXT("objectPath"), ObjectPath);
     Result->SetStringField(TEXT("query"), Query);
     Result->SetStringField(TEXT("graphName"), GraphNameFilter);

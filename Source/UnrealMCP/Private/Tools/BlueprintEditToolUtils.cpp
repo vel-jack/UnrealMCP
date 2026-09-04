@@ -77,7 +77,23 @@ namespace UnrealMCP::BlueprintEditToolUtils
     {
         const FString Normalized = TypeName.ToLower();
         if (Normalized == TEXT("bool")) OutPinType.PinCategory = UEdGraphSchema_K2::PC_Boolean;
-        else if (Normalized == TEXT("float")) OutPinType.PinCategory = UEdGraphSchema_K2::PC_Real;
+        else if (Normalized == TEXT("float"))
+        {
+            // PC_Real pins require a PinSubCategory naming the concrete precision
+            // (PC_Float or PC_Double) -- an empty subcategory is invalid and hard-
+            // asserts the Kismet compiler on the next compile (KismetCompilerMisc.cpp,
+            // "Erroneous pin subcategory for PC_Real: None"). TypeObjectPath carries
+            // that precision hint here ("float" or "double"); UE5 defaults Blueprint
+            // reals to double precision, so default to PC_Double when TypeObjectPath
+            // is empty or anything other than exactly "float", matching every
+            // existing double-typed variable/parameter a caller is likely to add
+            // alongside.
+            OutPinType.PinCategory = UEdGraphSchema_K2::PC_Real;
+            const FString NormalizedTypeObjectPath = TypeObjectPath.ToLower();
+            OutPinType.PinSubCategory = (NormalizedTypeObjectPath == TEXT("float"))
+                ? UEdGraphSchema_K2::PC_Float
+                : UEdGraphSchema_K2::PC_Double;
+        }
         else if (Normalized == TEXT("int") || Normalized == TEXT("integer")) OutPinType.PinCategory = UEdGraphSchema_K2::PC_Int;
         else if (Normalized == TEXT("string")) OutPinType.PinCategory = UEdGraphSchema_K2::PC_String;
         else if (Normalized == TEXT("name")) OutPinType.PinCategory = UEdGraphSchema_K2::PC_Name;

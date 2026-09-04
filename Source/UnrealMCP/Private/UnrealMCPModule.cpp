@@ -86,6 +86,8 @@
 #include "Tools/ListBlueprintComponentsTool.h"
 #include "Tools/ListBlueprintFunctionsTool.h"
 #include "Tools/ListBlueprintGraphsTool.h"
+#include "Tools/InspectLiveBlueprintTool.h"
+#include "Tools/TraceLiveBlueprintFlowTool.h"
 #include "Tools/ListBlueprintNodePinsTool.h"
 #include "Tools/ListBlueprintVariablesTool.h"
 #include "Tools/ListChildBlueprintsTool.h"
@@ -303,6 +305,8 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FListBlueprintVariablesTool>());
     Registry.RegisterTool(MakeShared<FListBlueprintFunctionsTool>());
     Registry.RegisterTool(MakeShared<FListBlueprintGraphsTool>());
+    Registry.RegisterTool(MakeShared<FInspectLiveBlueprintTool>());
+    Registry.RegisterTool(MakeShared<FTraceLiveBlueprintFlowTool>());
     Registry.RegisterTool(MakeShared<FListBlueprintComponentsTool>());
     Registry.RegisterTool(MakeShared<FGetParentBlueprintTool>());
     Registry.RegisterTool(MakeShared<FGetBlueprintInterfacesTool>());
