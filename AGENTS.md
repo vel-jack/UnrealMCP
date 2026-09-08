@@ -64,7 +64,7 @@ By default, client configuration points to the adapter executable in its current
 
 ## Current Priority
 
-The user-selected iteration in this `work_dsm` integration copy is Milestone 8 Phase 4 (Live Inspection of Embedded Level Blueprints). Consult ROADMAP.md for implementation/acceptance status. Preserve the existing current-level/selected-actor editor context and keep inspection read-only, including no Blueprint compilation, saving, or index refresh. Remaining Milestone 9 Phase 5A work is deferred; its original tools and implemented reliability/key-replacement slice remain in place.
+The current user-selected iteration is Milestone 8 Phase 4 (Live Inspection of Embedded Level Blueprints). Consult ROADMAP.md for implementation and acceptance status. Preserve the existing current-level/selected-actor editor context and keep inspection read-only, including no Blueprint compilation, saving, or index refresh. Remaining Milestone 9 Phase 5A work is deferred; its original tools and implemented reliability/key-replacement slice remain in place.
 
 The adapter now attempts an unambiguous initial project attach before tools/list, without launching Unreal. Late successful attachment of a changed catalog emits notifications/tools/list_changed and persists the catalog immediately. unreal.adapter.RefreshToolManifest provides explicit refresh. Clients must re-list after notifications; already-running old adapter processes need to load the updated binary once. No manual cache reseeding is part of this workflow.
 
@@ -182,7 +182,7 @@ After a tool-schema change, connect to a live test editor and refresh the adapte
 - The surrounding `UE_544_MCP` repository is a local test project and intentionally ignores this nested repository.
 - Do not commit or push unless the user explicitly requests it. Never push automatically.
 - Before proposing a commit message, inspect both tracked and untracked plugin changes.
-- Copies of UnrealMCP may exist in AXIS/DSM projects for integration testing. Do not modify or synchronize those copies unless the user explicitly requests it.
+- Copies of UnrealMCP may exist in downstream host projects for integration testing. Do not modify or synchronize those copies unless the user explicitly requests it.
 - When synchronization is requested, first confirm the source-of-truth direction and preserve project-specific files such as local update scripts.
 
 ## Error Handling And Performance

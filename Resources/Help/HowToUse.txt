@@ -42,7 +42,7 @@ Blueprint authoring safety
 - AddBlueprintOverrideEventNode validates the exact parent UFunction and creates only legal event overrides.
 - AddEnhancedInputActionNode targets an exact InputAction asset and reports when Enhanced Input is unavailable.
 - AddBlueprintDelegateNode creates bind/unbind nodes. AddBlueprintDelegateEventNode creates a uniquely named Custom Event with the exact reflected delegate parameters; connect its OutputDelegate pin to the bind node's Delegate pin.
-- SetBlueprintPinSplit exposes struct members such as FGISInteractionTarget and FHitResult locally. Recombining requires explicit confirmation.
+- SetBlueprintPinSplit exposes struct members such as FInteractionTarget and FHitResult locally. Recombining requires explicit confirmation.
 - SetBlueprintSequenceOutputs safely adds or explicitly removes Sequence execution outputs. SetBlueprintNodeComment updates per-node documentation and bubble state.
 - LayoutBlueprintNodes performs deterministic execution-flow layout for an explicit stable node-GUID set; use dryRun first on unfamiliar graphs.
 

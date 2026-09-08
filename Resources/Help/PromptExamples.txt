@@ -14,7 +14,7 @@ Inspect a Blueprint
 
 Safely author a Blueprint
 - Dry-run creating /Game/Blueprints/AC_InteractionController with parent /Script/Engine.ActorComponent. Do not save anything.
-- Add GISSelectionManagerComponent to this Blueprint using its exact C++ class path. Dry-run first, then add, compile only this Blueprint, and save if validation succeeds.
+- Add SelectionManagerComponent to this Blueprint using its exact C++ class path. Dry-run first, then add, compile only this Blueprint, and save if validation succeeds.
 - Dry-run adding these components as one ordered batch: InteractionRoot scene component, SelectionController under InteractionRoot, and AudioFeedback under InteractionRoot with bAutoActivate=false. If valid, apply once, compile once, save, and report the partial index refresh.
 - Add a camera component with its editable template FieldOfView property set to 75. Dry-run first and do not change an existing same-name component.
 - Add an instance-editable Actor reference variable named SelectedActor, compile only this Blueprint, save it, and report the automatic index refresh.
@@ -24,7 +24,7 @@ Safely author a Blueprint
 - Dry-run moving this node relative to another node and report its proposed collision-adjusted position before editing.
 - Add input Actor and output bool parameters to this function, set its category to Interaction, validate, and save only after it compiles.
 - Add the exact Enhanced Input Action event for this InputAction asset and show all trigger pins before wiring it.
-- Split the FGISInteractionTarget output pin, connect its Actor member to SelectSingle, and report the exact pin IDs used.
+- Split the FInteractionTarget output pin, connect its Actor member to SelectSingle, and report the exact pin IDs used.
 - Bind OnSelectionChanged on the selection manager component, create a signature-matched event named HandleSelectionChanged, connect the delegate pins, validate, and save.
 - Dry-run deleting this node and report every affected pin link. Do not delete it without my explicit confirmation.
 - Create a custom event named HandlePrimaryClick, place a Sequence to its right, and connect their exec pins without overlapping existing nodes.
@@ -89,7 +89,7 @@ Safe Blueprint interaction wiring
 - Re-run the event-to-function workflow and confirm it is already complete without adding duplicate nodes.
 - Dry-run an ApplyBlueprintInteractionPlan workflow with stable node IDs for Custom Event -> component function call -> Branch. Validate every named pin and do not save.
 - Apply the validated interaction plan, compile only the touched Blueprint, save once, and return created node IDs plus exact connections.
-- In AC_EnhancedInputSystem, dry-run extending the existing pointer-pressed exec route by exact node GUID. Insert a Sequence after the occupied output, preserve the legacy interface call on Then_0, and place the new AC_DSMInteraction handler call on Then_1. Do not replace or disconnect the legacy route.
+- In BP_InputController, dry-run extending the existing pointer-pressed exec route by exact node GUID. Insert a Sequence after the occupied output, preserve the legacy interface call on Then_0, and place the new BP_InteractionHandler call on Then_1. Do not replace or disconnect the legacy route.
 - Apply that Sequence-splice plan only if the source has exactly one existing exec route, compile and save once, then rerun the plan and confirm it is already complete.
 - Dry-run an interaction plan that sets Get Component by Class.ComponentClass with defaultObjectPath before connecting its typed ReturnValue to a component function target.
 - Atomically insert this impure node into the exact existing source-to-target exec link with executionInsertions; preserve all data links, compile once, save, and verify an idempotent retry.
