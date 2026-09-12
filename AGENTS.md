@@ -212,7 +212,19 @@ Before ending a substantial development task:
 - list uncommitted files or provide a commit message when requested
 - identify the exact next milestone task
 
-### Current Development Handoff (September 12, 2026)
+### Current Development Handoff (September 12, 2026, later session)
+
+- E2 started. Two of its reliability items are implemented and live-verified: the `RefreshBlueprintCallSites` transaction/evidence fix and the `SaveValidatedBlueprints` recovery-metadata fix. See ROADMAP.md's E2 section for exactly what each now guarantees.
+- `RefreshBlueprintCallSites` previously called `GEditor->UndoTransaction()` while its `FScopedTransaction` was still open, so the advertised rollback could never restore anything; the transaction now closes in its own scope first, matching `ApplyBlueprintGraphPatchTool`. It also no longer returns `success: true` after silently skipping call sites it could not resolve.
+- Verification host for this session was `UE_544_MCP`, not `work_dsm`: that is the project this session's adapter is bound to and the checkout the work was done in. `UE_544_MCPEditor Win64 Development` built clean (both edited files compiled, zero warnings) and every check ran through the compact adapter gateway against a real attached Editor.
+- Live evidence: stale-index call site correctly fails the asset with `call_site_refresh_incomplete`; dry-run and real-run happy paths reconstruct/compile with measured dirty state; `continueOnFailure=true` with two failures reports both; a clean asset is reported as `skippedCleanObjectPaths`, no longer as unattempted-and-dirty.
+- `WireSelectionWorkflow` and `SaveAllDirtyPackages` are fixed too. The workflow is explicitly resumable, not atomic: it composes independently mutating sub-tools, so on failure it returns the per-function record in the error payload rather than pretending it can roll them back as one unit. `FMCPToolBase::BuildError` gained a `Data` overload for exactly this; prefer it in any tool that can fail after changing something.
+- Unreal log now shows agent actions, not pipe plumbing. `FMCPServer::HandleJsonRequest` logs one bounded `MCP <tool> [target] -> ok (N ms)` line per real tool call at `Log`, failures at `Warning` with code and message; `initialize`/`tools/list`/`ping` and the connect/disconnect pair are `Verbose`. The adapter opens one connection per request, so at `Log` level those handshakes produced roughly five noise lines per actual call and buried the one line that mattered — do not promote them back.
+- The adapter forwards the MCP client name/version in native `initialize` params (`UnrealSessionManager.SetConnectedClient`, captured from the SDK handshake in `SdkMcpServer`), and the plugin logs `MCP client attached: ...` only when that identity changes. Before this the plugin had no idea who was calling, since initialize params were empty.
+- Known gap, deliberately not claimed as done: the compile-failure rollback branch has no fault-injection seam, so `graphRestored`/`dirtyRestored` are implemented but never exercised live. Building that seam is the next E2 task.
+- `/Game/A_BadActor.A_BadActor` was left dirty and unsaved in the running Editor by the real-run test, by design (compile without save). The `work_dsm` checkout was not touched or synchronized.
+
+### Previous Development Handoff (September 12, 2026)
 
 - E1: default compact discovery, exact schema lookup, native gateway and GetBlueprintOverview. Full tool-surface compatibility remains available; no native tool names were removed.
 - Adapter Release builds (isolated and normal checkout output) and 33 simulated-pipe regression checks passed. Canonical `AR_GIS_MAPEditor Win64 Development` build passed. Native `UnrealMCP.Blueprint.Overview.ReadOnly` passed through compact production stdio with zero errors/warnings.

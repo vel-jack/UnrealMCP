@@ -290,8 +290,13 @@ bool FNamedPipeMCPTransport::ProcessConnectedClient()
         return false;
     }
 
-    UE_LOG(LogUnrealMCP, Log, TEXT("Named pipe client connected on %s"), *BuildPipePath());
+    // Verbose, not Log: the adapter opens one connection per request, so at Log level this pair buried
+    // the request lines that actually say what the agent asked for.
+    UE_LOG(LogUnrealMCP, Verbose, TEXT("Named pipe client connected on %s"), *BuildPipePath());
     PendingReadBytes.Reset();
+
+    const double SessionStartSeconds = FPlatformTime::Seconds();
+    int32 RequestCount = 0;
 
     while (!bStopping)
     {
@@ -306,6 +311,7 @@ bool FNamedPipeMCPTransport::ProcessConnectedClient()
             continue;
         }
 
+        ++RequestCount;
         const FString ResponseJson = Server->HandleJsonRequest(RequestJson) + TEXT("\n");
         if (!WriteMessage(ResponseJson))
         {
@@ -313,7 +319,18 @@ bool FNamedPipeMCPTransport::ProcessConnectedClient()
         }
     }
 
-    UE_LOG(LogUnrealMCP, Log, TEXT("Named pipe client disconnected from %s"), *BuildPipePath());
+    // A connection that carried no request never showed up in the per-request log at all, so that one
+    // case stays at Log level; an ordinary serviced connection is already described by its request line.
+    if (RequestCount == 0)
+    {
+        UE_LOG(LogUnrealMCP, Log, TEXT("Named pipe client connected and disconnected from %s without sending a request (connection probe)."),
+            *BuildPipePath());
+    }
+    else
+    {
+        UE_LOG(LogUnrealMCP, Verbose, TEXT("Named pipe client disconnected from %s after %d request(s) over %.1fs"),
+            *BuildPipePath(), RequestCount, FPlatformTime::Seconds() - SessionStartSeconds);
+    }
     return true;
 #endif
 }

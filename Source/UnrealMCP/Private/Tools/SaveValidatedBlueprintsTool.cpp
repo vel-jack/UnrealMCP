@@ -16,6 +16,26 @@ namespace
         return Blueprint->Status == BS_UpToDate || Blueprint->Status == BS_UpToDateWithWarnings;
     }
 
+    // The recovery plan must be derived from what actually happened to each asset. Inferring it from
+    // list position (everything after the failure is "not attempted") is only true when the run stops
+    // at the first failure; with continueOnFailure=true it mislabels attempted and even already-saved
+    // assets as unattempted, and it loses every failure but the last.
+    enum class ESaveOutcome : uint8
+    {
+        NotAttempted,
+        SkippedNotDirty,
+        DryRunWouldSave,
+        Saved,
+        Failed
+    };
+
+    struct FAssetOutcome
+    {
+        FString ObjectPath;
+        ESaveOutcome Outcome = ESaveOutcome::NotAttempted;
+        FString Error;
+    };
+
     FString BlueprintStatusToString(EBlueprintStatus Status)
     {
         switch (Status)
@@ -70,8 +90,8 @@ UnrealMCP::FMCPResponse FSaveValidatedBlueprintsTool::Execute(const UnrealMCP::F
         FString::Printf(TEXT("Validating %d Blueprint(s) before any save."), ObjectPaths.Num()));
 
     TArray<TSharedPtr<FJsonValue>> ResultsJson;
-    TArray<FString> SavedObjectPaths;
-    FString FailedObjectPath;
+    TArray<FAssetOutcome> Outcomes;
+    Outcomes.Reserve(ObjectPaths.Num());
     bool bStopped = false;
     FString ExecutionError;
 
@@ -81,11 +101,15 @@ UnrealMCP::FMCPResponse FSaveValidatedBlueprintsTool::Execute(const UnrealMCP::F
             for (int32 Index = 0; Index < ObjectPaths.Num(); ++Index)
             {
                 const FString& ObjectPath = ObjectPaths[Index];
+                FAssetOutcome& Outcome = Outcomes.AddDefaulted_GetRef();
+                Outcome.ObjectPath = ObjectPath;
+
                 TSharedRef<FJsonObject> Item = MakeShared<FJsonObject>();
                 Item->SetStringField(TEXT("objectPath"), ObjectPath);
 
                 if (bStopped)
                 {
+                    Outcome.Outcome = ESaveOutcome::NotAttempted;
                     Item->SetBoolField(TEXT("attempted"), false);
                     Item->SetBoolField(TEXT("saved"), false);
                     ResultsJson.Add(MakeShared<FJsonValueObject>(Item));
@@ -96,11 +120,12 @@ UnrealMCP::FMCPResponse FSaveValidatedBlueprintsTool::Execute(const UnrealMCP::F
                 FString ResolveError;
                 if (!BlueprintEditToolUtils::ResolveBlueprint(ObjectPath, Blueprint, ResolveError))
                 {
+                    Outcome.Outcome = ESaveOutcome::Failed;
+                    Outcome.Error = ResolveError;
                     Item->SetBoolField(TEXT("attempted"), true);
                     Item->SetBoolField(TEXT("saved"), false);
                     Item->SetStringField(TEXT("error"), ResolveError);
                     ResultsJson.Add(MakeShared<FJsonValueObject>(Item));
-                    FailedObjectPath = ObjectPath;
                     bStopped = !bContinueOnFailure;
                     continue;
                 }
@@ -113,6 +138,7 @@ UnrealMCP::FMCPResponse FSaveValidatedBlueprintsTool::Execute(const UnrealMCP::F
 
                 if (!bWasDirty)
                 {
+                    Outcome.Outcome = ESaveOutcome::SkippedNotDirty;
                     Item->SetBoolField(TEXT("attempted"), false);
                     Item->SetBoolField(TEXT("saved"), false);
                     Item->SetStringField(TEXT("skippedReason"), TEXT("Asset is not dirty; nothing to save."));
@@ -122,11 +148,12 @@ UnrealMCP::FMCPResponse FSaveValidatedBlueprintsTool::Execute(const UnrealMCP::F
 
                 if (bRequireUpToDateCompile && !bValidated)
                 {
+                    Outcome.Outcome = ESaveOutcome::Failed;
+                    Outcome.Error = TEXT("Blueprint is dirty but not compiled up to date; compile it before saving or pass requireUpToDateCompile=false.");
                     Item->SetBoolField(TEXT("attempted"), true);
                     Item->SetBoolField(TEXT("saved"), false);
-                    Item->SetStringField(TEXT("error"), TEXT("Blueprint is dirty but not compiled up to date; compile it before saving or pass requireUpToDateCompile=false."));
+                    Item->SetStringField(TEXT("error"), Outcome.Error);
                     ResultsJson.Add(MakeShared<FJsonValueObject>(Item));
-                    FailedObjectPath = ObjectPath;
                     bStopped = !bContinueOnFailure;
                     continue;
                 }
@@ -134,6 +161,7 @@ UnrealMCP::FMCPResponse FSaveValidatedBlueprintsTool::Execute(const UnrealMCP::F
                 Item->SetBoolField(TEXT("attempted"), true);
                 if (bDryRun)
                 {
+                    Outcome.Outcome = ESaveOutcome::DryRunWouldSave;
                     Item->SetBoolField(TEXT("saved"), false);
                     Item->SetStringField(TEXT("note"), TEXT("dryRun: this asset would be saved."));
                     ResultsJson.Add(MakeShared<FJsonValueObject>(Item));
@@ -143,10 +171,11 @@ UnrealMCP::FMCPResponse FSaveValidatedBlueprintsTool::Execute(const UnrealMCP::F
                 FString SavedFilename, SaveError;
                 if (!BlueprintEditToolUtils::SaveAsset(Blueprint, SavedFilename, SaveError))
                 {
+                    Outcome.Outcome = ESaveOutcome::Failed;
+                    Outcome.Error = SaveError;
                     Item->SetBoolField(TEXT("saved"), false);
                     Item->SetStringField(TEXT("error"), SaveError);
                     ResultsJson.Add(MakeShared<FJsonValueObject>(Item));
-                    FailedObjectPath = ObjectPath;
                     bStopped = !bContinueOnFailure;
                     continue;
                 }
@@ -158,37 +187,70 @@ UnrealMCP::FMCPResponse FSaveValidatedBlueprintsTool::Execute(const UnrealMCP::F
                 Item->SetBoolField(TEXT("indexRefreshed"), bIndexRefreshed);
                 Item->SetStringField(TEXT("indexRefreshError"), IndexRefreshError);
                 ResultsJson.Add(MakeShared<FJsonValueObject>(Item));
-                SavedObjectPaths.Add(ObjectPath);
+                Outcome.Outcome = ESaveOutcome::Saved;
             }
             return true;
         },
         ExecutionError);
 
-    const bool bAllSucceeded = FailedObjectPath.IsEmpty();
+    TArray<TSharedPtr<FJsonValue>> SavedJson, NotAttemptedJson, SkippedJson, FailedJson;
+    FString FirstFailedObjectPath;
+    for (const FAssetOutcome& Outcome : Outcomes)
+    {
+        switch (Outcome.Outcome)
+        {
+        case ESaveOutcome::Saved:
+            SavedJson.Add(MakeShared<FJsonValueString>(Outcome.ObjectPath));
+            break;
+        case ESaveOutcome::SkippedNotDirty:
+            SkippedJson.Add(MakeShared<FJsonValueString>(Outcome.ObjectPath));
+            break;
+        case ESaveOutcome::Failed:
+        {
+            if (FirstFailedObjectPath.IsEmpty())
+            {
+                FirstFailedObjectPath = Outcome.ObjectPath;
+            }
+            TSharedRef<FJsonObject> FailedItem = MakeShared<FJsonObject>();
+            FailedItem->SetStringField(TEXT("objectPath"), Outcome.ObjectPath);
+            FailedItem->SetStringField(TEXT("error"), Outcome.Error);
+            FailedJson.Add(MakeShared<FJsonValueObject>(FailedItem));
+            break;
+        }
+        case ESaveOutcome::NotAttempted:
+            NotAttemptedJson.Add(MakeShared<FJsonValueString>(Outcome.ObjectPath));
+            break;
+        case ESaveOutcome::DryRunWouldSave:
+        default:
+            break;
+        }
+    }
+
+    const bool bAllSucceeded = FailedJson.IsEmpty();
 
     UnrealMCP::FMCPResponse Response;
     Response.Id = Request.Id;
     TSharedRef<FJsonObject> Result = BuildBooleanResult(bAllSucceeded);
     Result->SetBoolField(TEXT("dryRun"), bDryRun);
     Result->SetNumberField(TEXT("requestedCount"), ObjectPaths.Num());
+    Result->SetNumberField(TEXT("savedCount"), SavedJson.Num());
+    Result->SetNumberField(TEXT("failedCount"), FailedJson.Num());
     Result->SetArrayField(TEXT("results"), ResultsJson);
 
     if (!bAllSucceeded)
     {
-        TArray<TSharedPtr<FJsonValue>> SavedJson, NotAttemptedJson;
-        for (const FString& Path : SavedObjectPaths) SavedJson.Add(MakeShared<FJsonValueString>(Path));
-        bool bPastFailure = false;
-        for (const FString& Path : ObjectPaths)
-        {
-            if (Path == FailedObjectPath) { bPastFailure = true; continue; }
-            if (bPastFailure) NotAttemptedJson.Add(MakeShared<FJsonValueString>(Path));
-        }
         TSharedRef<FJsonObject> RecoveryPlan = MakeShared<FJsonObject>();
         RecoveryPlan->SetArrayField(TEXT("savedObjectPaths"), SavedJson);
-        RecoveryPlan->SetStringField(TEXT("failedObjectPath"), FailedObjectPath);
+        // Every failure is reported, not just the last one, and the first failure is named separately
+        // because that is the one that stops the default continueOnFailure=false run.
+        RecoveryPlan->SetStringField(TEXT("failedObjectPath"), FirstFailedObjectPath);
+        RecoveryPlan->SetArrayField(TEXT("failedObjectPaths"), FailedJson);
         RecoveryPlan->SetArrayField(TEXT("notAttemptedObjectPaths"), NotAttemptedJson);
+        RecoveryPlan->SetArrayField(TEXT("skippedCleanObjectPaths"), SkippedJson);
         RecoveryPlan->SetStringField(TEXT("guidance"),
-            TEXT("Assets in savedObjectPaths are already saved to disk. failedObjectPath and every asset in notAttemptedObjectPaths remain dirty and unsaved. Fix the failure and call SaveValidatedBlueprints again with the remaining object paths."));
+            bDryRun
+                ? TEXT("Nothing was written: this was a dry run. Assets in failedObjectPaths would not be saveable as-is; resolve each error before running without dryRun.")
+                : TEXT("Assets in savedObjectPaths are saved to disk. Assets in failedObjectPaths and notAttemptedObjectPaths remain dirty and unsaved. Assets in skippedCleanObjectPaths were already clean and needed no save. Resolve each failure and call SaveValidatedBlueprints again with the still-unsaved object paths."));
         Result->SetObjectField(TEXT("recoveryPlan"), RecoveryPlan);
     }
 

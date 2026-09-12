@@ -5,12 +5,103 @@
 #include "Misc/SecureHash.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "UnrealMCPLog.h"
 #include "UnrealMCPSettings.h"
 
 using namespace UnrealMCP;
 
 namespace
 {
+    // A short "why was this called" hint for the Unreal log. Without it the log shows only that a
+    // pipe client connected and disconnected, which says nothing about what the agent actually asked
+    // for. Kept to one bounded line per request so a busy session stays readable.
+    FString BuildRequestLogHint(const FMCPRequest& Request)
+    {
+        if (!Request.Params.IsValid())
+        {
+            return FString();
+        }
+
+        // Whichever of these a tool uses, it is the target the caller cared about.
+        static const TCHAR* TargetFields[] = {
+            TEXT("objectPath"), TEXT("ownerBlueprint"), TEXT("blueprintPath"), TEXT("assetPath"),
+            TEXT("name"), TEXT("functionName"), TEXT("query") };
+
+        TArray<FString> Parts;
+        for (const TCHAR* Field : TargetFields)
+        {
+            FString Value;
+            if (Request.Params->TryGetStringField(Field, Value) && !Value.IsEmpty())
+            {
+                if (Value.Len() > 120)
+                {
+                    Value = Value.Left(117) + TEXT("...");
+                }
+                Parts.Add(FString::Printf(TEXT("%s=%s"), Field, *Value));
+            }
+            if (Parts.Num() >= 2)
+            {
+                break;
+            }
+        }
+
+        bool bDryRun = false;
+        if (Request.Params->TryGetBoolField(TEXT("dryRun"), bDryRun) && bDryRun)
+        {
+            Parts.Add(TEXT("dryRun"));
+        }
+
+        return Parts.IsEmpty() ? FString() : FString::Printf(TEXT(" [%s]"), *FString::Join(Parts, TEXT(", ")));
+    }
+
+    // The adapter opens a fresh pipe connection per request, so initialize/tools/list handshakes repeat
+    // constantly and say nothing about intent. Log the caller's identity only when it actually changes,
+    // and keep the repeated handshakes at Verbose so the log shows agent actions rather than plumbing.
+    FCriticalSection ClientIdentityLock;
+    FString LastLoggedClientIdentity;
+
+    void LogClientIdentityIfChanged(const FMCPRequest& Request)
+    {
+        if (!Request.Params.IsValid())
+        {
+            return;
+        }
+
+        FString Identity;
+        const TSharedPtr<FJsonObject>* ClientInfo = nullptr;
+        if (Request.Params->TryGetObjectField(TEXT("clientInfo"), ClientInfo) && ClientInfo != nullptr)
+        {
+            FString ClientName, ClientVersion;
+            (*ClientInfo)->TryGetStringField(TEXT("name"), ClientName);
+            (*ClientInfo)->TryGetStringField(TEXT("version"), ClientVersion);
+            if (!ClientName.IsEmpty())
+            {
+                Identity = ClientVersion.IsEmpty() ? ClientName : FString::Printf(TEXT("%s %s"), *ClientName, *ClientVersion);
+            }
+        }
+        if (Identity.IsEmpty())
+        {
+            return;
+        }
+
+        FString Via;
+        Request.Params->TryGetStringField(TEXT("adapter"), Via);
+
+        FScopeLock Lock(&ClientIdentityLock);
+        if (LastLoggedClientIdentity == Identity)
+        {
+            return;
+        }
+        LastLoggedClientIdentity = Identity;
+        UE_LOG(LogUnrealMCP, Log, TEXT("MCP client attached: %s%s"), *Identity,
+            Via.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" via %s"), *Via));
+    }
+
+    // initialize/tools/list/ping are adapter plumbing repeated on every connection, not agent intent.
+    bool IsHandshakeMethod(const FString& Method)
+    {
+        return Method == TEXT("initialize") || Method == TEXT("tools/list") || Method == TEXT("ping");
+    }
     FString SerializeCanonicalJsonValue(const TSharedPtr<FJsonValue>& Value)
     {
         if (!Value.IsValid())
@@ -197,10 +288,36 @@ FString FMCPServer::HandleJsonRequest(const FString& InboundJson) const
     FMCPResponse ErrorResponse;
     if (!ParseJsonRequest(InboundJson, Request, ErrorResponse))
     {
+        UE_LOG(LogUnrealMCP, Warning, TEXT("MCP request rejected before dispatch: %s"),
+            ErrorResponse.Error.IsSet() ? *ErrorResponse.Error.GetValue().Message : TEXT("unknown parse failure"));
         return SerializeResponse(ErrorResponse);
     }
 
-    return SerializeResponse(HandleRequest(Request));
+    if (Request.Method == TEXT("initialize"))
+    {
+        LogClientIdentityIfChanged(Request);
+    }
+
+    const double StartSeconds = FPlatformTime::Seconds();
+    const FMCPResponse Response = HandleRequest(Request);
+    const double ElapsedMs = (FPlatformTime::Seconds() - StartSeconds) * 1000.0;
+
+    if (Response.Error.IsSet())
+    {
+        const FMCPError& Error = Response.Error.GetValue();
+        UE_LOG(LogUnrealMCP, Warning, TEXT("MCP %s%s -> error %d: %s (%.0f ms)"),
+            *Request.Method, *BuildRequestLogHint(Request), static_cast<int32>(Error.Code), *Error.Message, ElapsedMs);
+    }
+    else if (IsHandshakeMethod(Request.Method))
+    {
+        UE_LOG(LogUnrealMCP, Verbose, TEXT("MCP %s -> ok (%.0f ms)"), *Request.Method, ElapsedMs);
+    }
+    else
+    {
+        UE_LOG(LogUnrealMCP, Log, TEXT("MCP %s%s -> ok (%.0f ms)"), *Request.Method, *BuildRequestLogHint(Request), ElapsedMs);
+    }
+
+    return SerializeResponse(Response);
 }
 
 bool FMCPServer::ParseJsonRequest(const FString& InboundJson, FMCPRequest& OutRequest, FMCPResponse& OutErrorResponse) const

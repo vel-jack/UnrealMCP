@@ -12,7 +12,9 @@
 #include "Tools/AddBlueprintSetOperationNodeTool.h"
 #include "Tools/AddBlueprintVariableGetNodeTool.h"
 #include "Tools/AddBlueprintVariableTool.h"
+#include "EdGraph/EdGraph.h"
 #include "Tools/BlueprintEditToolUtils.h"
+#include "Tools/BlueprintGraphEditToolUtils.h"
 #include "Tools/BlueprintToolUtils.h"
 #include "Tools/ConnectBlueprintPinsTool.h"
 #include "Tools/CreateBlueprintFunctionGraphTool.h"
@@ -46,6 +48,35 @@ namespace
         Result.bSuccess = true;
         Result.Json = Response.Result;
         return Result;
+    }
+
+    // CreateBlueprintFunctionGraph only reports that a graph with this name exists; it does not check
+    // that the body matches. A previous run that failed partway leaves a graph with just its entry
+    // (and result) node, so treating "exists" as "scaffolded" would silently report success for a
+    // function that does nothing. Counting nodes against the minimum this workflow builds catches that.
+    int32 CountGraphNodes(const FString& ObjectPath, const FString& GraphGuid, FString& OutError)
+    {
+        int32 NodeCount = INDEX_NONE;
+        FString ExecutionError;
+        BlueprintToolUtils::ExecuteOnGameThreadSync(
+            [&](FString& InnerError)
+            {
+                UBlueprint* Blueprint = nullptr;
+                if (!BlueprintEditToolUtils::ResolveBlueprint(ObjectPath, Blueprint, InnerError))
+                {
+                    return false;
+                }
+                UEdGraph* Graph = nullptr;
+                if (!BlueprintGraphEditToolUtils::ResolveGraph(Blueprint, FString(), GraphGuid, Graph, InnerError))
+                {
+                    return false;
+                }
+                NodeCount = Graph->Nodes.Num();
+                return true;
+            },
+            ExecutionError);
+        OutError = ExecutionError;
+        return NodeCount;
     }
 
     TSharedRef<FJsonObject> MakeParams()
@@ -566,6 +597,18 @@ UnrealMCP::FMCPResponse FWireSelectionWorkflowTool::Execute(const UnrealMCP::FMC
 
     struct FFunctionSpec { FString Name; bool bHasTarget; bool bHasBoolReturn; int32 Kind; };
     enum { Kind_Clear, Kind_SelectOne, Kind_Toggle, Kind_Contains };
+    // Smallest node count each body below actually produces, entry/result nodes included.
+    auto MinimumScaffoldedNodeCount = [](int32 Kind) -> int32
+    {
+        switch (Kind)
+        {
+        case Kind_Clear: return 3;      // entry + collection get + Clear
+        case Kind_SelectOne: return 4;  // entry + get + Clear + Add
+        case Kind_Toggle: return 6;     // entry + get + Contains + Branch + Add + Remove
+        case Kind_Contains: return 4;   // entry + result + get + Contains
+        default: return 2;
+        }
+    };
     const TArray<FFunctionSpec> Specs = {
         { ClearName, false, false, Kind_Clear },
         { SelectOneName, true, false, Kind_SelectOne },
@@ -609,6 +652,35 @@ UnrealMCP::FMCPResponse FWireSelectionWorkflowTool::Execute(const UnrealMCP::FMC
 
         if (bAlreadyExists)
         {
+            // Verify the existing graph structurally instead of trusting the name. An incomplete
+            // leftover from an earlier failed run must not be reported as successful scaffolding.
+            FString CountError;
+            const int32 ExistingNodeCount = CountGraphNodes(ObjectPath, GraphGuid, CountError);
+            const int32 MinimumNodeCount = MinimumScaffoldedNodeCount(Spec.Kind);
+            const bool bStructurallyComplete = ExistingNodeCount >= MinimumNodeCount;
+            Item->SetNumberField(TEXT("existingNodeCount"), ExistingNodeCount);
+            Item->SetNumberField(TEXT("expectedMinimumNodeCount"), MinimumNodeCount);
+            Item->SetBoolField(TEXT("structurallyComplete"), bStructurallyComplete);
+
+            if (ExistingNodeCount == INDEX_NONE)
+            {
+                Item->SetStringField(TEXT("error"), CountError.IsEmpty()
+                    ? TEXT("A function graph with this name exists but could not be inspected, so it cannot be confirmed as scaffolded.")
+                    : CountError);
+                FunctionResults.Add(MakeShared<FJsonValueObject>(Item));
+                bAnyFailed = true; FirstError = Item->GetStringField(TEXT("error"));
+                continue;
+            }
+            if (!bStructurallyComplete)
+            {
+                Item->SetStringField(TEXT("error"), FString::Printf(
+                    TEXT("Function '%s' already exists but holds only %d node(s) where this workflow builds at least %d; it looks like an incomplete earlier attempt. Delete or finish it, then re-run. This tool will not overwrite an existing function body."),
+                    *Spec.Name, ExistingNodeCount, MinimumNodeCount));
+                FunctionResults.Add(MakeShared<FJsonValueObject>(Item));
+                bAnyFailed = true; FirstError = Item->GetStringField(TEXT("error"));
+                continue;
+            }
+
             FunctionResults.Add(MakeShared<FJsonValueObject>(Item));
             continue;
         }
@@ -752,7 +824,23 @@ UnrealMCP::FMCPResponse FWireSelectionWorkflowTool::Execute(const UnrealMCP::FMC
 
     if (bAnyFailed)
     {
-        return BuildError(Request, EMCPErrorCode::InvalidParams, FirstError);
+        // This workflow composes several independently mutating sub-tools, so a mid-sequence failure
+        // can leave earlier functions fully scaffolded and the failing one partly built. Returning a
+        // bare error would hide that; the caller needs the per-function record to reconcile the asset.
+        TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
+        Data->SetStringField(TEXT("errorCode"), TEXT("selection_workflow_incomplete"));
+        Data->SetStringField(TEXT("objectPath"), ObjectPath);
+        Data->SetStringField(TEXT("selectionVariableName"), SelectionVariableName);
+        Data->SetBoolField(TEXT("changed"), bChanged);
+        Data->SetBoolField(TEXT("atomic"), false);
+        Data->SetArrayField(TEXT("functions"), FunctionResults);
+        Data->SetBoolField(TEXT("compiled"), bCompiled);
+        Data->SetBoolField(TEXT("compileSucceeded"), bCompileSucceeded);
+        Data->SetBoolField(TEXT("saved"), bSaved);
+        Data->SetStringField(TEXT("guidance"), bChanged
+            ? TEXT("This Blueprint was partially modified and was not compiled or saved. Inspect functions[]: entries with created=true are fully built, an entry carrying an error is incomplete, and entries with attempted=false were never started. Delete or finish the incomplete function before re-running; re-running treats any existing function name as already scaffolded.")
+            : TEXT("Nothing was modified. Resolve the reported error and re-run."));
+        return BuildError(Request, EMCPErrorCode::InvalidParams, FirstError, Data);
     }
 
     FMCPResponse Response;

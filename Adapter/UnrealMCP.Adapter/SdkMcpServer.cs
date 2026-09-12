@@ -39,8 +39,9 @@ internal static class SdkMcpServer
                 };
             })
             .WithStdioServerTransport()
-            .WithListToolsHandler(async (_, requestCancellationToken) =>
+            .WithListToolsHandler(async (context, requestCancellationToken) =>
             {
+                CaptureClientIdentity(dispatcher, context.Server.ClientInfo);
                 var definitions = await dispatcher.GetToolDefinitionsAsync(requestCancellationToken);
                 Interlocked.Exchange(ref publishedCatalogVersion, dispatcher.SessionManager.ToolCatalogVersion);
                 return new ListToolsResult
@@ -50,6 +51,7 @@ internal static class SdkMcpServer
             })
             .WithCallToolHandler(async (context, requestCancellationToken) =>
             {
+                CaptureClientIdentity(dispatcher, context.Server.ClientInfo);
                 var parameters = context.Params ?? throw new InvalidOperationException("tools/call params are required.");
                 JsonNode? arguments = parameters.Arguments is null
                     ? new JsonObject()
@@ -91,6 +93,16 @@ internal static class SdkMcpServer
             });
 
         await builder.Build().RunAsync(cancellationToken);
+    }
+
+    // The MCP client identifies itself once, during the SDK handshake. Capture it here so the plugin
+    // can name the caller in the Unreal log instead of reporting an anonymous pipe connection.
+    private static void CaptureClientIdentity(McpRequestDispatcher dispatcher, Implementation? clientInfo)
+    {
+        if (clientInfo is not null)
+        {
+            dispatcher.SessionManager.SetConnectedClient(clientInfo.Name, clientInfo.Version);
+        }
     }
 
     private static Tool ToProtocolTool(McpToolDefinition definition)

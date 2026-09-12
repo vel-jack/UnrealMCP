@@ -22,6 +22,17 @@ internal sealed partial class UnrealSessionManager
     private DateTimeOffset? _lastAttachUtc;
     private IReadOnlyList<ProjectDescriptor> _lastDiscoveredProjects = [];
     private bool _initialCatalogDiscoveryAttempted;
+
+    // Forwarded to the plugin on every native initialize so the Unreal log can name who is calling.
+    // Without it the plugin only ever sees an anonymous connection per request.
+    private string? _clientName;
+    private string? _clientVersion;
+
+    public void SetConnectedClient(string? name, string? version)
+    {
+        _clientName = string.IsNullOrWhiteSpace(name) ? null : name;
+        _clientVersion = string.IsNullOrWhiteSpace(version) ? null : version;
+    }
     private long _toolCatalogVersion;
     private DateTimeOffset? _launchStartedUtc;
     private Process? _launchedProcess;

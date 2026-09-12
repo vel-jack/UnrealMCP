@@ -78,7 +78,7 @@ internal sealed partial class UnrealSessionManager
         try
         {
             var pipeClient = CreatePipeClient();
-            var initializeResponse = await pipeClient.SendRequestAsync("initialize", new JsonObject(), cancellationToken);
+            var initializeResponse = await pipeClient.SendRequestAsync("initialize", BuildInitializeParameters(), cancellationToken);
             nativeError = initializeResponse["error"] as JsonObject;
             if (nativeError is null)
             {
@@ -126,6 +126,27 @@ internal sealed partial class UnrealSessionManager
                 "UnrealMCP did not initialize successfully.", true, "ReconnectUnreal", processes, nativeError);
         var lastMessage = transportException?.Message ?? "The UnrealMCP named pipe did not become ready before the timeout elapsed.";
         return SetUnavailable("unreal_mcp_unavailable", $"Unreal Editor is running, but the UnrealMCP pipe is unavailable: {lastMessage}", true, "ReconnectUnreal", processes);
+    }
+
+    // Identifies the caller to the plugin. The adapter reconnects per request, so this is the only
+    // place the Unreal log can learn who is driving it; the plugin logs it once per distinct client.
+    private JsonObject BuildInitializeParameters()
+    {
+        var parameters = new JsonObject
+        {
+            ["adapter"] = $"{McpProtocol.AdapterServerName} {McpProtocol.AdapterServerVersion}"
+        };
+
+        if (_clientName is not null)
+        {
+            parameters["clientInfo"] = new JsonObject
+            {
+                ["name"] = _clientName,
+                ["version"] = _clientVersion
+            };
+        }
+
+        return parameters;
     }
 
     private EngineResolutionResult ResolveEngineForSelectedProject(string? explicitEnginePath)

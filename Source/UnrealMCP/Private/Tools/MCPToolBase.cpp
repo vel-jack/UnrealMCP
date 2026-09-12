@@ -26,12 +26,18 @@ TSharedRef<FJsonObject> FMCPToolBase::BuildBooleanResult(bool bSuccess) const
 
 UnrealMCP::FMCPResponse FMCPToolBase::BuildError(const UnrealMCP::FMCPRequest& Request, UnrealMCP::EMCPErrorCode Code, const FString& Message) const
 {
+    return BuildError(Request, Code, Message, nullptr);
+}
+
+UnrealMCP::FMCPResponse FMCPToolBase::BuildError(const UnrealMCP::FMCPRequest& Request, UnrealMCP::EMCPErrorCode Code, const FString& Message, TSharedPtr<FJsonObject> Data) const
+{
     UnrealMCP::FMCPResponse Response;
     Response.Id = Request.Id;
 
     UnrealMCP::FMCPError Error;
     Error.Code = Code;
     Error.Message = Message;
+    Error.Data = Data;
     Response.Error = Error;
     return Response;
 }
