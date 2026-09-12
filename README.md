@@ -262,7 +262,9 @@ The adapter assigns an `operationId` before every recognized mutation and expose
 
 A mutation transport timeout no longer invalidates an otherwise healthy editor attachment. The adapter returns `mutation_request_timeout`, the preassigned `operationId`, `mutationMayStillBeRunning=true`, and `canRetry=false`. Query `GetMutationRequestStatus` with that ID before deciding whether any retry is necessary. Read-only request timeouts are retryable and likewise do not clear the session; reconnect only if a later health check shows the pipe is unavailable.
 
-`SpliceBlueprintExecFlow` atomically replaces one exact existing execution link with an ordered chain of existing nodes. It requires exact source, target, and inserted-node exec pin identities; preflights the whole route; rejects occupied inserted pins or a stale graph revision; and treats an already-complete route as an idempotent retry. Dry-run never changes the graph. Apply uses one transaction, restores the original route on mutation or compile failure, compiles before an optional save, and defaults to compile-without-save.
+`SpliceBlueprintExecFlow` atomically replaces one exact existing execution link with an ordered chain of existing nodes. It requires exact source, target, and inserted-node exec pin identities; preflights the whole route; rejects occupied inserted pins or a stale graph revision; and treats an already-complete route as an idempotent retry. Dry-run never changes the graph. A real splice breaks and rewires an existing execution link, so run `dryRun=true` first and then pass `confirm=true`. Apply uses one transaction, restores the original route on mutation or compile failure, compiles before an optional save, and defaults to compile-without-save.
+
+`SaveBlueprint` explicitly saves one Blueprint and refreshes its indexed asset record. By default, `requireUpToDateCompile=true` refuses to persist a Blueprint whose compile status is stale or failed and returns `errorCode=blueprint_compile_not_up_to_date` with recovery guidance. Set it false only when intentionally saving that state. Successful responses report the measured post-save dirty state; `success=false` with `errorCode=asset_still_dirty_after_save` means the package must still be treated as unsaved.
 
 ## Project Architecture Analysis
 
@@ -348,6 +350,8 @@ The adapter is the single MCP entry point and is responsible for:
 ```powershell
 dotnet build .\Adapter\UnrealMCP.Adapter\UnrealMCP.Adapter.csproj -c Release
 ```
+
+On Windows, `Adapter\BuildAdapter.bat` performs the same Release build followed by the adapter `help` and `doctor --json` smoke checks. Close every AI agent or MCP client using the existing adapter executable before running it, because active adapter processes lock the Release executable. Double-click the batch file for an interactive run, or use `Adapter\BuildAdapter.bat --no-pause` from a terminal.
 
 ### Universal Setup
 

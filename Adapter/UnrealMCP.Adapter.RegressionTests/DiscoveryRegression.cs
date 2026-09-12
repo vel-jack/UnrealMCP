@@ -23,9 +23,9 @@ internal static class DiscoveryRegression
         var list = await client.Request("tools/list", new JsonObject());
         Check(list["result"]!["tools"]!.AsArray().Count == 14, "Compact surface contains only 11 lifecycle and three discovery tools");
         var search = Payload(await client.Call("unreal.adapter.SearchTools", new JsonObject { ["query"] = "regression", ["limit"] = 1 }));
-        Check(search["tools"]!.AsArray()[0]!["inputSchema"] is null && search["matchedCount"]!.GetValue<int>() == 2,
+        Check(search["tools"]!.AsArray()[0]!["inputSchema"] is null && search["matchedCount"]!.GetValue<int>() == 4,
             "Search omits schemas and reports exact catalog coverage");
-        var page = Payload(await client.Call("unreal.adapter.SearchTools", new JsonObject { ["query"] = "regression", ["offset"] = 1,
+        var page = Payload(await client.Call("unreal.adapter.SearchTools", new JsonObject { ["query"] = "regression", ["offset"] = 1, ["limit"] = 1,
             ["expectedCatalogRevision"] = search["catalogRevision"]!.DeepClone() }));
         Check(page["returnedCount"]!.GetValue<int>() == 1, "Catalog pagination preserves revision");
         var schema = Payload(await client.Call("unreal.adapter.GetToolSchema", new JsonObject { ["name"] = "RemoveInputMappingContextMapping" }));

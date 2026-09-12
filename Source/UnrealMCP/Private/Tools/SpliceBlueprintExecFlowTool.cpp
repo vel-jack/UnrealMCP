@@ -121,6 +121,15 @@ UnrealMCP::FMCPResponse FSpliceBlueprintExecFlowTool::Execute(const UnrealMCP::F
     const bool bDryRun = BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("dryRun"), false);
     const bool bCompile = BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("compileAfterEdit"), true);
     const bool bSave = BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("saveAfterEdit"), false);
+    // Splicing breaks an existing user execution link before rewiring it, so it is as
+    // destructive as DisconnectBlueprintPins and carries the same confirmation gate. A
+    // non-destructive-sounding tool name is not a reason to skip it.
+    const bool bConfirm = BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("confirm"), false);
+    if (!bDryRun && !bConfirm)
+    {
+        return BuildError(Request, EMCPErrorCode::InvalidParams,
+            TEXT("SpliceBlueprintExecFlow breaks an existing execution link; inspect it with dryRun=true, then supply confirm=true."));
+    }
     FString InitialRevision, FinalRevision, SavedFilename, IndexError, ExecutionError;
     bool bAlreadyComplete = false, bChanged = false, bCompiled = false, bCompileSucceeded = false;
     bool bSaved = false, bIndexRefreshed = false, bRolledBack = false;
@@ -325,6 +334,7 @@ TSharedPtr<FJsonObject> FSpliceBlueprintExecFlowTool::BuildInputSchema() const
     NodeItem->SetObjectField(TEXT("properties"), NodeProperties);
     NodeItem->SetArrayField(TEXT("required"), {MakeShared<FJsonValueString>(TEXT("nodeGuid")), MakeShared<FJsonValueString>(TEXT("inputPinName")), MakeShared<FJsonValueString>(TEXT("outputPinName"))});
     Nodes->SetObjectField(TEXT("items"), NodeItem); Properties->SetObjectField(TEXT("insertedNodes"), Nodes);
+    Properties->SetObjectField(TEXT("confirm"), BuildBoolProperty(TEXT("Required true for a real splice, because the existing execution link is broken and rewired.")));
     Properties->SetObjectField(TEXT("dryRun"), BuildBoolProperty(TEXT("Validate the exact route and ordered chain without mutation.")));
     Properties->SetObjectField(TEXT("compileAfterEdit"), BuildBoolProperty(TEXT("Compile before any save. Defaults true.")));
     Properties->SetObjectField(TEXT("saveAfterEdit"), BuildBoolProperty(TEXT("Save and partially refresh after successful compilation. Defaults false.")));

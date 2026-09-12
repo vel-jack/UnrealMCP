@@ -360,11 +360,28 @@ internal sealed partial class UnrealSessionManager
         }
     }
 
+    // Tools that mutate durable state but whose names do not start with a mutation verb. The prefix
+    // heuristic below cannot see these, and missing one means the call gets no operationId, so a
+    // client that times out has nothing to query and may blindly repeat expensive work.
+    // BuildProjectIndex rewrites the whole on-disk SQLite index (the cheaper RefreshProjectIndex is
+    // already covered by the "Refresh" prefix), and ValidateBlueprint compiles the Blueprint it
+    // inspects, exactly what the tracked CompileBlueprint does.
+    // This list is a stopgap: the authoritative fix is native per-tool metadata (see ROADMAP E1).
+    private static readonly string[] AdditionalMutationToolNames =
+    [
+        "BuildProjectIndex", "ValidateBlueprint"
+    ];
+
     internal static bool IsMutationTool(string toolName)
     {
         if (toolName.Equals("GetMutationRequestStatus", StringComparison.Ordinal))
         {
             return false;
+        }
+
+        if (AdditionalMutationToolNames.Contains(toolName, StringComparer.Ordinal))
+        {
+            return true;
         }
 
         string[] mutationPrefixes =

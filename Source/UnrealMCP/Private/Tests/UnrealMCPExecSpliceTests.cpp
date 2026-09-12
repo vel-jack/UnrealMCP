@@ -2,6 +2,7 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "Dom/JsonObject.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraphSchema_K2.h"
@@ -15,7 +16,6 @@
 #include "Misc/AutomationTest.h"
 #include "Misc/PackageName.h"
 #include "Misc/ScopeExit.h"
-#include "ObjectTools.h"
 #include "Tools/BlueprintGraphEditToolUtils.h"
 #include "Tools/SpliceBlueprintExecFlowTool.h"
 
@@ -52,6 +52,8 @@ namespace
         Request.Params->SetStringField(TEXT("targetNodeGuid"), UnrealMCP::BlueprintGraphEditToolUtils::GetNodeGuid(Target));
         Request.Params->SetStringField(TEXT("targetPinName"), TEXT("execute"));
         Request.Params->SetBoolField(TEXT("dryRun"), bDryRun);
+        // A real splice breaks an existing execution link, so the tool now requires confirm=true.
+        Request.Params->SetBoolField(TEXT("confirm"), !bDryRun);
         Request.Params->SetBoolField(TEXT("compileAfterEdit"), true);
         Request.Params->SetBoolField(TEXT("saveAfterEdit"), false);
         TArray<TSharedPtr<FJsonValue>> Nodes;
@@ -82,11 +84,19 @@ bool FUnrealMCPExecSpliceLiveTest::RunTest(const FString& Parameters)
     UBlueprint* Blueprint = CreateSpliceFixture(PackagePath);
     ON_SCOPE_EXIT
     {
-        if (Blueprint != nullptr) ObjectTools::DeleteObjectsUnchecked({Blueprint});
+        if (Blueprint != nullptr && Blueprint->GetOuter() != GetTransientPackage())
+        {
+            FAssetRegistryModule::AssetDeleted(Blueprint);
+            Blueprint->ClearFlags(RF_Public | RF_Standalone);
+            const FName TransientName = MakeUniqueObjectName(GetTransientPackage(), Blueprint->GetClass(), Blueprint->GetFName());
+            Blueprint->Rename(*TransientName.ToString(), GetTransientPackage(),
+                REN_DontCreateRedirectors | REN_NonTransactional | REN_DoNotDirty | REN_ForceNoResetLoaders);
+        }
         if (UPackage* Package = FindPackage(nullptr, *PackagePath)) Package->SetDirtyFlag(false);
     };
     if (!TestNotNull(TEXT("Splice fixture created"), Blueprint)
         || !TestTrue(TEXT("Splice fixture has EventGraph"), Blueprint->UbergraphPages.Num() > 0)) return false;
+    FAssetRegistryModule::AssetCreated(Blueprint);
 
     FEdGraphPinType FlagType; FlagType.PinCategory = UEdGraphSchema_K2::PC_Boolean;
     TestTrue(TEXT("SpliceFlag variable created"),

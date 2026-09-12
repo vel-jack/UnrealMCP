@@ -94,6 +94,12 @@ try
         Check(HasTool(list, "GetRegressionInitial"), "First handshake auto-selects the sole project and reads live catalog");
         Check(list["result"]!["tools"]!.AsArray().Single(t => t!["name"]!.GetValue<string>() == "RemoveInputMappingContextMapping")!
             ["inputSchema"]!["properties"]?["operationId"] is not null, "Remove schema advertises operationId");
+        foreach (var name in new[] { "BuildProjectIndex", "ValidateBlueprint" })
+        {
+            Check(UnrealSessionManager.IsMutationTool(name), $"{name} is classified as a mutation");
+            Check(list["result"]!["tools"]!.AsArray().Single(t => t!["name"]!.GetValue<string>() == name)!
+                ["inputSchema"]!["properties"]?["operationId"] is not null, $"{name} schema advertises operationId");
+        }
 
         pipe.IncludeNewTool = true;
         var attach = await client.Call("unreal.adapter.AttachToUnrealProject", new JsonObject());
@@ -118,6 +124,17 @@ try
         Check(pipe.LastOperationId == "stable-removal", "Remove forwards the supplied operationId");
         await client.Call("RemoveInputMappingContextMapping", new JsonObject());
         Check(!string.IsNullOrWhiteSpace(pipe.LastOperationId) && pipe.LastOperationId != "stable-removal", "Remove generates an operationId when omitted");
+        foreach (var name in new[] { "BuildProjectIndex", "ValidateBlueprint" })
+        {
+            var operationId = $"stable-{name.ToLowerInvariant()}";
+            var mutationTimeout = await client.Call(name, new JsonObject { ["operationId"] = operationId });
+            var mutationPayload = mutationTimeout["result"]!["structuredContent"]!;
+            Check(mutationPayload["errorCode"]!.GetValue<string>() == "mutation_request_timeout" &&
+                  mutationPayload["operationId"]!.GetValue<string>() == operationId &&
+                  mutationPayload["canRetry"]!.GetValue<bool>() == false &&
+                  mutationPayload["mutationMayStillBeRunning"]!.GetValue<bool>(), $"{name} timeout preserves uncertain mutation identity");
+            Check(pipe.LastOperationId == operationId, $"{name} forwards the supplied operationId");
+        }
 
         pipe.Available = false;
         list = await client.Request("tools/list", new JsonObject());
@@ -256,14 +273,17 @@ sealed class FakeNativePipe : IAsyncDisposable
                 response["error"] = new JsonObject { ["code"] = -32000, ["message"] = "Simulated editor unavailable" };
             else if (method == "tools/list")
             {
-                var names = new List<string> { "GetRegressionInitial", "RemoveInputMappingContextMapping" };
+                var names = new List<string>
+                {
+                    "GetRegressionInitial", "RemoveInputMappingContextMapping", "BuildProjectIndex", "ValidateBlueprint"
+                };
                 if (IncludeNewTool) names.Add("GetRegressionNew");
                 response["result"] = new JsonObject { ["tools"] = new JsonArray(names.Select(n => (JsonNode)new JsonObject
                 {
                     ["name"] = n, ["description"] = "Regression fixture", ["inputSchema"] = new JsonObject { ["type"] = "object" }
                 }).ToArray()) };
             }
-            else if (method == "RemoveInputMappingContextMapping")
+            else if (method is "RemoveInputMappingContextMapping" or "BuildProjectIndex" or "ValidateBlueprint")
             {
                 LastOperationId = request["params"]?["operationId"]?.GetValue<string>();
                 // Wait for the client's timeout to disconnect, then serve its next connection.
