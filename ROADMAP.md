@@ -158,6 +158,16 @@ For each capability, retain a reproducible baseline and upgraded run on the same
 
 Proposed targets after E1: at least 50% fewer tool round trips for chosen compound workflows and at least 50% fewer serialized response bytes for overview-led inspection, with equal required evidence. Establish fixtures and baseline before marking either target achieved.
 
+### Public distribution documentation
+
+- [ ] Add a concise quick start for cloning into a project's `Plugins/UnrealMCP` directory, enabling the plugin and building the Editor target.
+- [ ] Document supported Unreal Engine, Windows and .NET versions, separating build prerequisites from runtime prerequisites.
+- [ ] Document the adapter Release build, client setup, project selection, connection checks and first safe read-only call.
+- [ ] Add upgrade, adapter restart, catalog refresh, uninstall and clean-removal instructions.
+- [ ] Explain source-only versus prebuilt adapter packages, excluded Unreal Engine components and the separate Unreal Engine license requirement.
+- [ ] Publish a supported-version matrix, beta limitations, mutation/save safety notes, troubleshooting and a minimal verification checklist.
+- [ ] Keep public examples project-agnostic and free of machine paths, private asset names and host-specific verification evidence.
+
 ## Current handoff
 
 E1's initial slice and roadmap reorganization are implemented and verified. See [E1 verification](docs/E1_VERIFICATION.md) for measurements, reproduction and limits. E2 reliability and E1 efficiency extensions are the next implementation work; no claim is made that all milestones above are implemented. No index schema change is part of E1.

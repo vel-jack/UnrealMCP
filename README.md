@@ -204,7 +204,7 @@ Pin inspection preserves Unreal's separate literal, object/class, and text defau
 
 Indexed traces classify latent, async, timeline, and timer boundaries from existing graph metadata. Trace results include exact, inferred, or unresolved confidence, explicit continuation models, and unresolved transition records. Runtime-dependent callback selection still requires PIE validation.
 
-AXIS-oriented authoring now includes function input/output parameters and return-node creation, function metadata, parent-class override events, reflected Enhanced Input Action events, generic struct pin splitting/recombining, and dispatcher bind/unbind nodes with exact signature-matched Custom Events. These primitives were live-tested together with validation, save, and partial index refresh.
+Project-oriented authoring now includes function input/output parameters and return-node creation, function metadata, parent-class override events, reflected Enhanced Input Action events, generic struct pin splitting/recombining, and dispatcher bind/unbind nodes with exact signature-matched Custom Events. These primitives were live-tested together with validation, save, and partial index refresh.
 
 `AddBlueprintInterfaceEventNode` adds or idempotently resolves event-compatible interface implementations in Ubergraphs. Interface functions with output/return parameters are rejected because Unreal requires those implementations to use function graphs.
 
@@ -242,7 +242,7 @@ The workflow is regression-tested by `UnrealMCP.Blueprint.Authoring.WireEventToF
 
 `ApplyBlueprintInteractionPlan` applies a complete declarative graph fragment in one preflighted operation. Its schema supports `existingNode` GUID anchors, `customEvent`, `functionCall`, `variableGet`, `branch`, and `sequence` nodes plus exact named-pin connections. Stable `workflowId` and node `id` values make retries idempotent. Existing target-pin or execution-route conflicts are rejected instead of replaced, and compile/save/index refresh run at most once after the plan.
 
-A `sequence` node can safely extend one occupied execution output by specifying `spliceAfterNodeId` and `spliceAfterPinName`. The tool inserts the Sequence, reconnects the original route through `Then_0`, and leaves `Then_1` available for the new workflow. The splice must have exactly one existing route, is fully preflighted, and is validated rather than repeated on retry. This is the preferred way to add DSM interaction calls beside legacy pointer/interface handling without removing that behavior.
+A `sequence` node can safely extend one occupied execution output by specifying `spliceAfterNodeId` and `spliceAfterPinName`. The tool inserts the Sequence, reconnects the original route through `Then_0`, and leaves `Then_1` available for the new workflow. The splice must have exactly one existing route, is fully preflighted, and is validated rather than repeated on retry. This is the preferred way to add a new interaction call beside legacy pointer/interface handling without removing that behavior.
 
 Plan nodes also accept `inputDefaults` entries with either `defaultValue` or `defaultObjectPath`. Defaults are applied before connection validation, enabling typed nodes such as `Get Component by Class` to connect safely in the same transaction. `executionInsertions` atomically insert one impure node into an exact existing exec link and validate the completed route on retry.
 
