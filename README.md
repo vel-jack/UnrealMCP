@@ -1,6 +1,6 @@
 # Unreal MCP Plugin
 
-This plugin embeds a minimal Model Context Protocol server directly into the Unreal Editor.
+UnrealMCP combines a native Unreal Editor execution engine with a .NET MCP adapter for project inspection, Blueprint authoring and static verification. Progressive capability discovery avoids loading every tool schema before starting work.
 
 ## Development Context
 
@@ -32,6 +32,7 @@ Coding agents and contributors should read [AGENTS.md](AGENTS.md) before changin
 - `FindAssetsByClass`
 - `FindAssetsByPath`
 - `GetBlueprintInfo`
+- `GetBlueprintOverview`
 - `ListVariables`
 - `ListFunctions`
 - `ListComponents`
@@ -131,6 +132,30 @@ Current indexed data:
 - package dependency edges
 - stable Blueprint graph identities and component usage metadata
 
+## Token-efficient discovery and Blueprint overview
+
+`serve` now defaults to `--tool-surface compact`: 11 lifecycle tools plus three discovery tools. Existing native tools remain callable. Use `serve --tool-surface full` to advertise every native schema for older clients or workflows that depend on direct typed-tool discovery.
+
+```text
+unreal.adapter.SearchTools {"query":"Blueprint overview","limit":5}
+unreal.adapter.GetToolSchema {"name":"GetBlueprintOverview"}
+unreal.adapter.CallTool {"name":"GetBlueprintOverview","arguments":{"objectPath":"/Game/MyFolder/BP_Door.BP_Door"}}
+```
+
+Search matches all space-separated keywords against native tool names/descriptions, ranks exact/name matches first, and returns at most 20 descriptions (default 8). An empty query browses the catalog. `scannedCount` and `matchedCount` describe the available catalog; `nextOffset` pages results. Pass `expectedCatalogRevision` from the previous page to reject a changed catalog. Offline schemas are discovery hints, not proof that an Editor or native tool is available. Refresh after attaching a newly built plugin.
+
+`GetToolSchema` returns one exact native schema, including mutation `operationId`. `CallTool` accepts only native catalog names and an `arguments` object; nested adapter calls are rejected. Native validation, confirmations, operation tracking, errors and uncertain-timeout behavior are preserved. Never retry an uncertain mutation automatically: query `GetMutationRequestStatus` using the original operation ID.
+
+Lifecycle results distinguish process launch from plugin readiness. With no matching Editor process, status returns `unreal_not_running` immediately. A launch that starts the exact project returns `success: true`, `launchAccepted: true`, `ready: false`, and `sessionState: "editor_starting"` while its pipe initializes; call status again and do not launch a duplicate. It transitions to `ready`, `unreal_not_running` if the process exits, or `unreal_mcp_unavailable` after the startup deadline. `unreal_request_timeout` is reserved for a native read that times out after attachment; mutation timeouts keep their stricter operation-ID recovery contract.
+
+`GetBlueprintOverview` returns parent class, existing compile/dirty state and a bounded inventory of owned graphs, declared variables, SCS components and implemented interfaces. Graphs include identities, node counts and revisions; variables include GUIDs/types. It replaces separate initial inventory calls without returning every node and pin. `kind` filters `graph`, `variable`, `component`, `interface`, or `all`; `query` is a case-insensitive name substring. `limit` defaults to 30 (maximum 100), and `offset` pages the matching inventory. Coverage/truncation fields describe the filtered response; inherited members are excluded. Live pages are separate reads, not a frozen snapshot.
+
+The overview requires an explicit Blueprint asset `objectPath`, never falls back to a current level, and rejects LevelScriptBlueprints. `allowLoad` defaults to true to load that exact asset if needed; use false for resident-only reads. Results identify live-editor provenance and whether loading was needed. It does not explicitly compile, edit, save or refresh the index. Request detailed live nodes/pins or indexed traces after narrowing the relevant graph/member.
+
+Verification on September 12, 2026: the same live catalog serialized to 117,096 bytes in full mode and 4,305 bytes in compact mode (96.3% smaller). This is an initial catalog UTF-8 byte measurement, not a measured reduction in total agent tokens. Discovery/schema calls add their own cost; E8 benchmarks track complete workflows. Native overview and adapter gateway regressions exercise pagination, filtering, state preservation, offline behavior and mutation timeout identity.
+
+Map/level editing is deferred in the active roadmap. Existing read-only level tools remain available.
+
 ## Live Level Blueprint Inspection
 
 `InspectLiveBlueprint` and `TraceLiveBlueprintFlow` read resident editor objects, including the `LevelScriptBlueprint` embedded in a `.umap`. They build on the current editor-world context used by level/selected-actor inspection. They do not require an Asset Registry entry or a project index, and include unsaved in-memory graph changes.
@@ -159,7 +184,7 @@ Inspection does not start PIE, compile, reconstruct nodes, edit assets, save pac
 
 The focused static regression is `UnrealMCP.Blueprint.LiveInspection.EmbeddedLevelAndTrace`. It constructs an unregistered transient object tree without compiling or saving a Blueprint and exercises embedded paths, pin evidence, delay/function continuation, downstream nodes, cycle and budget handling, data dependency isolation, and unchanged graph/dirty/compile state.
 
-New tool registration requires loading the rebuilt plugin in a fresh editor session, then refreshing the adapter's live tool catalog. Preserve unsaved work before restarting; the adapter's generic shutdown command saves dirty packages and is unsuitable for a strict read-only inspection handoff.
+New tool registration requires loading the rebuilt plugin in a fresh editor session, then refreshing the adapter's live tool catalog. Adapter shutdown no longer saves dirty packages automatically; Unreal may prompt for unsaved work, which requires user interaction.
 
 ## Safe Blueprint Authoring
 
@@ -286,8 +311,11 @@ The adapter is the recommended MCP entry point for coding agents:
 - `unreal.adapter.ReconnectUnreal`
 - `unreal.adapter.RefreshToolManifest`
 - `unreal.adapter.RequestUnrealShutdown`
+- `unreal.adapter.SearchTools`
+- `unreal.adapter.GetToolSchema`
+- `unreal.adapter.CallTool`
 
-`unreal.adapter.RequestUnrealShutdown` first calls `SaveAllDirtyPackages` on a best-effort basis before closing the editor window, so a routine shutdown does not block on the editor's native "Save Content" confirmation dialog. `SaveAllDirtyPackages` saves every dirty package directly to its existing on-disk path (no picker, no prompt); pass `dryRun=true` to list dirty packages without saving.
+`unreal.adapter.RequestUnrealShutdown` requests graceful closure without saving dirty packages. Resolve any Unreal save prompt manually, or explicitly save only intended assets before shutdown. `SaveAllDirtyPackages` remains an explicit broad-save tool; pass `dryRun=true` to inspect dirty packages without saving.
 
 The first `tools/list` automatically selects and attaches to the sole discoverable project, without launching the Editor. Ambiguous workspaces still require explicit selection. Once an attachment finds a changed native catalog, the adapter persists it and sends `notifications/tools/list_changed`; `unreal.adapter.RefreshToolManifest` also explicitly reattaches/refetches without launching. It accepts an optional `projectPath`. Clients must re-list tools after this notification; a client that ignores it still needs its own manifest refresh or reconnection. Running processes using an older adapter binary must load the new build once. Cache write failures do not hide live schemas, and unavailable Editors retain the last catalog.
 
@@ -485,11 +513,9 @@ When no project is selected:
 When Unreal Editor is open with the selected project:
 
 - `unreal.adapter.AttachToUnrealProject` attaches to the running session
-- `tools/list` includes both adapter tools and mirrored Unreal tools
+- `tools/list` includes the compact adapter surface by default; `--tool-surface full` additionally advertises all mirrored native schemas
 - proxied tools like `HealthCheck`, `GetServerInfo`, and `SearchAssets` execute inside Unreal
 
 ## Next Steps
 
-- Add dedicated graph node and pin editing tools
-- Add function, interface, input, and dispatcher authoring
-- Extend the first idempotent event-to-function workflow with branch/input and multi-stage selection/drag plans
+Follow [ROADMAP.md](ROADMAP.md): reliable compound operations, bounded query/evidence reuse, declarative asset workflows, structured diagnostics/builds and reflected API inspection. Graph primitives, functions, interfaces and dispatcher authoring already exist. The roadmap preserves unfinished Enhanced Input work and explicitly defers map/level editing.

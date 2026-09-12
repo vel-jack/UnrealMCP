@@ -2,15 +2,24 @@ using System.Text.Json.Nodes;
 
 namespace UnrealMCP.Adapter;
 
-internal sealed class McpRequestDispatcher(AdapterOptions options, ToolCatalogService? toolCatalog = null)
+internal sealed partial class McpRequestDispatcher(
+    AdapterOptions options,
+    ToolCatalogService? toolCatalog = null,
+    UnrealSessionManager? sessionManager = null)
 {
-    private readonly UnrealSessionManager _sessionManager = new(options);
+    private readonly UnrealSessionManager _sessionManager = sessionManager ?? new(options);
     private readonly IReadOnlyList<McpToolDefinition> _localTools = BuildLocalTools();
     private readonly ToolCatalogService _toolCatalog = toolCatalog ?? new();
 
     public UnrealSessionManager SessionManager => _sessionManager;
 
     public async Task<IReadOnlyList<McpToolDefinition>> GetToolDefinitionsAsync(CancellationToken cancellationToken)
+    {
+        var all = await GetAllToolDefinitionsAsync(cancellationToken);
+        return options.ToolSurface == "full" ? all : all.Where(t => t.Name.StartsWith("unreal.adapter.", StringComparison.Ordinal)).ToArray();
+    }
+
+    private async Task<IReadOnlyList<McpToolDefinition>> GetAllToolDefinitionsAsync(CancellationToken cancellationToken)
     {
         var tools = new List<McpToolDefinition>(_localTools);
         var remoteTools = await _sessionManager.GetMirroredToolListAsync(cancellationToken);
@@ -50,6 +59,7 @@ internal sealed class McpRequestDispatcher(AdapterOptions options, ToolCatalogSe
             tools.Add(new McpToolDefinition(name, description, inputSchema));
         }
 
+        tools.AddRange(BuildDiscoveryTools());
         return tools;
     }
 
@@ -59,6 +69,8 @@ internal sealed class McpRequestDispatcher(AdapterOptions options, ToolCatalogSe
         CancellationToken cancellationToken)
     {
         var catalogVersion = _sessionManager.ToolCatalogVersion;
+        var discovery = await TryInvokeDiscoveryAsync(toolName, arguments, cancellationToken);
+        if (discovery is not null) return discovery.Value;
         var localPayload = await TryInvokeLocalToolPayloadAsync(toolName, arguments, cancellationToken);
         var result = localPayload ?? await _sessionManager.InvokeUnrealToolAsync(toolName, arguments, cancellationToken);
         if (_sessionManager.ToolCatalogVersion != catalogVersion)

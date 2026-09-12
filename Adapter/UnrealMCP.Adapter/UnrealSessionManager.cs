@@ -23,13 +23,22 @@ internal sealed partial class UnrealSessionManager
     private IReadOnlyList<ProjectDescriptor> _lastDiscoveredProjects = [];
     private bool _initialCatalogDiscoveryAttempted;
     private long _toolCatalogVersion;
+    private DateTimeOffset? _launchStartedUtc;
+    private Process? _launchedProcess;
+    private readonly Func<string?, List<Process>>? _processFinderOverride;
+    private readonly Func<ProjectDescriptor, EngineResolutionResult, CancellationToken, Task<Process?>>? _projectLauncherOverride;
 
     public long ToolCatalogVersion => Interlocked.Read(ref _toolCatalogVersion);
     public JsonArray GetCachedToolCatalog() => (JsonArray)_cachedRemoteTools.DeepClone();
 
-    public UnrealSessionManager(AdapterOptions options)
+    public UnrealSessionManager(
+        AdapterOptions options,
+        Func<string?, List<Process>>? processFinderOverride = null,
+        Func<ProjectDescriptor, EngineResolutionResult, CancellationToken, Task<Process?>>? projectLauncherOverride = null)
     {
         _options = options;
+        _processFinderOverride = processFinderOverride;
+        _projectLauncherOverride = projectLauncherOverride;
 
         if (!string.IsNullOrWhiteSpace(options.ProjectPath))
         {
@@ -75,6 +84,8 @@ internal sealed partial class UnrealSessionManager
         _resolvedEngineExecutablePath = null;
         _cachedInitializeResult = null;
         _cachedRemoteTools = [];
+        _launchStartedUtc = null;
+        _launchedProcess = null;
         _sessionState = "project_selected";
 
         return Task.FromResult(new JsonObject
@@ -97,6 +108,8 @@ internal sealed partial class UnrealSessionManager
         _resolvedEngineExecutablePath = null;
         _cachedInitializeResult = null;
         _cachedRemoteTools = [];
+        _launchStartedUtc = null;
+        _launchedProcess = null;
         _sessionState = "project_not_selected";
 
         return Task.FromResult(new JsonObject
@@ -182,17 +195,7 @@ internal sealed partial class UnrealSessionManager
             return BuildProjectNotSelectedPayload("RequestUnrealShutdown");
         }
 
-        // Save any dirty packages through UnrealMCP first so the editor's own "Save Content?"
-        // dialog never blocks CloseMainWindow below. Best effort: if Unreal is unreachable or
-        // the save call fails, fall through to the normal close attempt anyway.
-        try
-        {
-            await InvokeUnrealToolAsync("SaveAllDirtyPackages", new JsonObject(), cancellationToken);
-        }
-        catch
-        {
-            // Best effort; a failed pre-shutdown save should not block the shutdown request itself.
-        }
+        // Saving is a separate, explicitly selected asset operation. Let Unreal prompt for dirty work.
 
         var processes = FindRunningEditorProcesses(_activeProject.ProjectName);
         foreach (var process in processes)
@@ -313,7 +316,7 @@ internal sealed partial class UnrealSessionManager
                           !success;
             return (result, isError);
         }
-        catch (OperationCanceledException)
+        catch (TimeoutException)
         {
             var processes = FindRunningEditorProcesses(_activeProject?.ProjectName);
             return (new JsonObject
@@ -334,6 +337,10 @@ internal sealed partial class UnrealSessionManager
                     ? "Call GetMutationRequestStatus with operationId; do not retry the mutation while its state is unknown."
                     : "Retry the read request. ReconnectUnreal only if a subsequent health check fails."
             }, true);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception exception)
         {
@@ -375,6 +382,8 @@ internal sealed partial class UnrealSessionManager
 
 internal sealed record AttachResult(
     bool Ready,
+    bool RequestSucceeded,
+    bool LaunchAccepted,
     string SessionState,
     string? ErrorCode,
     string? Message,

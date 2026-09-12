@@ -15,37 +15,33 @@ internal sealed class PipeJsonRpcClient(string pipeName, TimeSpan connectTimeout
     {
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(_requestTimeout);
-
-        using var pipe = new NamedPipeClientStream(".", _pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-        using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token);
-        connectCts.CancelAfter(_connectTimeout);
-        await pipe.ConnectAsync(connectCts.Token);
-
-        using var writer = new StreamWriter(pipe, Utf8NoBom, leaveOpen: true) { AutoFlush = true };
-        using var reader = new StreamReader(pipe, Utf8NoBom, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
-
-        var request = new JsonObject
+        try
         {
-            ["jsonrpc"] = "2.0",
-            ["id"] = Guid.NewGuid().ToString("N"),
-            ["method"] = method,
-            ["params"] = parameters?.DeepClone() ?? new JsonObject()
-        };
+            using var pipe = new NamedPipeClientStream(".", _pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+            using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token);
+            connectCts.CancelAfter(_connectTimeout);
+            await pipe.ConnectAsync(connectCts.Token);
 
-        await writer.WriteLineAsync(request.ToJsonString(McpProtocol.JsonOptions));
-        var responseLine = await ReadLineWithTimeoutAsync(reader, timeoutCts.Token);
-        if (string.IsNullOrWhiteSpace(responseLine))
-        {
-            throw new IOException("The UnrealMCP pipe returned an empty response.");
+            using var writer = new StreamWriter(pipe, Utf8NoBom, leaveOpen: true) { AutoFlush = true };
+            using var reader = new StreamReader(pipe, Utf8NoBom, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
+            var request = new JsonObject
+            {
+                ["jsonrpc"] = "2.0",
+                ["id"] = Guid.NewGuid().ToString("N"),
+                ["method"] = method,
+                ["params"] = parameters?.DeepClone() ?? new JsonObject()
+            };
+            await writer.WriteLineAsync(request.ToJsonString(McpProtocol.JsonOptions));
+            var responseLine = await ReadLineWithTimeoutAsync(reader, timeoutCts.Token);
+            if (string.IsNullOrWhiteSpace(responseLine))
+                throw new IOException("The UnrealMCP pipe returned an empty response.");
+            return JsonNode.Parse(responseLine)?.AsObject()
+                ?? throw new InvalidDataException("The UnrealMCP pipe returned invalid JSON.");
         }
-
-        var response = JsonNode.Parse(responseLine)?.AsObject();
-        if (response is null)
+        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new InvalidDataException("The UnrealMCP pipe returned invalid JSON.");
+            throw new TimeoutException($"Timed out while waiting for UnrealMCP method '{method}'.", exception);
         }
-
-        return response;
     }
 
     private static async Task<string?> ReadLineWithTimeoutAsync(StreamReader reader, CancellationToken cancellationToken)

@@ -5,18 +5,49 @@ using System.Text.Json.Nodes;
 using UnrealMCP.Adapter;
 
 // Dependency-free integration runner. All fake projects/catalogs stay in its unique temp directory.
+if (args.FirstOrDefault() == "--hold")
+{
+    await Task.Delay(TimeSpan.FromMinutes(5));
+    return;
+}
+
 if (args.FirstOrDefault() == "--serve-test")
 {
     var options = AdapterOptions.Parse(args.Skip(2).ToArray(), true);
     await SdkMcpServer.RunAsync(new McpRequestDispatcher(options,
-        new ToolCatalogService(Path.Combine(args[1], "cache.json"), Path.Combine(args[1], "bundled.json"))), default);
+        new ToolCatalogService(Path.Combine(args[1], "cache.json"), Path.Combine(args[1], "bundled.json")),
+        new UnrealSessionManager(options, _ => [Process.GetCurrentProcess()])), default);
+    return;
+}
+
+if (args.FirstOrDefault() == "--overview")
+{
+    await using var client = new StdioClient(args[1], ["serve", "--project", args[2], "--request-timeout-seconds", "30"]);
+    await client.Initialize();
+    var result = await client.Call("unreal.adapter.CallTool", new JsonObject
+    {
+        ["name"] = "GetBlueprintOverview",
+        ["arguments"] = new JsonObject { ["objectPath"] = args[3], ["kind"] = "graph", ["limit"] = 5 }
+    });
+    Console.WriteLine(result["result"]?["structuredContent"]?.ToJsonString());
+    Check(result["result"]?["structuredContent"]?["success"]?.GetValue<bool>() == true, "Real Blueprint overview succeeds through production gateway");
+    return;
+}
+
+if (args.FirstOrDefault() == "--shutdown")
+{
+    await using var client = new StdioClient(args[1], ["serve", "--project", args[2]]);
+    await client.Initialize();
+    var result = await client.Call("unreal.adapter.RequestUnrealShutdown", new JsonObject());
+    Console.WriteLine(result["result"]?["structuredContent"]?.ToJsonString());
+    Check(result["result"]?["structuredContent"]?["success"]?.GetValue<bool>() == true, "Explicit project shutdown completed without automatic saving");
     return;
 }
 
 if (args.FirstOrDefault() == "--live")
 {
     // Read-only catalog verification against a running Editor, through the production adapter.
-    await using var client = new StdioClient(args[1], ["serve", "--workspace", Path.GetDirectoryName(args[2])!]);
+    await using var client = new StdioClient(args[1], ["serve", "--tool-surface", "full", "--workspace", Path.GetDirectoryName(args[2])!]);
     await client.Initialize();
     var list = await client.Request("tools/list", new JsonObject());
     Check(list["result"]?["tools"]?.AsArray().Any(t => t?["name"]?.GetValue<string>() == "CreateInputAction") == true,
@@ -37,6 +68,7 @@ if (args.FirstOrDefault() == "--live")
         Check(run["result"]?["isError"]?.GetValue<bool>() != true &&
             run["result"]?["structuredContent"]?["passed"]?.GetValue<bool>() == true, "Live automation request succeeded");
     }
+    await DiscoveryRegression.Live(args[1], args[2], list);
     return;
 }
 
@@ -50,7 +82,7 @@ try
     await File.WriteAllTextAsync(project, "{\"EngineAssociation\":\"5.4\"}");
     var pipeName = "UnrealMCPRegression_" + Guid.NewGuid().ToString("N");
     await using var pipe = new FakeNativePipe(pipeName);
-    string[] ServerArgs() => ["--serve-test", root, "serve", "--workspace", workspace,
+    string[] ServerArgs() => ["--serve-test", root, "serve", "--tool-surface", "full", "--workspace", workspace,
         "--pipe", pipeName, "--engine-exe", Environment.ProcessPath!,
         "--pipe-timeout-seconds", "0.2", "--request-timeout-seconds", "0.5"];
 
@@ -105,6 +137,8 @@ try
         Check(HasTool(await client.Request("tools/list", new JsonObject()), "GetRegressionNew"), "Cold-start session discovers newly available tool without restart");
     }
 
+    await DiscoveryRegression.Run(ServerArgs(), pipe);
+    await LifecycleRegression.Run(workspace, project);
     await File.WriteAllTextAsync(Path.Combine(workspace, "Other.uproject"), "{}");
     File.Delete(Path.Combine(root, "cache.json"));
     await using (var client = new StdioClient(Environment.ProcessPath!, ServerArgs()))
@@ -201,7 +235,9 @@ sealed class FakeNativePipe : IAsyncDisposable
     private readonly Task loop;
     public volatile bool IncludeNewTool;
     public volatile bool Available = true;
+    public volatile bool StallReadTool;
     public string? LastOperationId;
+    public int SaveAllCalls;
 
     public FakeNativePipe(string name) => loop = Task.Run(async () =>
     {
@@ -214,6 +250,7 @@ sealed class FakeNativePipe : IAsyncDisposable
             using var writer = new StreamWriter(server, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
             var request = JsonNode.Parse((await reader.ReadLineAsync(stop.Token))!)!;
             var method = request["method"]!.GetValue<string>();
+            if (method == "SaveAllDirtyPackages") Interlocked.Increment(ref SaveAllCalls);
             JsonObject response = new() { ["jsonrpc"] = "2.0", ["id"] = request["id"]!.DeepClone() };
             if (!Available)
                 response["error"] = new JsonObject { ["code"] = -32000, ["message"] = "Simulated editor unavailable" };
@@ -230,6 +267,12 @@ sealed class FakeNativePipe : IAsyncDisposable
             {
                 LastOperationId = request["params"]?["operationId"]?.GetValue<string>();
                 // Wait for the client's timeout to disconnect, then serve its next connection.
+                await reader.ReadLineAsync(stop.Token);
+                continue;
+            }
+            else if (method == "GetRegressionInitial" && StallReadTool)
+            {
+                // Model an established native read that never produces a response.
                 await reader.ReadLineAsync(stop.Token);
                 continue;
             }

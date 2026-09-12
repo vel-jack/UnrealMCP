@@ -69,6 +69,7 @@
 #include "Tools/GetBlueprintComponentDefaultsTool.h"
 #include "Tools/GetBlueprintDependenciesTool.h"
 #include "Tools/GetBlueprintInfoTool.h"
+#include "Tools/GetBlueprintOverviewTool.h"
 #include "Tools/GetBlueprintInterfacesTool.h"
 #include "Tools/GetDependenciesTool.h"
 #include "Tools/GetIndexStatusTool.h"
@@ -295,6 +296,7 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FFindAssetsByClassTool>());
     Registry.RegisterTool(MakeShared<FFindAssetsByPathTool>());
     Registry.RegisterTool(MakeShared<FGetBlueprintInfoTool>());
+    Registry.RegisterTool(MakeShared<FGetBlueprintOverviewTool>());
     Registry.RegisterTool(MakeShared<FGetBlueprintDependenciesTool>());
     Registry.RegisterTool(MakeShared<FGetBlueprintComponentHierarchyTool>());
     Registry.RegisterTool(MakeShared<FFindBlueprintNodeReferencesTool>());

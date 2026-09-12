@@ -8,7 +8,7 @@ internal sealed partial class UnrealSessionManager
     {
         var workspaceRoot = GetEffectiveWorkspaceRoot();
         var projects = DiscoverProjects(workspaceRoot);
-        return new JsonObject
+        var payload = new JsonObject
         {
             ["success"] = true,
             ["mode"] = "discover",
@@ -16,6 +16,7 @@ internal sealed partial class UnrealSessionManager
             ["workspaceSource"] = GetWorkspaceSource(),
             ["projects"] = new JsonArray(projects.Select(project => project.ToJson()).ToArray())
         };
+        return payload;
     }
 
     public async Task<JsonObject> GetStandaloneStatusPayloadAsync(CancellationToken cancellationToken)
@@ -59,9 +60,11 @@ internal sealed partial class UnrealSessionManager
         var workspaceRoot = GetEffectiveWorkspaceRoot();
         var projects = _lastDiscoveredProjects.Count > 0 ? _lastDiscoveredProjects : DiscoverProjects(workspaceRoot);
 
-        return new JsonObject
+        var payload = new JsonObject
         {
-            ["success"] = attach.Ready,
+            ["success"] = attach.RequestSucceeded,
+            ["ready"] = attach.Ready,
+            ["launchAccepted"] = attach.LaunchAccepted,
             ["projectPath"] = _activeProject?.ProjectPath,
             ["projectName"] = _activeProject?.ProjectName,
             ["engineAssociation"] = _activeProject?.EngineAssociation,
@@ -85,6 +88,12 @@ internal sealed partial class UnrealSessionManager
             ["projects"] = new JsonArray(projects.Select(project => project.ToJson()).ToArray()),
             ["serverInfo"] = _cachedInitializeResult?["serverInfo"]?.DeepClone()
         };
+        if (attach.LaunchAccepted && _launchStartedUtc.HasValue)
+        {
+            payload["launchStartedUtc"] = _launchStartedUtc.Value.ToString("O");
+            payload["startupElapsedSeconds"] = (DateTimeOffset.UtcNow - _launchStartedUtc.Value).TotalSeconds;
+        }
+        return payload;
     }
 
     private JsonObject BuildAvailabilityErrorPayload(AttachResult attach)
@@ -137,6 +146,7 @@ internal sealed partial class UnrealSessionManager
                 "engine_not_found" => "No Unreal Editor installation could be resolved for the selected project.",
                 "engine_resolution_ambiguous" => "Multiple Unreal Editor installs match the selected project.",
                 "unreal_not_running" => "Unreal Editor is not running for the selected project.",
+                "editor_starting" => "Unreal Editor is running and UnrealMCP is still starting.",
                 "unreal_mcp_unavailable" => "Unreal Editor is running, but the UnrealMCP named pipe is unavailable.",
                 "unreal_mcp_not_ready" => "UnrealMCP is running but not ready to answer requests.",
                 "unreal_request_timeout" => "UnrealMCP did not respond before the timeout elapsed.",

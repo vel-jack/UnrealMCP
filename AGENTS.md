@@ -64,13 +64,13 @@ By default, client configuration points to the adapter executable in its current
 
 ## Current Priority
 
-The user-selected iteration in this `work_dsm` integration copy is Milestone 8 Phase 4 (Live Inspection of Embedded Level Blueprints). Consult ROADMAP.md for implementation/acceptance status. Preserve the existing current-level/selected-actor editor context and keep inspection read-only, including no Blueprint compilation, saving, or index refresh. Remaining Milestone 9 Phase 5A work is deferred; its original tools and implemented reliability/key-replacement slice remain in place.
+The active roadmap is organized around capability and context efficiency (E1-E8), not historical M1-M20 order. E1 introduces progressive adapter discovery and bounded Blueprint overviews. E2 safety hardening gates additional compound mutations. Read ROADMAP.md for current implementation and acceptance status; docs/LEGACY_ROADMAP.md retains historical evidence and unfinished tasks. Map/level editing is deferred. Preserve existing level/selection context and do not use Computer Use; hand unavoidable UI actions to the user.
 
 The adapter now attempts an unambiguous initial project attach before tools/list, without launching Unreal. Late successful attachment of a changed catalog emits notifications/tools/list_changed and persists the catalog immediately. unreal.adapter.RefreshToolManifest provides explicit refresh. Clients must re-list after notifications; already-running old adapter processes need to load the updated binary once. No manual cache reseeding is part of this workflow.
 
 Remove-prefixed native tools receive adapter operation IDs and non-retryable uncertain-timeout responses. RemoveInputMappingContextMapping now requires confirm=true outside dry-run. Add/remove reject ambiguous duplicate Action+Key rows. SetInputMappingContextMappingKey preserves the exact row except its key, validates a detached preview, uses one undoable transaction, and separates save failure from successful in-memory edits. Its static editor regression covers settings preservation and undo; explicit save/reload and injected mutation/save-failure coverage remain pending.
 
-After live Level Blueprint inspection: resume supported Input Action property inspection/editing and bounded key/class/settings discovery, followed by inline modifiers/triggers, player-mappable metadata, and single-asset batches. Deprecated input config APIs are excluded. Phase 4C pointer-branch/group-transform work, Phase 4D graph coverage, and runtime settings remain deferred, not cancelled. Never hardcode host-project asset names into generic tools.
+Prioritize fewer schemas, smaller complete evidence sets, fewer round trips, and reliable server-side workflows over raw tool count. Compact adapter mode exposes lifecycle plus SearchTools/GetToolSchema/CallTool; full mode remains available. Unreal semantics stay native. GetBlueprintOverview is the preferred first live asset inspection, with bounded members and no pin dump. Preserve mutation/error/replay evidence through the gateway. Enhanced Input Phase 5A, deeper graph coverage and generic workflows remain tracked in E3/E4; deprecated input config APIs remain excluded. Never hardcode host-project asset names into generic tools.
 
 ## Tool Design
 
@@ -139,7 +139,7 @@ Do not use Computer Use unless the user explicitly requests it. If a required ma
 3. Plan the smallest generic capability that satisfies the acceptance case.
 4. Implement native plugin and adapter changes in their proper layers.
 5. Build after C++ or C# source changes.
-6. Launch or attach to the `UE_544_MCP` test project through the adapter when live Unreal verification is required.
+6. Launch or attach to the explicitly authorized host through the adapter when live Unreal verification is required. For this iteration use `work_dsm/AR_GIS_MAP.uproject`; do not synchronize another checkout.
 7. Run focused editor automation tests and live MCP calls.
 8. Gracefully close only the test editor when rebuilding locked plugin binaries.
 9. Update `README.md` for user-facing behavior and `ROADMAP.md` for status/remaining work.
@@ -161,7 +161,13 @@ The adapter must keep stdout protocol-only in `serve` mode; logs belong on stder
 
 ### Native Plugin
 
-Use the Unreal 5.4 editor target for `UE_544_MCP` and run the focused `UnrealMCP.*` automation tests relevant to the changed tool. Do not claim a native change is verified from C# build success alone.
+Use the Unreal 5.4 editor target for the authorized host and run the focused `UnrealMCP.*` automation tests relevant to the changed tool. For `work_dsm`, run from the host root:
+
+```powershell
+& "C:\Program Files\Epic Games\UE_5.4\Engine\Build\BatchFiles\Build.bat" AR_GIS_MAPEditor Win64 Development -Project="$PWD\AR_GIS_MAP.uproject" -WaitMutex -NoHotReloadFromIDE
+```
+
+Use the unreal-rebuild-reopen skill for canonical DLL changes. Adapter shutdown must not save unrelated dirty packages; it may require the user to resolve Unreal's prompt. Do not claim a native change is verified from C# build success alone.
 
 After a tool-schema change, connect to a live test editor and refresh the adapter's authoritative tool catalog. Public release artifacts must include a freshly captured catalog.
 
@@ -206,7 +212,17 @@ Before ending a substantial development task:
 - list uncommitted files or provide a commit message when requested
 - identify the exact next milestone task
 
-### Latest Development Handoff (September 3, 2026)
+### Current Development Handoff (September 12, 2026)
+
+- E1: default compact discovery, exact schema lookup, native gateway and GetBlueprintOverview. Full tool-surface compatibility remains available; no native tool names were removed.
+- Adapter Release builds (isolated and normal checkout output) and 33 simulated-pipe regression checks passed. Canonical `AR_GIS_MAPEditor Win64 Development` build passed. Native `UnrealMCP.Blueprint.Overview.ReadOnly` passed through compact production stdio with zero errors/warnings.
+- Measured live catalog: full 117,096 bytes; compact 4,305 bytes (96.3% smaller). UTF-8 serialization comparison, not a model-token or whole-workflow saving claim.
+- Startup-state follow-up: internal pipe timeouts are distinct from caller cancellation; closed status returns immediately; accepted launches report `editor_starting` as a successful lifecycle request until ready/exit/deadline. Forty-one adapter regression checks pass, and a real closed `work_dsm` launch produced `editor_starting` with its tracked PID before a later status reached `ready`.
+- Editor reopened and attached to the exact `work_dsm` project. No PIE or full index rebuild/schema change. Test fixtures are transient and unsaved; no user Blueprint compilation or asset saving was needed.
+- Configured clients may still run the adapter from the separate `UE_544_MCP` checkout. That checkout is not updated automatically. Reload/configure this checkout's tested adapter to use compact mode; do not kill unrelated client processes.
+- Next: E2 transaction/recovery fixes and E1 authoritative metadata/workflow benchmarks, followed by E3 query/evidence improvements and E4 declarative authoring.
+
+### Historical Development Handoff (September 3, 2026)
 
 - Scope: Phase 5A reliability prerequisites, formal original-tool regression, and exact mapping-key replacement. Remaining action/settings/modifier/trigger/batch scope is tracked in ROADMAP.md.
 - Verification: native Development and isolated adapter Release builds passed; 17 adapter regression checks passed; EnhancedInput.AssetAuthoring.Live passed four consecutive final runs through the adapter, and MutationRequestReplay passed. Fresh live tools/list discovered the new native tool without an earlier attach. Full-suite, save/reload/fault-injection, and runtime acceptance were not run.

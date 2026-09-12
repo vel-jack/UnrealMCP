@@ -7,6 +7,11 @@ internal sealed partial class UnrealSessionManager
 {
     private List<Process> FindRunningEditorProcesses(string? projectName)
     {
+        return _processFinderOverride?.Invoke(projectName) ?? FindRunningEditorProcessesCore(projectName);
+    }
+
+    private static List<Process> FindRunningEditorProcessesCore(string? projectName)
+    {
         return Process.GetProcessesByName("UnrealEditor")
             .Where(process =>
             {

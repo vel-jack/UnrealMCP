@@ -27,7 +27,12 @@ internal static class SdkMcpServer
                 };
                 options.ServerInstructions =
                     "UnrealMCP adapter lifecycle tools remain available when Unreal Editor is closed. " +
-                    "Unreal-hosted tools execute only after a project is selected and its plugin is attached.";
+                    "Unreal-hosted tools execute only after a project is selected and its plugin is attached. " +
+                    "Start with unreal.adapter.SearchTools using task keywords, GetToolSchema for exact inputs, then CallTool. " +
+                    "Prefer GetBlueprintOverview before detailed node/pin inspection and declarative graph patches over many primitive edits. " +
+                    "Discovery uses cached schemas while offline; it does not prove a tool is available in the attached project. " +
+                    "Respect coverage/truncation and live_editor versus cached_index evidence. After mutation timeout query GetMutationRequestStatus using the original operationId; never blindly retry. " +
+                    "Map/level editing is deferred. PIE and visual acceptance remain user-controlled.";
                 options.Capabilities = new ServerCapabilities
                 {
                     Tools = new ToolsCapability { ListChanged = true }

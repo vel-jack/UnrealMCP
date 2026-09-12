@@ -59,107 +59,72 @@ internal sealed partial class UnrealSessionManager
         _resolvedEngineExecutablePath = engineResolution.EditorExecutablePath;
 
         var launchedThisRequest = false;
-        var processes = FindRunningEditorProcesses(_activeProject.ProjectName);
+        var processes = GetMatchingOrTrackedProcesses(_activeProject.ProjectName);
         if (processes.Count == 0 && allowLaunch)
         {
-            await LaunchProjectInternalAsync(_activeProject, engineResolution, cancellationToken);
-            processes = await WaitForMatchingProcessesAsync(_activeProject.ProjectName, _options.LaunchReadyTimeout, cancellationToken);
-            launchedThisRequest = processes.Count > 0;
+            _launchedProcess = await LaunchProjectInternalAsync(_activeProject, engineResolution, cancellationToken);
+            launchedThisRequest = _launchedProcess is not null;
+            _launchStartedUtc = DateTimeOffset.UtcNow;
+            processes = GetMatchingOrTrackedProcesses(_activeProject.ProjectName);
         }
-
-        var readyDeadlineUtc = launchedThisRequest ? DateTime.UtcNow + _options.LaunchReadyTimeout : DateTime.UtcNow;
-        Exception? lastTransportException = null;
-
-        while (true)
-        {
-            try
-            {
-                var pipeClient = CreatePipeClient();
-                var initializeResponse = await pipeClient.SendRequestAsync("initialize", new JsonObject(), cancellationToken);
-                if (initializeResponse["error"] is JsonObject initializeError)
-                {
-                    if (DateTime.UtcNow < readyDeadlineUtc)
-                    {
-                        await Task.Delay(500, cancellationToken);
-                        processes = FindRunningEditorProcesses(_activeProject.ProjectName);
-                        continue;
-                    }
-
-                    return SetUnavailable(
-                        "unreal_mcp_not_ready",
-                        initializeError["message"]?.GetValue<string>() ?? "UnrealMCP did not initialize successfully.",
-                        true,
-                        "ReconnectUnreal",
-                        processes,
-                        initializeError);
-                }
-
-                var toolsResponse = await pipeClient.SendRequestAsync("tools/list", new JsonObject(), cancellationToken);
-                if (toolsResponse["error"] is JsonObject toolsError)
-                {
-                    if (DateTime.UtcNow < readyDeadlineUtc)
-                    {
-                        await Task.Delay(500, cancellationToken);
-                        processes = FindRunningEditorProcesses(_activeProject.ProjectName);
-                        continue;
-                    }
-
-                    return SetUnavailable(
-                        "unreal_mcp_not_ready",
-                        toolsError["message"]?.GetValue<string>() ?? "UnrealMCP did not return a tool list.",
-                        true,
-                        "ReconnectUnreal",
-                        processes,
-                        toolsError);
-                }
-
-                _cachedInitializeResult = initializeResponse["result"]?.AsObject();
-                // Degrade to an empty catalog rather than fail the whole attach: a missing/malformed
-                // tools array must not turn a healthy pipe round-trip into a hard "unavailable" error,
-                // especially since a non-launch attach (allowLaunch=false) has no retry window left.
-                var remoteTools = toolsResponse["result"]?["tools"] as JsonArray ?? [];
-                if (!JsonNode.DeepEquals(_cachedRemoteTools, remoteTools))
-                {
-                    _cachedRemoteTools = remoteTools;
-                    Interlocked.Increment(ref _toolCatalogVersion);
-                }
-                _sessionState = "ready";
-                _lastAttachUtc = DateTimeOffset.UtcNow;
-
-                return new AttachResult(true, "ready", null, null, false, "Call Unreal tools directly through the adapter.", processes, _cachedInitializeResult, _cachedRemoteTools, engineResolution);
-            }
-            catch (OperationCanceledException)
-            {
-                return SetUnavailable("unreal_request_timeout", "Timed out while waiting for UnrealMCP to respond.", true, "ReconnectUnreal", processes);
-            }
-            catch (TimeoutException exception)
-            {
-                lastTransportException = exception;
-            }
-            catch (Exception exception)
-            {
-                lastTransportException = exception;
-            }
-
-            if (DateTime.UtcNow >= readyDeadlineUtc)
-            {
-                break;
-            }
-
-            await Task.Delay(500, cancellationToken);
-            processes = FindRunningEditorProcesses(_activeProject.ProjectName);
-            if (processes.Count == 0)
-            {
-                return SetUnavailable("unreal_not_running", "Unreal Editor exited before UnrealMCP became ready.", true, "LaunchUnrealProject", []);
-            }
-        }
-
         if (processes.Count == 0)
         {
+            ClearTrackedLaunch();
             return SetUnavailable("unreal_not_running", "Unreal Editor is not running for the selected project.", true, "LaunchUnrealProject", []);
         }
 
-        var lastMessage = lastTransportException?.Message ?? "The UnrealMCP named pipe did not become ready before the timeout elapsed.";
+        JsonObject? nativeError = null;
+        Exception? transportException = null;
+        try
+        {
+            var pipeClient = CreatePipeClient();
+            var initializeResponse = await pipeClient.SendRequestAsync("initialize", new JsonObject(), cancellationToken);
+            nativeError = initializeResponse["error"] as JsonObject;
+            if (nativeError is null)
+            {
+                var toolsResponse = await pipeClient.SendRequestAsync("tools/list", new JsonObject(), cancellationToken);
+                nativeError = toolsResponse["error"] as JsonObject;
+                if (nativeError is null)
+                {
+                    _cachedInitializeResult = initializeResponse["result"]?.AsObject();
+                    var remoteTools = toolsResponse["result"]?["tools"] as JsonArray ?? [];
+                    if (!JsonNode.DeepEquals(_cachedRemoteTools, remoteTools))
+                    {
+                        _cachedRemoteTools = remoteTools;
+                        Interlocked.Increment(ref _toolCatalogVersion);
+                    }
+                    _sessionState = "ready";
+                    _lastAttachUtc = DateTimeOffset.UtcNow;
+                    ClearTrackedLaunch();
+                    return new AttachResult(true, true, launchedThisRequest, "ready", null, null, false,
+                        "Call Unreal tools directly through the adapter.", processes, _cachedInitializeResult,
+                        _cachedRemoteTools, engineResolution);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            transportException = exception;
+        }
+
+        processes = GetMatchingOrTrackedProcesses(_activeProject.ProjectName);
+        if (processes.Count == 0)
+        {
+            ClearTrackedLaunch();
+            return SetUnavailable("unreal_not_running", "Unreal Editor exited before UnrealMCP became ready.", true, "LaunchUnrealProject", []);
+        }
+        if (_launchStartedUtc.HasValue && DateTimeOffset.UtcNow - _launchStartedUtc.Value < _options.LaunchReadyTimeout)
+            return SetEditorStarting(processes, engineResolution);
+
+        ClearTrackedLaunch();
+        if (nativeError is not null)
+            return SetUnavailable("unreal_mcp_not_ready", nativeError["message"]?.GetValue<string>() ??
+                "UnrealMCP did not initialize successfully.", true, "ReconnectUnreal", processes, nativeError);
+        var lastMessage = transportException?.Message ?? "The UnrealMCP named pipe did not become ready before the timeout elapsed.";
         return SetUnavailable("unreal_mcp_unavailable", $"Unreal Editor is running, but the UnrealMCP pipe is unavailable: {lastMessage}", true, "ReconnectUnreal", processes);
     }
 
@@ -168,12 +133,33 @@ internal sealed partial class UnrealSessionManager
         return _engineResolver.Resolve(explicitEnginePath, _selectedEngineExecutablePath, _options.DefaultEngineExecutablePath, _activeProject?.EngineAssociation);
     }
 
-    private async Task LaunchProjectInternalAsync(ProjectDescriptor project, EngineResolutionResult engineResolution, CancellationToken cancellationToken)
+    private List<Process> GetMatchingOrTrackedProcesses(string projectName)
     {
-        if (FindRunningEditorProcesses(project.ProjectName).Count > 0)
+        var matches = FindRunningEditorProcesses(projectName);
+        if (matches.Count == 0 && _launchedProcess is not null)
         {
-            return;
+            try
+            {
+                if (!_launchedProcess.HasExited) matches.Add(_launchedProcess);
+                else ClearTrackedLaunch();
+            }
+            catch { ClearTrackedLaunch(); }
         }
+        return matches;
+    }
+
+    private void ClearTrackedLaunch()
+    {
+        _launchStartedUtc = null;
+        _launchedProcess = null;
+    }
+
+    private async Task<Process?> LaunchProjectInternalAsync(ProjectDescriptor project, EngineResolutionResult engineResolution, CancellationToken cancellationToken)
+    {
+        var existing = FindRunningEditorProcesses(project.ProjectName);
+        if (existing.Count > 0) return existing[0];
+        if (_projectLauncherOverride is not null)
+            return await _projectLauncherOverride(project, engineResolution, cancellationToken);
 
         var executablePath = engineResolution.EditorExecutablePath;
         if (string.IsNullOrWhiteSpace(executablePath))
@@ -188,25 +174,8 @@ internal sealed partial class UnrealSessionManager
         };
         startInfo.ArgumentList.Add(project.ProjectPath);
 
-        Process.Start(startInfo);
+        var process = Process.Start(startInfo);
         await Task.Delay(250, cancellationToken);
-    }
-
-    private async Task<List<Process>> WaitForMatchingProcessesAsync(string projectName, TimeSpan timeout, CancellationToken cancellationToken)
-    {
-        var deadline = DateTime.UtcNow + timeout;
-        while (DateTime.UtcNow < deadline)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var processes = FindRunningEditorProcesses(projectName);
-            if (processes.Count > 0)
-            {
-                return processes;
-            }
-
-            await Task.Delay(500, cancellationToken);
-        }
-
-        return [];
+        return process;
     }
 }
