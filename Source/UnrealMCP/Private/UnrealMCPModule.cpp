@@ -394,6 +394,15 @@ void FUnrealMCPModule::StartConfiguredTransport()
         return;
     }
 
+    // Cooking/packaging runs UnrealEditor-Cmd (still the Editor target, so TargetAllowList does not
+    // exclude it) and would contend with the open editor for the same pipe name (Win32 231, pipe busy),
+    // failing the package with an Error. Only an interactive editor serves agents.
+    if (IsRunningCommandlet() || !GIsEditor)
+    {
+        UE_LOG(LogUnrealMCP, Log, TEXT("UnrealMCP transport not started: commandlet or non-editor process."));
+        return;
+    }
+
 #if PLATFORM_WINDOWS
     if (Settings->bEnableNamedPipeTransport)
     {
