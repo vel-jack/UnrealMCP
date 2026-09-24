@@ -63,7 +63,7 @@ UnrealMCP::FMCPResponse FListUnrealMCPAutomationTestsTool::Execute(
                 Item->SetStringField(TEXT("displayName"), Test.GetDisplayName());
                 Item->SetStringField(TEXT("command"), Test.GetTestName());
                 Item->SetStringField(TEXT("filter"),
-                    (Test.GetTestFlags() & EAutomationTestFlags::ProductFilter) != 0
+                    (static_cast<int32>(Test.GetTestFlags()) & static_cast<int32>(EAutomationTestFlags::ProductFilter)) != 0
                         ? TEXT("product") : TEXT("engine"));
                 Item->SetStringField(TEXT("sourceFile"), Test.GetSourceFile());
                 Item->SetNumberField(TEXT("sourceLine"), Test.GetSourceFileLine());

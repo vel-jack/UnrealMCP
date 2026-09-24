@@ -112,7 +112,10 @@ namespace
         {
             const TSharedPtr<FJsonObject> Object = Value->AsObject();
             TArray<FString> Keys;
-            Object->Values.GetKeys(Keys);
+            for (const auto& Pair : Object->Values)
+            {
+                Keys.Add(FString(Pair.Key));
+            }
             Keys.Sort();
             FString Result = TEXT("{");
             for (int32 Index = 0; Index < Keys.Num(); ++Index)
@@ -123,7 +126,7 @@ namespace
                 KeyWriter->WriteValue(Keys[Index]);
                 KeyWriter->Close();
                 if (Index > 0) Result += TEXT(",");
-                Result += SerializedKey + TEXT(":") + SerializeCanonicalJsonValue(Object->Values.FindRef(Keys[Index]));
+                Result += SerializedKey + TEXT(":") + SerializeCanonicalJsonValue(Object->TryGetField(Keys[Index]));
             }
             return Result + TEXT("}");
         }

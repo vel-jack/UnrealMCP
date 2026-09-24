@@ -19,8 +19,8 @@ UnrealMCP::FMCPResponse FGetBlueprintOverviewTool::Execute(const UnrealMCP::FMCP
         return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, TEXT("Requires an exact Blueprint objectPath."));
     for (const FString& Field : { FString(TEXT("query")), FString(TEXT("kind")), FString(TEXT("allowLoad")) })
     {
-        const auto* Value = Request.Params->Values.Find(Field);
-        if (Value && (!Value->IsValid() || (*Value)->Type != (Field == TEXT("allowLoad") ? EJson::Boolean : EJson::String)))
+        const TSharedPtr<FJsonValue> Value = Request.Params->TryGetField(Field);
+        if (Value.IsValid() && Value->Type != (Field == TEXT("allowLoad") ? EJson::Boolean : EJson::String))
             return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, TEXT("query/kind must be strings and allowLoad must be a boolean."));
     }
     Request.Params->TryGetStringField(TEXT("query"), Query);
