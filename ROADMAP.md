@@ -1,5 +1,9 @@
 # UnrealMCP: Capability and Context Efficiency Roadmap
 
+October 30, 2026 discovery index: added `docs/MCP-Tool-Index.md`, official discovery metadata snapshot and `Scripts/refresh_tool_index.py`. The index routes custom and official tools using short descriptions, without schemas. Snapshot regeneration is offline; `--official-url` performs read-only live discovery. Agent instructions require checking both routes before claiming a capability is absent. No editor assets or native APIs change.
+
+October 30, 2026 catalog refresh: added the bundled native catalog captured from the running DSM UE 5.8 editor (120 tools, including `AddBlueprintInterface`). Current adapter source builds without errors or warnings; existing live adapter discovery checks pass against DSM. Active clients still run the September 8 adapter binary; the verified current build is under `Adapter/UnrealMCP.Adapter/bin/ManifestRefresh`. Close clients and rebuild the normal Release output before reconnecting to activate current discovery and catalog notifications. No native source or index schema changed.
+
 Updated September 12, 2026. This is the authoritative development order. The [legacy milestone record](docs/LEGACY_ROADMAP.md) preserves previous tasks and acceptance evidence; historical numbering is a cross-reference, not a dependency order.
 
 ## Mission and boundary
@@ -181,3 +185,17 @@ The compile-failure rollback branch is now covered by `UnrealMCP.Blueprint.Autho
 Final verification for this follow-up: the canonical `UE_544_MCPEditor Win64 Development` build passed; an isolated adapter Release build passed with zero errors/warnings; all 49 simulated-pipe adapter checks passed, including both explicit non-prefix mutations. The normal checkout adapter executable was locked by active MCP clients, so those processes must restart before the normal Release output can be replaced. The rebuilt Editor was reopened and attached to `UE_544_MCP`; no PIE or index schema rebuild was used.
 
 Not yet covered, and required before E2 can be called complete: the mutation review across every exposed tool, and the disconnection/replay/expired-ID/rollback-failure tests listed above.
+
+## Conflict-resolution efficiency integration (2026-10-30)
+
+- Implemented external variable owner/member resolution and default compact patch replies, with explicit full diagnostics.
+- Implemented atomic comment nodes and corrected standalone comment text initialization, colour and zoom-bubble properties.
+- Corrected dry-run existing-node identities and wouldCreate reporting.
+- Added an in-process bridge preserving native dispatch/operation tracking for optional toolset integrations. GraphXPort Conflict Toolset provides bounded revision sessions and explicit guarded preview/apply using this engine. This is not general automatic semantic Blueprint merging.
+- UE 5.8 isolated-host authoring automation passed 17 tests; focused tests include real external Blueprint variables, retry behavior, compact outputs and authored comments. Session integration is benchmarked against a disposable Git conflict, not the remaining DSM conflicts.
+
+## Blueprint interface attachment (2026-10-30)
+
+`AddBlueprintInterface(objectPath, interfaceClassPath, dryRun=false, compileAfterEdit=true, saveAfterEdit=false)` attaches an exact interface class. It detects direct/inherited implementations, refuses pre-existing function-name collisions, and preserves existing graphs. Mutation uses an editor transaction with compile-failure rollback. Saving forces compilation and is refused if the package already has unsaved work. It reports added/alreadyExists/inherited, created graph names, compilation counts, rollback and save/index outcomes. It never stages or commits.
+
+UE 5.8 isolated-host compile/link and `UnrealMCP.Blueprint.Authoring.Interface.Attach` passed. The regression covers dry-run, attachment with signature generation, repeated calls, inherited interfaces, invalid classes, save refusal for unsaved work, and function collision refusal. Compilation-failure rollback is implemented but has no dedicated injected-failure fixture yet.

@@ -1,5 +1,13 @@
 # Unreal MCP Plugin
 
+### Bundled tool catalog
+
+See [MCP Tool Index](docs/MCP-Tool-Index.md) for a searchable routing index across custom and official MCP tools, without full schemas. Regenerate it with `python Scripts/refresh_tool_index.py`; add `--official-url <endpoint>` to capture official discovery metadata live. Without an endpoint, the generator uses the checked-in official metadata snapshot and bundled native catalog, retaining their capture dates. Exact input schemas are fetched from the owning server when needed.
+
+`Adapter/UnrealMCP.Adapter/unreal-tools.json` contains the native tool definitions captured from the DSM UE 5.8 editor on October 30, 2026 (120 tools, including `AddBlueprintInterface`). The adapter copies this catalog into build output for offline discovery; a successful live attachment remains authoritative.
+
+If a registered tool is missing, call `unreal.adapter.RefreshToolManifest`, then re-list tools. In compact mode use `SearchTools`, `GetToolSchema`, and `CallTool`. If these discovery tools are themselves missing, check the running adapter version: refreshing a catalog cannot upgrade an old executable. Close clients using the adapter, run `Adapter/BuildAdapter.bat`, and reconnect them. Updating the plugin DLL alone does not update the external adapter.
+
 UnrealMCP combines a native Unreal Editor execution engine with a .NET MCP adapter for project inspection, Blueprint authoring and static verification. Progressive capability discovery avoids loading every tool schema before starting work.
 
 ## Development Context
@@ -523,3 +531,17 @@ When Unreal Editor is open with the selected project:
 ## Next Steps
 
 Follow [ROADMAP.md](ROADMAP.md): reliable compound operations, bounded query/evidence reuse, declarative asset workflows, structured diagnostics/builds and reflected API inspection. Graph primitives, functions, interfaces and dispatcher authoring already exist. The roadmap preserves unfinished Enhanced Input work and explicitly defers map/level editing.
+
+## Conflict-resolution efficiency extensions
+
+`ApplyBlueprintGraphPatch` supports external variable get/set nodes through `ownerClassPath`, resolving the property and owner GUID rather than searching only the target Blueprint. `kind: "comment"` supports authored text, width/height, RGB colour and `showBubbleWhenZoomed` in the same transaction as the wiring. Patch results default to `detailLevel: "summary"`; request `"full"` for complete node/pin dumps. Summary results still include node identities, link/disconnection outcomes, compile/save evidence and actual comment properties. Dry-run existing nodes retain their real GUIDs and report `wouldCreate=false`.
+
+`AddBlueprintCommentNode` applies authored text after placement and accepts optional RGB `color` and `showBubbleWhenZoomed` (default true), avoiding follow-up title/colour/bubble edits.
+
+The exported in-process `FUnrealMCPModule::ExecuteToolJson` bridge forwards requests through the existing native dispatch/tracking path. The optional GraphXPort Conflict Toolset uses it for guarded preview/apply workflows exposed through Epic's official MCP; this native plugin does not depend on GraphXPort. These additions were compiled and tested with UE 5.8; UE 5.4 compatibility has not been freshly tested.
+
+## Blueprint interface attachment (2026-10-30)
+
+`AddBlueprintInterface(objectPath, interfaceClassPath, dryRun=false, compileAfterEdit=true, saveAfterEdit=false)` attaches an exact interface class. It detects direct/inherited implementations, refuses pre-existing function-name collisions, and preserves existing graphs. Mutation uses an editor transaction with compile-failure rollback. Saving forces compilation and is refused if the package already has unsaved work. It reports added/alreadyExists/inherited, created graph names, compilation counts, rollback and save/index outcomes. It never stages or commits.
+
+UE 5.8 isolated-host compile/link and `UnrealMCP.Blueprint.Authoring.Interface.Attach` passed. The regression covers dry-run, attachment with signature generation, repeated calls, inherited interfaces, invalid classes, save refusal for unsaved work, and function collision refusal. Compilation-failure rollback is implemented but has no dedicated injected-failure fixture yet.

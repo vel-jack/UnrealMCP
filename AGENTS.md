@@ -74,6 +74,8 @@ Prioritize fewer schemas, smaller complete evidence sets, fewer round trips, and
 
 ## Tool Design
 
+Before declaring an MCP capability unavailable, search `docs/MCP-Tool-Index.md` for both custom and official routes. This generated index contains shortened descriptions, not execution schemas. Fetch the exact live schema before use. If no match is found, refresh the custom manifest and re-list/search its catalog, then list official toolsets and describe the relevant toolsets. A missing exposed tool or keyword match alone is not proof the capability is absent. Regenerate the index with `python Scripts/refresh_tool_index.py`; use `--official-url <endpoint>` to refresh official metadata or `--custom-catalog <path>` for a newer captured native catalog.
+
 Expose high-level deterministic operations rather than raw Unreal APIs.
 
 Every tool must provide:
@@ -92,6 +94,10 @@ Never return plain `Done` text when structured evidence is available.
 Tool implementations belong in separate header/source files under `Public/Tools` and `Private/Tools`. Shared Blueprint editing behavior belongs in the `Tools/BlueprintEditToolUtils`, `Tools/BlueprintGraphEditToolUtils`, and `Tools/BlueprintToolUtils` modules rather than duplicated across tools. `Public/Blueprint`/`Private/Blueprint` hold Blueprint-specific K2Node subclass implementations, not shared editing utilities.
 
 ## Blueprint Mutation Safety
+
+### Requested Blueprint conflict resolution
+
+Review base/current/incoming and both sides' changes through GraphXPort, then use official and custom MCP capabilities for targeted integration. Search `docs/MCP-Tool-Index.md` and both live catalogs before declaring a capability unavailable. Never take incoming or outgoing/current wholesale or replace the working asset with a side without explicit user confirmation for that asset and side. General conflict-resolution authorization does not authorize discarding either revision. Preserve unsaved work and confirmed contracts; inspect relevant variables, interfaces, components and defaults alongside graph changes. Verify edited nodes, links and layout, compile the target, save and verify clean package state before marking resolved. Stage only the reviewed asset and confirm its unmerged Git stages are gone. Report runtime verification separately and do not commit unless requested. Host-project Blueprint authorization and computer-use restrictions remain applicable.
 
 - Resolve and inspect the target asset before editing.
 - Execute UObject loading and mutation on the Unreal game thread.

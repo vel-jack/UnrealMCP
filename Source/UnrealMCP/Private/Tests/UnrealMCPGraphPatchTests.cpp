@@ -18,6 +18,8 @@
 #include "Misc/ScopeExit.h"
 #include "ObjectTools.h"
 #include "Tools/ApplyBlueprintGraphPatchTool.h"
+#include "Tools/AddBlueprintCommentNodeTool.h"
+#include "EdGraphNode_Comment.h"
 #include "Tools/BlueprintGraphEditToolUtils.h"
 
 namespace
@@ -54,6 +56,7 @@ namespace
         UnrealMCP::FMCPRequest Request;
         Request.Id = bDryRun ? TEXT("graph-patch-dry-run") : TEXT("graph-patch-apply");
         Request.Params = MakeShared<FJsonObject>();
+        Request.Params->SetStringField(TEXT("detailLevel"), TEXT("full"));
         Request.Params->SetStringField(TEXT("objectPath"), ObjectPath);
         Request.Params->SetStringField(TEXT("graphGuid"), GraphGuid);
         Request.Params->SetStringField(TEXT("patchId"), TEXT("graph-patch-automation-v1"));
@@ -87,6 +90,7 @@ namespace
         UnrealMCP::FMCPRequest Request;
         Request.Id = bDryRun ? TEXT("graph-patch-wildcard-dry-run") : TEXT("graph-patch-wildcard-apply");
         Request.Params = MakeShared<FJsonObject>();
+        Request.Params->SetStringField(TEXT("detailLevel"), TEXT("full"));
         Request.Params->SetStringField(TEXT("objectPath"), ObjectPath);
         Request.Params->SetStringField(TEXT("graphGuid"), GraphGuid);
         Request.Params->SetStringField(TEXT("patchId"), TEXT("graph-patch-wildcard-v1"));
@@ -364,6 +368,7 @@ bool FUnrealMCPGraphPatchCompileRollbackTest::RunTest(const FString& Parameters)
     UnrealMCP::FMCPRequest Request;
     Request.Id = TEXT("graph-patch-compile-rollback");
     Request.Params = MakeShared<FJsonObject>();
+        Request.Params->SetStringField(TEXT("detailLevel"), TEXT("full"));
     Request.Params->SetStringField(TEXT("objectPath"), ObjectPath);
     Request.Params->SetStringField(TEXT("graphGuid"), GraphGuid);
     Request.Params->SetStringField(TEXT("patchId"), TEXT("graph-patch-compile-rollback-v1"));
@@ -385,6 +390,78 @@ bool FUnrealMCPGraphPatchCompileRollbackTest::RunTest(const FString& Parameters)
         UnrealMCP::BlueprintGraphEditToolUtils::ComputeGraphRevision(Graph), InitialRevision);
     TestFalse(TEXT("Compile failure never saves the temporary asset"), FPackageName::DoesPackageExist(PackagePath));
     return !HasAnyErrors();
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUnrealMCPExternalVariablePatchTest,
+    "UnrealMCP.Blueprint.Authoring.GraphPatch.ExternalVariableAndSummary", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FUnrealMCPExternalVariablePatchTest::RunTest(const FString& Parameters)
+{
+    const FString Suffix = FGuid::NewGuid().ToString(EGuidFormats::Digits);
+    UBlueprint* Owner = CreatePatchFixture(TEXT("/Game/UnrealMCP_Automation/BP_Owner_") + Suffix);
+    UBlueprint* Target = CreatePatchFixture(TEXT("/Game/UnrealMCP_Automation/BP_Target_") + Suffix);
+    ON_SCOPE_EXIT { ObjectTools::DeleteObjectsUnchecked({Target, Owner}); };
+    FEdGraphPinType Bool; Bool.PinCategory = UEdGraphSchema_K2::PC_Boolean;
+    FBlueprintEditorUtils::AddMemberVariable(Owner, TEXT("ForeignFlag"), Bool);
+    FKismetEditorUtilities::CompileBlueprint(Owner);
+    FEdGraphPinType Object; Object.PinCategory = UEdGraphSchema_K2::PC_Object; Object.PinSubCategoryObject = Owner->GeneratedClass;
+    FBlueprintEditorUtils::AddMemberVariable(Target, TEXT("OwnerRef"), Object);
+    FKismetEditorUtilities::CompileBlueprint(Target);
+    auto Local = Node(TEXT("owner"), TEXT("variableGet")); Local->SetStringField(TEXT("variableName"), TEXT("OwnerRef"));
+    auto Foreign = Node(TEXT("foreign"), TEXT("variableGet")); Foreign->SetStringField(TEXT("variableName"), TEXT("ForeignFlag"));
+    Foreign->SetStringField(TEXT("ownerClassPath"), Owner->GeneratedClass->GetPathName());
+    UnrealMCP::FMCPRequest Request; Request.Id = TEXT("foreign-patch"); Request.Params = MakeShared<FJsonObject>();
+    Request.Params->SetStringField(TEXT("objectPath"), Target->GetPathName()); Request.Params->SetStringField(TEXT("graphName"), TEXT("EventGraph"));
+    Request.Params->SetStringField(TEXT("patchId"), Suffix);
+    auto CommentPlan = Node(TEXT("comment"), TEXT("comment")); CommentPlan->SetStringField(TEXT("comment"), TEXT("Atomic external member flow"));
+    Request.Params->SetArrayField(TEXT("nodes"), {MakeShared<FJsonValueObject>(Local), MakeShared<FJsonValueObject>(Foreign), MakeShared<FJsonValueObject>(Node(TEXT("branch"), TEXT("branch"))), MakeShared<FJsonValueObject>(CommentPlan)});
+    Request.Params->SetArrayField(TEXT("connections"), {
+        MakeShared<FJsonValueObject>(Connection(TEXT("owner"), TEXT("OwnerRef"), TEXT("foreign"), TEXT("self"))),
+        MakeShared<FJsonValueObject>(Connection(TEXT("foreign"), TEXT("ForeignFlag"), TEXT("branch"), TEXT("Condition")))});
+    FApplyBlueprintGraphPatchTool Tool;
+    Request.Params->SetBoolField(TEXT("dryRun"), true);
+    auto Preview = Tool.Execute(Request);
+    if (!TestFalse(TEXT("External getter preflight succeeds"), Preview.Error.IsSet())) return false;
+    for (const auto& Item : Preview.Result->GetArrayField(TEXT("nodes"))) TestFalse(TEXT("Summary omits pin dump"), Item->AsObject()->HasField(TEXT("pins")));
+    Request.Params->SetBoolField(TEXT("dryRun"), false);
+    auto Applied = Tool.Execute(Request);
+    if (!TestFalse(TEXT("External getter applies"), Applied.Error.IsSet())) return false;
+    TestTrue(TEXT("Compiles with exact target owner"), Applied.Result->GetBoolField(TEXT("compileSucceeded")));
+    bool FoundComment = false;
+    for (UEdGraph* Graph : Target->UbergraphPages) for (UEdGraphNode* Raw : Graph->Nodes)
+        if (auto* Comment = Cast<UEdGraphNode_Comment>(Raw))
+        {
+            FoundComment = true; TestEqual(TEXT("Atomic patch keeps authored comment title"), Comment->NodeComment, FString(TEXT("Atomic external member flow")));
+            TestTrue(TEXT("Atomic patch bubble visible"), Comment->bCommentBubbleVisible_InDetailsPanel && Comment->bCommentBubbleVisible);
+        }
+    TestTrue(TEXT("Atomic patch comment exists"), FoundComment);
+    auto Retry = Tool.Execute(Request);
+    TestFalse(TEXT("External getter retry succeeds"), Retry.Error.IsSet());
+    return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUnrealMCPCommentPropertiesTest,
+    "UnrealMCP.Blueprint.Authoring.Comment.AuthoredProperties", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FUnrealMCPCommentPropertiesTest::RunTest(const FString& Parameters)
+{
+    UBlueprint* Blueprint = CreatePatchFixture(TEXT("/Game/UnrealMCP_Automation/BP_Comment_") + FGuid::NewGuid().ToString(EGuidFormats::Digits));
+    ON_SCOPE_EXIT { ObjectTools::DeleteObjectsUnchecked({Blueprint}); };
+    UnrealMCP::FMCPRequest Request; Request.Params = MakeShared<FJsonObject>();
+    Request.Params->SetStringField(TEXT("objectPath"), Blueprint->GetPathName()); Request.Params->SetStringField(TEXT("graphName"), TEXT("EventGraph"));
+    Request.Params->SetStringField(TEXT("commentText"), TEXT("Preserve authored title"));
+    Request.Params->SetBoolField(TEXT("showBubbleWhenZoomed"), true);
+    auto Color = MakeShared<FJsonObject>(); Color->SetNumberField(TEXT("r"), 0.1); Color->SetNumberField(TEXT("g"), 0.2); Color->SetNumberField(TEXT("b"), 0.3);
+    Request.Params->SetObjectField(TEXT("color"), Color);
+    auto Result = FAddBlueprintCommentNodeTool().Execute(Request);
+    if (!TestFalse(TEXT("Comment tool succeeds"), Result.Error.IsSet())) return false;
+    bool Found = false;
+    for (UEdGraph* Graph : Blueprint->UbergraphPages) for (UEdGraphNode* Raw : Graph->Nodes)
+        if (auto* Comment = Cast<UEdGraphNode_Comment>(Raw))
+        {
+            Found = true; TestEqual(TEXT("Actual authored title"), Comment->NodeComment, FString(TEXT("Preserve authored title")));
+            TestTrue(TEXT("Bubble visible"), Comment->bCommentBubbleVisible_InDetailsPanel && Comment->bCommentBubbleVisible);
+            TestTrue(TEXT("Actual authored colour"), Comment->CommentColor.Equals(FLinearColor(0.1f, 0.2f, 0.3f, 1.f)));
+        }
+    TestTrue(TEXT("Comment exists"), Found); return true;
 }
 
 #endif // WITH_DEV_AUTOMATION_TESTS

@@ -6,6 +6,7 @@
 #include "EdGraph/EdGraph.h"
 #include "EdGraphSchema_K2.h"
 #include "Editor.h"
+#include "EdGraphNode_Comment.h"
 #include "Engine/Blueprint.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_IfThenElse.h"
@@ -21,6 +22,7 @@
 #include "Tools/BlueprintGraphEditToolUtils.h"
 #include "Tools/BlueprintToolUtils.h"
 #include "UObject/UObjectGlobals.h"
+#include "UObject/UnrealType.h"
 
 namespace
 {
@@ -41,7 +43,11 @@ namespace
         double Tolerance = 0.0;
         int32 X = 0, Y = 0;
         FGuid DeterministicGuid, VariableGuid;
+        int32 CommentWidth = 600, CommentHeight = 300;
+        bool bShowBubble = true;
+        FLinearColor CommentColor = FLinearColor(0.04f, 0.18f, 0.3f, 1.f);
         UFunction* Function = nullptr;
+        UClass* VariableOwner = nullptr;
         UEdGraphNode* Preview = nullptr;
         UEdGraphNode* Live = nullptr;
         bool bCreated = false, bReused = false, bMoved = false, bCommentChanged = false;
@@ -121,6 +127,23 @@ namespace
         else if (Out.Kind.Equals(TEXT("typedOperator"), ESearchCase::IgnoreCase))
         {
             if (Out.OperatorName.IsEmpty()) { Error = TEXT("typedOperator requires operator."); return false; }
+        }
+        else if (Out.Kind.Equals(TEXT("comment"), ESearchCase::IgnoreCase))
+        {
+            if (!Out.bHasComment || Out.Comment.IsEmpty()) { Error = TEXT("comment requires authored comment text."); return false; }
+            double Width = 600, Height = 300;
+            Object->TryGetNumberField(TEXT("width"), Width); Object->TryGetNumberField(TEXT("height"), Height);
+            Out.CommentWidth = FMath::Clamp(FMath::RoundToInt(Width), 200, 4000); Out.CommentHeight = FMath::Clamp(FMath::RoundToInt(Height), 100, 4000);
+            Object->TryGetBoolField(TEXT("showBubbleWhenZoomed"), Out.bShowBubble);
+            const TSharedPtr<FJsonObject>* Color = nullptr;
+            if (Object->TryGetObjectField(TEXT("color"), Color))
+            {
+                double R, G, B;
+                if (!(*Color)->TryGetNumberField(TEXT("r"), R) || !(*Color)->TryGetNumberField(TEXT("g"), G) || !(*Color)->TryGetNumberField(TEXT("b"), B)
+                    || !FMath::IsFinite(R) || !FMath::IsFinite(G) || !FMath::IsFinite(B) || R < 0 || G < 0 || B < 0)
+                { Error = TEXT("Comment color requires finite nonnegative r/g/b."); return false; }
+                Out.CommentColor = FLinearColor(R, G, B, 1.f);
+            }
         }
         else if (!Out.Kind.Equals(TEXT("branch"), ESearchCase::IgnoreCase)
             && !Out.Kind.Equals(TEXT("reroute"), ESearchCase::IgnoreCase))
@@ -206,10 +229,15 @@ namespace
                 && CastChecked<UK2Node_CallFunction>(Node)->GetTargetFunction() == Spec.Function;
         if (Spec.Kind.Equals(TEXT("variableGet"), ESearchCase::IgnoreCase))
             return Cast<UK2Node_VariableGet>(Node) != nullptr
-                && CastChecked<UK2Node_VariableGet>(Node)->VariableReference.GetMemberGuid() == Spec.VariableGuid;
+                && CastChecked<UK2Node_VariableGet>(Node)->VariableReference.GetMemberName() == FName(*Spec.VariableName)
+                && (!Spec.VariableGuid.IsValid() || CastChecked<UK2Node_VariableGet>(Node)->VariableReference.GetMemberGuid() == Spec.VariableGuid)
+                && (Spec.VariableOwner ? CastChecked<UK2Node_VariableGet>(Node)->VariableReference.GetMemberParentClass() == Spec.VariableOwner : CastChecked<UK2Node_VariableGet>(Node)->VariableReference.IsSelfContext());
         if (Spec.Kind.Equals(TEXT("variableSet"), ESearchCase::IgnoreCase))
             return Cast<UK2Node_VariableSet>(Node) != nullptr
-                && CastChecked<UK2Node_VariableSet>(Node)->VariableReference.GetMemberGuid() == Spec.VariableGuid;
+                && CastChecked<UK2Node_VariableSet>(Node)->VariableReference.GetMemberName() == FName(*Spec.VariableName)
+                && (!Spec.VariableGuid.IsValid() || CastChecked<UK2Node_VariableSet>(Node)->VariableReference.GetMemberGuid() == Spec.VariableGuid)
+                && (Spec.VariableOwner ? CastChecked<UK2Node_VariableSet>(Node)->VariableReference.GetMemberParentClass() == Spec.VariableOwner : CastChecked<UK2Node_VariableSet>(Node)->VariableReference.IsSelfContext());
+        if (Spec.Kind.Equals(TEXT("comment"), ESearchCase::IgnoreCase)) return Node && Node->IsA<UEdGraphNode_Comment>();
         if (Spec.Kind.Equals(TEXT("branch"), ESearchCase::IgnoreCase)) return Node != nullptr && Node->IsA<UK2Node_IfThenElse>();
         return Node != nullptr && Node->IsA<UK2Node_Knot>();
     }
@@ -220,10 +248,25 @@ namespace
         if (Spec.Kind.Equals(TEXT("functionCall"), ESearchCase::IgnoreCase)
             || Spec.Kind.Equals(TEXT("typedOperator"), ESearchCase::IgnoreCase))
             return CreateFunctionCallNode(Graph, Spec.Function, bDetached);
-        if (Spec.Kind.Equals(TEXT("variableGet"), ESearchCase::IgnoreCase))
-            return CreateVariableGetNode(Graph, *Spec.VariableName, Spec.VariableGuid, bDetached);
-        if (Spec.Kind.Equals(TEXT("variableSet"), ESearchCase::IgnoreCase))
-            return CreateVariableSetNode(Graph, *Spec.VariableName, Spec.VariableGuid, bDetached);
+        if (Spec.Kind.Equals(TEXT("variableGet"), ESearchCase::IgnoreCase)
+            || Spec.Kind.Equals(TEXT("variableSet"), ESearchCase::IgnoreCase))
+        {
+            UK2Node_Variable* Node = Spec.Kind.Equals(TEXT("variableGet"), ESearchCase::IgnoreCase)
+                ? static_cast<UK2Node_Variable*>(CreateVariableGetNode(Graph, *Spec.VariableName, Spec.VariableGuid, false))
+                : static_cast<UK2Node_Variable*>(CreateVariableSetNode(Graph, *Spec.VariableName, Spec.VariableGuid, false));
+            if (Node && Spec.VariableOwner)
+                Node->VariableReference.SetExternalMember(*Spec.VariableName, Spec.VariableOwner, Spec.VariableGuid);
+            if (Node && bDetached) Node->AllocateDefaultPins();
+            return Node;
+        }
+        if (Spec.Kind.Equals(TEXT("comment"), ESearchCase::IgnoreCase))
+        {
+            auto* Comment = NewObject<UEdGraphNode_Comment>(Graph);
+            Comment->NodeComment = Spec.Comment; Comment->NodeWidth = Spec.CommentWidth; Comment->NodeHeight = Spec.CommentHeight;
+            Comment->CommentColor = Spec.CommentColor; Comment->bCommentBubbleVisible_InDetailsPanel = Spec.bShowBubble;
+            Comment->bCommentBubbleVisible = Spec.bShowBubble; Comment->bColorCommentBubble = true;
+            return Comment;
+        }
         if (Spec.Kind.Equals(TEXT("branch"), ESearchCase::IgnoreCase)) return CreateBranchNode(Graph, bDetached);
         if (Spec.Kind.Equals(TEXT("reroute"), ESearchCase::IgnoreCase)) return CreateRerouteNode(Graph, bDetached);
         return nullptr;
@@ -396,9 +439,19 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
                 else if (Spec.Kind.Equals(TEXT("variableGet"), ESearchCase::IgnoreCase)
                     || Spec.Kind.Equals(TEXT("variableSet"), ESearchCase::IgnoreCase))
                 {
-                    const int32 VariableIndex = FBlueprintEditorUtils::FindNewVariableIndex(Blueprint, *Spec.VariableName);
-                    if (VariableIndex == INDEX_NONE) { Error = FString::Printf(TEXT("Variable '%s' was not found."), *Spec.VariableName); return false; }
-                    Spec.VariableGuid = Blueprint->NewVariables[VariableIndex].VarGuid;
+                    UBlueprint* OwnerBlueprint = Blueprint;
+                    if (!Spec.OwnerClassPath.IsEmpty())
+                    {
+                        if (!BlueprintEditToolUtils::ResolveClass(Spec.OwnerClassPath, Spec.VariableOwner, Error)) return false;
+                        FProperty* Property = FindFProperty<FProperty>(Spec.VariableOwner, *Spec.VariableName);
+                        if (!Property || !Property->HasAnyPropertyFlags(CPF_BlueprintVisible)
+                            || (Spec.Kind.Equals(TEXT("variableSet"), ESearchCase::IgnoreCase) && Property->HasAnyPropertyFlags(CPF_BlueprintReadOnly)))
+                        { Error = FString::Printf(TEXT("Variable '%s' was not found on owner '%s'."), *Spec.VariableName, *Spec.OwnerClassPath); return false; }
+                        OwnerBlueprint = UBlueprint::GetBlueprintFromClass(Spec.VariableOwner);
+                    }
+                    const int32 VariableIndex = OwnerBlueprint ? FBlueprintEditorUtils::FindNewVariableIndex(OwnerBlueprint, *Spec.VariableName) : INDEX_NONE;
+                    if (VariableIndex != INDEX_NONE) Spec.VariableGuid = OwnerBlueprint->NewVariables[VariableIndex].VarGuid;
+                    else if (!Spec.VariableOwner) { Error = FString::Printf(TEXT("Variable '%s' was not found."), *Spec.VariableName); return false; }
                 }
                 Spec.Live = FindNodeByGuid(Graph, Spec.DeterministicGuid);
                 if (Spec.Live != nullptr && !NodeMatches(Spec, Spec.Live))
@@ -529,6 +582,17 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
                     if (Spec.Live->NodePosX != Spec.X || Spec.Live->NodePosY != Spec.Y)
                     { Spec.Live->NodePosX = Spec.X; Spec.Live->NodePosY = Spec.Y; Spec.bMoved = true; bChanged = true; }
                 }
+                if (Spec.Kind.Equals(TEXT("comment"), ESearchCase::IgnoreCase))
+                {
+                    auto* Comment = CastChecked<UEdGraphNode_Comment>(Spec.Live);
+                    if (Comment->NodeWidth != Spec.CommentWidth || Comment->NodeHeight != Spec.CommentHeight || Comment->CommentColor != Spec.CommentColor
+                        || Comment->bCommentBubbleVisible_InDetailsPanel != Spec.bShowBubble || Comment->bCommentBubbleVisible != Spec.bShowBubble || !Comment->bColorCommentBubble)
+                    {
+                        Comment->NodeWidth = Spec.CommentWidth; Comment->NodeHeight = Spec.CommentHeight; Comment->CommentColor = Spec.CommentColor;
+                        Comment->bCommentBubbleVisible_InDetailsPanel = Spec.bShowBubble; Comment->bCommentBubbleVisible = Spec.bShowBubble; Comment->bColorCommentBubble = true;
+                        bChanged = true;
+                    }
+                }
                 if (Spec.bHasComment && Spec.Live->NodeComment != Spec.Comment)
                 { Spec.Live->NodeComment = Spec.Comment; Spec.bCommentChanged = true; bChanged = true; }
             }
@@ -622,22 +686,34 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
     if (!bSucceeded)
         return BuildError(Request, EMCPErrorCode::InvalidParams, ExecutionError);
 
+    FString DetailLevel = TEXT("summary");
+    Request.Params->TryGetStringField(TEXT("detailLevel"), DetailLevel);
+    const bool bIncludePins = DetailLevel == TEXT("full");
     TArray<TSharedPtr<FJsonValue>> NodeResults;
     for (const FPatchNode& Node : Nodes)
     {
         const UEdGraphNode* ResultNode = bDryRun ? Node.Preview : Node.Live;
         TSharedRef<FJsonObject> Item = MakeShared<FJsonObject>();
         Item->SetStringField(TEXT("id"), Node.Id); Item->SetStringField(TEXT("kind"), Node.Kind);
-        Item->SetStringField(TEXT("nodeGuid"), bDryRun && !Node.bReused
+        Item->SetStringField(TEXT("nodeGuid"), bDryRun && !Node.bReused && !Node.Kind.Equals(TEXT("existingNode"), ESearchCase::IgnoreCase)
             ? Node.DeterministicGuid.ToString(EGuidFormats::DigitsWithHyphensLower)
             : BlueprintGraphEditToolUtils::GetNodeGuid(ResultNode));
         Item->SetStringField(TEXT("nodeClass"), ResultNode != nullptr ? ResultNode->GetClass()->GetPathName() : FString());
         Item->SetStringField(TEXT("graphName"), ResultNode != nullptr && ResultNode->GetGraph() != nullptr ? ResultNode->GetGraph()->GetName() : FString());
         Item->SetBoolField(TEXT("created"), Node.bCreated); Item->SetBoolField(TEXT("reused"), Node.bReused);
-        Item->SetBoolField(TEXT("wouldCreate"), bDryRun && !Node.bReused);
+        Item->SetBoolField(TEXT("wouldCreate"), bDryRun && !Node.bReused && !Node.Kind.Equals(TEXT("existingNode"), ESearchCase::IgnoreCase));
         Item->SetBoolField(TEXT("moved"), Node.bMoved); Item->SetBoolField(TEXT("commentChanged"), Node.bCommentChanged);
         Item->SetNumberField(TEXT("positionX"), Node.X); Item->SetNumberField(TEXT("positionY"), Node.Y);
-        Item->SetArrayField(TEXT("pins"), BlueprintGraphEditToolUtils::SerializePins(ResultNode));
+        if (const auto* Comment = Cast<UEdGraphNode_Comment>(ResultNode))
+        {
+            Item->SetStringField(TEXT("commentText"), Comment->NodeComment);
+            Item->SetNumberField(TEXT("width"), Comment->NodeWidth); Item->SetNumberField(TEXT("height"), Comment->NodeHeight);
+            Item->SetBoolField(TEXT("showBubbleWhenZoomed"), Comment->bCommentBubbleVisible_InDetailsPanel);
+            auto Color = MakeShared<FJsonObject>(); Color->SetNumberField(TEXT("r"), Comment->CommentColor.R);
+            Color->SetNumberField(TEXT("g"), Comment->CommentColor.G); Color->SetNumberField(TEXT("b"), Comment->CommentColor.B);
+            Item->SetObjectField(TEXT("color"), Color);
+        }
+        if (bIncludePins) Item->SetArrayField(TEXT("pins"), BlueprintGraphEditToolUtils::SerializePins(ResultNode));
         NodeResults.Add(MakeShared<FJsonValueObject>(Item));
     }
     TArray<TSharedPtr<FJsonValue>> ConnectionResults;
@@ -694,7 +770,7 @@ TSharedPtr<FJsonObject> FApplyBlueprintGraphPatchTool::BuildInputSchema() const
     for (const TCHAR* FieldName : {TEXT("objectPath"), TEXT("graphName"), TEXT("graphGuid"), TEXT("patchId"), TEXT("expectedGraphRevision"), TEXT("operationId")})
         Properties->SetObjectField(FieldName, BuildStringProperty(TEXT("Blueprint, graph, deterministic patch, or revision selector.")));
     TSharedRef<FJsonObject> Nodes = MakeShared<FJsonObject>(); Nodes->SetStringField(TEXT("type"), TEXT("array"));
-    Nodes->SetStringField(TEXT("description"), TEXT("Required node kinds: existingNode, functionCall, variableGet, variableSet, typedOperator, branch, and reroute. Nodes may include position, comment, tolerance, and inputDefaults."));
+    Nodes->SetStringField(TEXT("description"), TEXT("Required node kinds: existingNode, functionCall, variableGet, variableSet, typedOperator, branch, reroute, and comment. Nodes may include position, comment, tolerance, and inputDefaults."));
     TSharedRef<FJsonObject> NodeItem = MakeShared<FJsonObject>(); NodeItem->SetStringField(TEXT("type"), TEXT("object"));
     TSharedRef<FJsonObject> NodeProperties = MakeShared<FJsonObject>();
     for (const TCHAR* FieldName : {TEXT("id"), TEXT("kind"), TEXT("nodeGuid"), TEXT("ownerClassPath"), TEXT("functionName"), TEXT("variableName"), TEXT("operator"), TEXT("comment")})
@@ -703,6 +779,14 @@ TSharedPtr<FJsonObject> FApplyBlueprintGraphPatchTool::BuildInputSchema() const
     TSharedRef<FJsonObject> Number = MakeShared<FJsonObject>(); Number->SetStringField(TEXT("type"), TEXT("number"));
     NodeProperties->SetObjectField(TEXT("positionX"), Integer); NodeProperties->SetObjectField(TEXT("positionY"), Integer);
     NodeProperties->SetObjectField(TEXT("tolerance"), Number);
+    NodeProperties->SetObjectField(TEXT("width"), Integer); NodeProperties->SetObjectField(TEXT("height"), Integer);
+    NodeProperties->SetObjectField(TEXT("showBubbleWhenZoomed"), BuildBoolProperty(TEXT("Comment bubble visibility; defaults true.")));
+    auto ColorSchema = MakeShared<FJsonObject>(); ColorSchema->SetStringField(TEXT("type"), TEXT("object"));
+    auto Channels = MakeShared<FJsonObject>();
+    for (const TCHAR* ChannelName : {TEXT("r"), TEXT("g"), TEXT("b")}) Channels->SetObjectField(ChannelName, Number);
+    ColorSchema->SetObjectField(TEXT("properties"), Channels);
+    ColorSchema->SetArrayField(TEXT("required"), {MakeShared<FJsonValueString>(TEXT("r")), MakeShared<FJsonValueString>(TEXT("g")), MakeShared<FJsonValueString>(TEXT("b"))});
+    NodeProperties->SetObjectField(TEXT("color"), ColorSchema);
     TSharedRef<FJsonObject> Defaults = MakeShared<FJsonObject>(); Defaults->SetStringField(TEXT("type"), TEXT("array"));
     TSharedRef<FJsonObject> DefaultItem = MakeShared<FJsonObject>(); DefaultItem->SetStringField(TEXT("type"), TEXT("object"));
     TSharedRef<FJsonObject> DefaultProperties = MakeShared<FJsonObject>();
@@ -734,6 +818,7 @@ TSharedPtr<FJsonObject> FApplyBlueprintGraphPatchTool::BuildInputSchema() const
     DisconnectionItem->SetObjectField(TEXT("properties"), DisconnectionProperties);
     DisconnectionItem->SetArrayField(TEXT("required"), {MakeShared<FJsonValueString>(TEXT("sourceNodeId")), MakeShared<FJsonValueString>(TEXT("sourcePinName")), MakeShared<FJsonValueString>(TEXT("targetNodeId")), MakeShared<FJsonValueString>(TEXT("targetPinName"))});
     Disconnections->SetObjectField(TEXT("items"), DisconnectionItem); Properties->SetObjectField(TEXT("disconnections"), Disconnections);
+    Properties->SetObjectField(TEXT("detailLevel"), BuildStringProperty(TEXT("summary (default) returns identities and link results; full includes every node pin.")));
     Properties->SetObjectField(TEXT("dryRun"), BuildBoolProperty(TEXT("Run complete preflight without mutation.")));
     Properties->SetObjectField(TEXT("compileAfterEdit"), BuildBoolProperty(TEXT("Compile the edited Blueprint before any save. Defaults true.")));
     Properties->SetObjectField(TEXT("saveAfterEdit"), BuildBoolProperty(TEXT("Save and partially refresh only after successful compilation. Defaults false.")));

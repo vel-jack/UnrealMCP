@@ -16,6 +16,8 @@ public:
 
     static FUnrealMCPModule& Get();
     static bool IsAvailable();
+    /** In-process bridge for toolset integrations; preserves native tracking and validation. */
+    static UNREALMCP_API FString ExecuteToolJson(const FString& ToolName, const FString& ParamsJson);
 
     FMCPServer& GetServer();
     const FMCPServer& GetServer() const;

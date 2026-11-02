@@ -1,0 +1,4680 @@
+{
+  "formatVersion": 1,
+  "tools": [
+    {
+      "name": "AddBlueprintArrayOperationNode",
+      "description": "Adds a typed Blueprint array operation node and resolves its wildcard array and item pins.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Target graph name."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Stable target graph GUID."
+          },
+          "operation": {
+            "type": "string",
+            "description": "Array operation to add.",
+            "enum": [
+              "Contains",
+              "Add",
+              "AddUnique",
+              "RemoveItem",
+              "Clear",
+              "Length",
+              "Get"
+            ]
+          },
+          "elementType": {
+            "type": "string",
+            "description": "Array element type.",
+            "enum": [
+              "bool",
+              "float",
+              "int",
+              "string",
+              "name",
+              "text",
+              "object",
+              "class"
+            ]
+          },
+          "typeObjectPath": {
+            "type": "string",
+            "description": "Required class path when elementType is object or class."
+          },
+          "relativeToNodeGuid": {
+            "type": "string",
+            "description": "Optional placement anchor node."
+          },
+          "positionX": {
+            "type": "integer"
+          },
+          "positionY": {
+            "type": "integer"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate without changing the Blueprint."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and refresh the index after adding."
+          }
+        },
+        "required": [
+          "objectPath",
+          "operation",
+          "elementType"
+        ]
+      }
+    },
+    {
+      "name": "AddBlueprintBranchNode",
+      "description": "Adds a collision-aware Branch node to a stable Blueprint graph. Supports explicit or relative placement, dry-run, and optional save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Stable graphName from ListBlueprintGraphs, or unique display name."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Optional exact graph GUID."
+          },
+          "relativeToNodeGuid": {
+            "type": "string",
+            "description": "Optional node GUID used as the placement anchor."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Resolve graph and preview collision-aware placement without mutation."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and refresh this Blueprint after adding."
+          },
+          "positionX": {
+            "type": "integer"
+          },
+          "positionY": {
+            "type": "integer"
+          },
+          "horizontalSpacing": {
+            "type": "integer"
+          },
+          "verticalOffset": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "AddBlueprintCastNode",
+      "description": "Adds a typed Dynamic Cast node with optional pure mode, collision-aware placement, dry-run, and optional save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint graph/class/placement selector."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Blueprint graph/class/placement selector."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Blueprint graph/class/placement selector."
+          },
+          "targetClassPath": {
+            "type": "string",
+            "description": "Blueprint graph/class/placement selector."
+          },
+          "relativeToNodeGuid": {
+            "type": "string",
+            "description": "Blueprint graph/class/placement selector."
+          },
+          "positionX": {
+            "type": "integer"
+          },
+          "positionY": {
+            "type": "integer"
+          },
+          "pure": {
+            "type": "boolean",
+            "description": "Create a pure cast without exec pins."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate and preview."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and refresh."
+          }
+        },
+        "required": [
+          "objectPath",
+          "targetClassPath"
+        ]
+      }
+    },
+    {
+      "name": "AddBlueprintCommentNode",
+      "description": "Adds a bounded Blueprint graph comment with explicit text, collision-aware placement, size, dry-run, and optional save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint graph/comment/placement value."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Blueprint graph/comment/placement value."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Blueprint graph/comment/placement value."
+          },
+          "commentText": {
+            "type": "string",
+            "description": "Blueprint graph/comment/placement value."
+          },
+          "relativeToNodeGuid": {
+            "type": "string",
+            "description": "Blueprint graph/comment/placement value."
+          },
+          "positionX": {
+            "type": "integer"
+          },
+          "positionY": {
+            "type": "integer"
+          },
+          "width": {
+            "type": "integer"
+          },
+          "height": {
+            "type": "integer"
+          },
+          "color": {
+            "type": "object",
+            "properties": {
+              "r": {
+                "type": "number"
+              },
+              "g": {
+                "type": "number"
+              },
+              "b": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "r",
+              "g",
+              "b"
+            ]
+          },
+          "showBubbleWhenZoomed": {
+            "type": "boolean",
+            "description": "Show bubble when zoomed; defaults true."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Preview bounds."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and refresh."
+          }
+        },
+        "required": [
+          "objectPath",
+          "commentText"
+        ]
+      }
+    },
+    {
+      "name": "AddBlueprintComponent",
+      "description": "Transactionally adds one component to a Blueprint SCS with optional editable template property defaults. Idempotent by component name.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "componentName": {
+            "type": "string",
+            "description": "Unique component variable name."
+          },
+          "componentClassPath": {
+            "type": "string",
+            "description": "UActorComponent-derived /Script/... or generated Blueprint class path."
+          },
+          "parentComponentName": {
+            "type": "string",
+            "description": "Optional existing scene-component parent name."
+          },
+          "propertyDefaults": {
+            "type": "object",
+            "description": "Optional editable component-template properties. Values must be JSON primitives or Unreal export-text strings.",
+            "additionalProperties": true
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate without mutation."
+          },
+          "updateExistingDefaults": {
+            "type": "boolean",
+            "description": "If the named component already exists, explicitly update supplied propertyDefaults. Defaults false."
+          },
+          "compileAfterEdit": {
+            "type": "boolean",
+            "description": "Compile only this Blueprint after mutation."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save after mutation."
+          }
+        },
+        "required": [
+          "objectPath",
+          "componentName",
+          "componentClassPath"
+        ]
+      }
+    },
+    {
+      "name": "AddBlueprintComponents",
+      "description": "Prevalidates and transactionally adds an ordered component set to one Blueprint, then optionally compiles, saves, and partially refreshes the index once.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "components": {
+            "type": "array",
+            "description": "Ordered components to add. The entire batch is validated before mutation.",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "properties": {
+                "componentName": {
+                  "type": "string",
+                  "description": "Unique component variable name."
+                },
+                "componentClassPath": {
+                  "type": "string",
+                  "description": "UActorComponent-derived class path."
+                },
+                "parentComponentName": {
+                  "type": "string",
+                  "description": "Optional scene-component parent. A batch parent must appear earlier in the array."
+                },
+                "propertyDefaults": {
+                  "type": "object",
+                  "description": "Optional editable template properties using JSON primitives or Unreal export-text strings.",
+                  "additionalProperties": true
+                }
+              },
+              "required": [
+                "componentName",
+                "componentClassPath"
+              ]
+            }
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate the complete batch without mutation."
+          },
+          "compileAfterEdit": {
+            "type": "boolean",
+            "description": "Compile once after the batch. Defaults to true."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and partially refresh the index once. Defaults to true."
+          }
+        },
+        "required": [
+          "objectPath",
+          "components"
+        ]
+      }
+    },
+    {
+      "name": "AddBlueprintCustomEventNode",
+      "description": "Adds a uniquely named Custom Event to a stable Blueprint graph with collision-aware layout, dry-run, and optional save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Stable graph name."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Exact graph GUID."
+          },
+          "eventName": {
+            "type": "string",
+            "description": "Unique custom event name."
+          },
+          "relativeToNodeGuid": {
+            "type": "string",
+            "description": "Optional placement anchor."
+          },
+          "positionX": {
+            "type": "integer"
+          },
+          "positionY": {
+            "type": "integer"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate and preview."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and refresh."
+          }
+        },
+        "required": [
+          "objectPath",
+          "eventName"
+        ]
+      }
+    },
+    {
+      "name": "AddBlueprintDelegateBroadcastNode",
+      "description": "Adds a Call Delegate node for an exact Blueprint-callable multicast delegate property.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Stable graph name."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Exact graph GUID."
+          },
+          "ownerClassPath": {
+            "type": "string",
+            "description": "Exact class that declares the BlueprintCallable multicast delegate."
+          },
+          "delegateName": {
+            "type": "string",
+            "description": "Exact multicast delegate property name."
+          },
+          "relativeToNodeGuid": {
+            "type": "string",
+            "description": "Optional placement anchor."
+          },
+          "positionX": {
+            "type": "integer"
+          },
+          "positionY": {
+            "type": "integer"
+          },
+          "horizontalSpacing": {
+            "type": "integer"
+          },
+          "verticalOffset": {
+            "type": "integer"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate access, signature, graph compatibility, and placement without editing."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save the Blueprint and partially refresh its index entry."
+          }
+        },
+        "required": [
+          "objectPath",
+          "ownerClassPath",
+          "delegateName"
+        ]
+      }
+    },
+    {
+      "name": "AddBlueprintDelegateEventNode",
+      "description": "Adds a uniquely named Custom Event whose parameter pins exactly match a reflected Blueprint-assignable multicast delegate signature.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Stable event graph name."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Exact event graph GUID."
+          },
+          "ownerClassPath": {
+            "type": "string",
+            "description": "Exact class that declares the delegate."
+          },
+          "delegateName": {
+            "type": "string",
+            "description": "Exact BlueprintAssignable multicast delegate property name."
+          },
+          "eventName": {
+            "type": "string",
+            "description": "Unique Custom Event name to create."
+          },
+          "relativeToNodeGuid": {
+            "type": "string",
+            "description": "Optional placement anchor."
+          },
+          "positionX": {
+            "type": "integer"
+          },
+          "positionY": {
+            "type": "integer"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate the exact delegate signature and placement."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and partially refresh the index."
+          }
+        },
+        "required": [
+          "objectPath",
+          "ownerClassPath",
+          "delegateName",
+          "eventName"
+        ]
+      }
+    },
+    {
+      "name": "AddBlueprintDelegateNode",
+      "description": "Adds a Bind or Unbind node for an exact Blueprint-assignable multicast delegate property on a reflected owner class.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Stable graph name."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Exact graph GUID."
+          },
+          "ownerClassPath": {
+            "type": "string",
+            "description": "Exact class that declares the BlueprintAssignable delegate."
+          },
+          "delegateName": {
+            "type": "string",
+            "description": "Exact multicast delegate property name."
+          },
+          "operation": {
+            "type": "string",
+            "description": "bind or unbind; defaults to bind."
+          },
+          "relativeToNodeGuid": {
+            "type": "string",
+            "description": "Optional placement anchor."
+          },
+          "positionX": {
+            "type": "integer"
+          },
+          "positionY": {
+            "type": "integer"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate the delegate signature and placement."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and partially refresh the index."
+          }
+        },
+        "required": [
+          "objectPath",
+          "ownerClassPath",
+          "delegateName"
+        ]
+      }
+    },
+    {
+      "name": "AddBlueprintFunctionCallNode",
+      "description": "Adds a function-call node from an exact owner class and function name with collision-aware placement, dry-run, and optional save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Stable graph name."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Exact graph GUID."
+          },
+          "functionName": {
+            "type": "string",
+            "description": "Exact reflected UFunction name."
+          },
+          "ownerClassPath": {
+            "type": "string",
+            "description": "Optional exact owner class; defaults to the target Blueprint generated class."
+          },
+          "relativeToNodeGuid": {
+            "type": "string",
+            "description": "Optional placement anchor."
+          },
+          "positionX": {
+            "type": "integer"
+          },
+          "positionY": {
+            "type": "integer"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate function and placement."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and refresh."
+          }
+        },
+        "required": [
+          "objectPath",
+          "functionName"
+        ]
+      }
+    },
+    {
+      "name": "AddBlueprintFunctionParameter",
+      "description": "Transactionally adds one typed input or output parameter to a Blueprint function graph identified by graphGuid.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Stable GUID of the target function graph."
+          },
+          "parameterName": {
+            "type": "string",
+            "description": "Unique function parameter name."
+          },
+          "direction": {
+            "type": "string",
+            "description": "Parameter direction: input or output."
+          },
+          "type": {
+            "type": "string",
+            "description": "Scalar type, or Map key type."
+          },
+          "typeObjectPath": {
+            "type": "string",
+            "description": "Required class path for object/class types."
+          },
+          "containerType": {
+            "type": "string",
+            "description": "none, array, set, or map."
+          },
+          "valueType": {
+            "type": "string",
+            "description": "Required Map value type."
+          },
+          "valueTypeObjectPath": {
+            "type": "string",
+            "description": "Class path for object/class Map values."
+          },
+          "isArray": {
+            "type": "boolean",
+            "description": "Backward-compatible alias for containerType=array."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate without mutation."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and partially refresh the index after mutation."
+          }
+        },
+        "required": [
+          "objectPath",
+          "graphGuid",
+          "parameterName",
+          "direction",
+          "type"
+        ]
+      }
+    },
+    {
+      "name": "AddBlueprintInterface",
+      "description": "Attaches an exact Blueprint interface transactionally, with dry-run, duplicate/inherited detection, collision refusal, compile rollback and optional save. Refuses saving pre-existing unsaved work.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Exact Blueprint asset or interface class path."
+          },
+          "interfaceClassPath": {
+            "type": "string",
+            "description": "Exact Blueprint asset or interface class path."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Dry-run false, compile true, save false by default. Saving forces compilation."
+          },
+          "compileAfterEdit": {
+            "type": "boolean",
+            "description": "Dry-run false, compile true, save false by default. Saving forces compilation."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Dry-run false, compile true, save false by default. Saving forces compilation."
+          }
+        },
+        "required": [
+          "objectPath",
+          "interfaceClassPath"
+        ]
+      }
+    },
+    {
+      "name": "AddBlueprintInterfaceEventNode",
+      "description": "Adds an implemented Blueprint interface function as an event node in an exact Ubergraph, with idempotent duplicate detection, dry-run, and optional save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Exact Ubergraph name; graphGuid is preferred when available."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Exact stable Ubergraph GUID."
+          },
+          "interfaceClassPath": {
+            "type": "string",
+            "description": "Exact /Script/... or generated Blueprint interface class path."
+          },
+          "functionName": {
+            "type": "string",
+            "description": "Exact interface function name."
+          },
+          "nodeX": {
+            "type": "integer",
+            "description": "Optional requested node X position."
+          },
+          "nodeY": {
+            "type": "integer",
+            "description": "Optional requested node Y position."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate the interface event and preview placement without mutation."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and partially refresh this Blueprint after adding."
+          }
+        },
+        "required": [
+          "objectPath",
+          "interfaceClassPath",
+          "functionName"
+        ]
+      }
+    },
+    {
+      "name": "AddBlueprintInterfaceFunctionGraph",
+      "description": "Creates the signature-correct function-graph implementation for a non-event Blueprint interface function, including output and return signatures.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "interfaceClassPath": {
+            "type": "string",
+            "description": "Exact /Script/... or generated Blueprint interface class path."
+          },
+          "functionName": {
+            "type": "string",
+            "description": "Exact interface function name."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate and report whether the interface graph would be created."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and partially refresh the Blueprint after creation."
+          }
+        },
+        "required": [
+          "objectPath",
+          "interfaceClassPath",
+          "functionName"
+        ]
+      }
+    },
+    {
+      "name": "AddBlueprintMacroNode",
+      "description": "Adds a macro instance from a Blueprint macro library, including StandardMacros such as ForEachLoop.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint graph, macro, or placement selector."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Blueprint graph, macro, or placement selector."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Blueprint graph, macro, or placement selector."
+          },
+          "macroName": {
+            "type": "string",
+            "description": "Blueprint graph, macro, or placement selector."
+          },
+          "macroLibraryPath": {
+            "type": "string",
+            "description": "Blueprint graph, macro, or placement selector."
+          },
+          "relativeToNodeGuid": {
+            "type": "string",
+            "description": "Blueprint graph, macro, or placement selector."
+          },
+          "positionX": {
+            "type": "integer"
+          },
+          "positionY": {
+            "type": "integer"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate and preview without mutation."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and refresh after adding."
+          }
+        },
+        "required": [
+          "objectPath",
+          "macroName"
+        ]
+      }
+    },
+    {
+      "name": "AddBlueprintMapOperationNode",
+      "description": "Adds a persistent typed Blueprint Map operation node with independently resolved key and value pins.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Target graph name."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Stable target graph GUID."
+          },
+          "operation": {
+            "type": "string",
+            "description": "Map operation to add.",
+            "enum": [
+              "Add",
+              "Find",
+              "Contains",
+              "Remove",
+              "Clear",
+              "Keys",
+              "Values"
+            ]
+          },
+          "keyType": {
+            "type": "string",
+            "description": "Map key type."
+          },
+          "keyTypeObjectPath": {
+            "type": "string",
+            "description": "Class path for object/class key types."
+          },
+          "valueType": {
+            "type": "string",
+            "description": "Map value type."
+          },
+          "valueTypeObjectPath": {
+            "type": "string",
+            "description": "Class path for object/class value types."
+          },
+          "relativeToNodeGuid": {
+            "type": "string",
+            "description": "Optional placement anchor node."
+          },
+          "positionX": {
+            "type": "integer"
+          },
+          "positionY": {
+            "type": "integer"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate without changing the Blueprint."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and refresh after adding."
+          }
+        },
+        "required": [
+          "objectPath",
+          "operation",
+          "keyType",
+          "valueType"
+        ]
+      }
+    },
+    {
+      "name": "AddBlueprintOverrideEventNode",
+      "description": "Adds an overrideable parent-class Blueprint event to an exact Blueprint graph with collision-aware placement, dry-run, duplicate rejection, and optional save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Exact stable Ubergraph GUID."
+          },
+          "functionName": {
+            "type": "string",
+            "description": "Exact overrideable Blueprint event name on the parent class."
+          },
+          "nodeX": {
+            "type": "integer",
+            "description": "Optional requested node X position."
+          },
+          "nodeY": {
+            "type": "integer",
+            "description": "Optional requested node Y position."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate the event and preview placement without mutation."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and partially refresh this Blueprint after adding."
+          }
+        },
+        "required": [
+          "objectPath",
+          "graphGuid",
+          "functionName"
+        ]
+      }
+    },
+    {
+      "name": "AddBlueprintRerouteNode",
+      "description": "Adds a wildcard Reroute node with collision-aware placement. Its pin type specializes when connected.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint graph or placement selector."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Blueprint graph or placement selector."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Blueprint graph or placement selector."
+          },
+          "relativeToNodeGuid": {
+            "type": "string",
+            "description": "Blueprint graph or placement selector."
+          },
+          "positionX": {
+            "type": "integer"
+          },
+          "positionY": {
+            "type": "integer"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Preview placement."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and refresh."
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "AddBlueprintSequenceNode",
+      "description": "Adds a collision-aware Sequence node to a stable Blueprint graph. Supports dry-run and optional save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint graph or placement selector."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Blueprint graph or placement selector."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Blueprint graph or placement selector."
+          },
+          "relativeToNodeGuid": {
+            "type": "string",
+            "description": "Blueprint graph or placement selector."
+          },
+          "positionX": {
+            "type": "integer"
+          },
+          "positionY": {
+            "type": "integer"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Preview without mutation."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and refresh."
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "AddBlueprintSetOperationNode",
+      "description": "Adds a persistent typed Blueprint Set operation node with resolved element pins.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Target graph name."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Stable target graph GUID."
+          },
+          "operation": {
+            "type": "string",
+            "description": "Set operation to add.",
+            "enum": [
+              "Contains",
+              "Add",
+              "Remove",
+              "Clear"
+            ]
+          },
+          "elementType": {
+            "type": "string",
+            "description": "Set element type: bool, float, int, string, name, text, object, or class."
+          },
+          "typeObjectPath": {
+            "type": "string",
+            "description": "Required class path when elementType is object or class."
+          },
+          "relativeToNodeGuid": {
+            "type": "string",
+            "description": "Optional placement anchor node."
+          },
+          "positionX": {
+            "type": "integer"
+          },
+          "positionY": {
+            "type": "integer"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate without changing the Blueprint."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and refresh after adding."
+          }
+        },
+        "required": [
+          "objectPath",
+          "operation",
+          "elementType"
+        ]
+      }
+    },
+    {
+      "name": "AddBlueprintTypedOperatorNode",
+      "description": "Adds an exact object, Boolean, or Vector operator node without ambiguous function lookup.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Target graph name."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Stable target graph GUID."
+          },
+          "operator": {
+            "type": "string",
+            "description": "Exact operator to add.",
+            "enum": [
+              "ObjectEqual",
+              "ObjectNotEqual",
+              "BooleanAnd",
+              "BooleanOr",
+              "BooleanNot",
+              "VectorAdd",
+              "VectorSubtract",
+              "VectorNearlyEqual"
+            ]
+          },
+          "tolerance": {
+            "type": "number",
+            "description": "Optional non-negative VectorNearlyEqual tolerance."
+          },
+          "relativeToNodeGuid": {
+            "type": "string",
+            "description": "Optional placement anchor node."
+          },
+          "positionX": {
+            "type": "integer"
+          },
+          "positionY": {
+            "type": "integer"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate without changing the Blueprint."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and refresh after adding."
+          }
+        },
+        "required": [
+          "objectPath",
+          "operator"
+        ]
+      }
+    },
+    {
+      "name": "AddBlueprintVariable",
+      "description": "Transactionally adds a typed Blueprint member variable with optional default, instance-editable metadata, compile, and save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "variableName": {
+            "type": "string",
+            "description": "Unique member variable name."
+          },
+          "type": {
+            "type": "string",
+            "description": "Scalar type, or Map key type."
+          },
+          "typeObjectPath": {
+            "type": "string",
+            "description": "Required class path for object/class types."
+          },
+          "containerType": {
+            "type": "string",
+            "description": "none, array, set, or map."
+          },
+          "valueType": {
+            "type": "string",
+            "description": "Required Map value type."
+          },
+          "valueTypeObjectPath": {
+            "type": "string",
+            "description": "Class path for object/class Map values."
+          },
+          "defaultValue": {
+            "type": "string",
+            "description": "Optional Unreal-exported default literal."
+          },
+          "category": {
+            "type": "string",
+            "description": "Optional variable category."
+          },
+          "isArray": {
+            "type": "boolean",
+            "description": "Backward-compatible alias for containerType=array."
+          },
+          "instanceEditable": {
+            "type": "boolean",
+            "description": "Allow editing on Blueprint instances."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate without mutation."
+          },
+          "compileAfterEdit": {
+            "type": "boolean",
+            "description": "Compile only this Blueprint."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save after mutation."
+          }
+        },
+        "required": [
+          "objectPath",
+          "variableName",
+          "type"
+        ]
+      }
+    },
+    {
+      "name": "AddBlueprintVariableGetNode",
+      "description": "Adds a variable Get node for an exact Blueprint member with collision-aware placement, dry-run, and optional save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint member, graph, or placement selector."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Blueprint member, graph, or placement selector."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Blueprint member, graph, or placement selector."
+          },
+          "variableName": {
+            "type": "string",
+            "description": "Blueprint member, graph, or placement selector."
+          },
+          "relativeToNodeGuid": {
+            "type": "string",
+            "description": "Blueprint member, graph, or placement selector."
+          },
+          "positionX": {
+            "type": "integer"
+          },
+          "positionY": {
+            "type": "integer"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate and preview."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and refresh."
+          }
+        },
+        "required": [
+          "objectPath",
+          "variableName"
+        ]
+      }
+    },
+    {
+      "name": "AddBlueprintVariableSetNode",
+      "description": "Adds a variable Set node for an exact Blueprint member with collision-aware placement, dry-run, and optional save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint member, graph, or placement selector."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Blueprint member, graph, or placement selector."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Blueprint member, graph, or placement selector."
+          },
+          "variableName": {
+            "type": "string",
+            "description": "Blueprint member, graph, or placement selector."
+          },
+          "relativeToNodeGuid": {
+            "type": "string",
+            "description": "Blueprint member, graph, or placement selector."
+          },
+          "positionX": {
+            "type": "integer"
+          },
+          "positionY": {
+            "type": "integer"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate and preview."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and refresh."
+          }
+        },
+        "required": [
+          "objectPath",
+          "variableName"
+        ]
+      }
+    },
+    {
+      "name": "AddEnhancedInputActionNode",
+      "description": "Adds an Enhanced Input Action event node for an exact InputAction asset without requiring Enhanced Input as a hard plugin dependency.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Stable event graph name."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Exact event graph GUID."
+          },
+          "inputActionPath": {
+            "type": "string",
+            "description": "Exact UInputAction asset object path."
+          },
+          "relativeToNodeGuid": {
+            "type": "string",
+            "description": "Optional placement anchor node GUID."
+          },
+          "positionX": {
+            "type": "integer"
+          },
+          "positionY": {
+            "type": "integer"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate asset, plugin availability, graph, and placement."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and partially refresh the index."
+          }
+        },
+        "required": [
+          "objectPath",
+          "inputActionPath"
+        ]
+      }
+    },
+    {
+      "name": "AddInputMappingContextMapping",
+      "description": "Adds one key-mapping row to an existing InputMappingContext. Idempotent if the identical Action+Key row already exists.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target InputMappingContext asset object path."
+          },
+          "inputActionPath": {
+            "type": "string",
+            "description": "Exact UInputAction asset object path to map."
+          },
+          "key": {
+            "type": "string",
+            "description": "FKey name, for example LeftMouseButton, MiddleMouseButton, W, Gamepad_FaceButton_Bottom."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate asset/action/key without adding the mapping."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and partially refresh the index."
+          }
+        },
+        "required": [
+          "objectPath",
+          "inputActionPath",
+          "key"
+        ]
+      }
+    },
+    {
+      "name": "AnalyzeBlueprintCoupling",
+      "description": "Ranks project Blueprint assets by indexed package dependency coupling. This is static package-reference analysis, not runtime call coupling.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "rootPath": {
+            "type": "string",
+            "description": "Optional project package-path prefix such as /Game/Features. Alias of packagePath."
+          },
+          "packagePath": {
+            "type": "string",
+            "description": "Optional project package-path prefix such as /Game/Features. Alias of rootPath."
+          },
+          "objectPath": {
+            "type": "string",
+            "description": "Optional exact Blueprint object path to analyze one asset while retaining the selected package scope as the internal boundary."
+          },
+          "maxResults": {
+            "type": "integer",
+            "description": "Maximum ranked assets to return. Defaults to 50 and is clamped from 1 to 200.",
+            "default": 50,
+            "minimum": 1,
+            "maximum": 200
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "AnalyzeFeatureBoundary",
+      "description": "Analyzes static indexed package dependencies crossing a required /Game feature boundary. It does not infer runtime architecture.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "rootPath": {
+            "type": "string",
+            "description": "Required feature boundary under /Game. rootPath and packagePath are aliases."
+          },
+          "packagePath": {
+            "type": "string",
+            "description": "Required feature boundary under /Game. rootPath and packagePath are aliases."
+          },
+          "maxResults": {
+            "type": "integer",
+            "description": "Maximum exact crossing edges, ranked boundary Blueprints, and packages per outside-scope group to return. Defaults to 100.",
+            "default": 100,
+            "minimum": 1,
+            "maximum": 500
+          }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "rootPath"
+            ]
+          },
+          {
+            "required": [
+              "packagePath"
+            ]
+          }
+        ],
+        "additionalProperties": false,
+        "description": "Provide either rootPath or packagePath; one is required and both must match when supplied."
+      }
+    },
+    {
+      "name": "AnalyzeProjectArchitecture",
+      "description": "Returns a compact, fault-tolerant static architecture overview composed from the indexed cycle, coupling, broken-reference, unused-candidate, and optional feature-boundary analyses.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "rootPath": {
+            "type": "string",
+            "description": "Optional /Game package-path scope. rootPath and packagePath are aliases."
+          },
+          "packagePath": {
+            "type": "string",
+            "description": "Optional /Game package-path scope. rootPath and packagePath are aliases."
+          },
+          "featureBoundaries": {
+            "type": "array",
+            "description": "Optional /Game feature boundaries to summarize independently, up to 20.",
+            "maxItems": 20,
+            "uniqueItems": true,
+            "items": {
+              "type": "string"
+            }
+          },
+          "maxResultsPerSection": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 20,
+            "description": "Maximum evidence items requested from each section and maximum prioritized hotspots returned."
+          },
+          "includeEvidence": {
+            "type": "boolean",
+            "default": false,
+            "description": "Include each bounded composed tool result. False returns compact section counts and top hotspots only."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ApplyBlueprintGraphPatch",
+      "description": "Atomically preflights and applies a bounded declarative Blueprint graph patch with deterministic node identities, exact data-link replacement, rollback, and compile-before-save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint, graph, deterministic patch, or revision selector."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Blueprint, graph, deterministic patch, or revision selector."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Blueprint, graph, deterministic patch, or revision selector."
+          },
+          "patchId": {
+            "type": "string",
+            "description": "Blueprint, graph, deterministic patch, or revision selector."
+          },
+          "expectedGraphRevision": {
+            "type": "string",
+            "description": "Blueprint, graph, deterministic patch, or revision selector."
+          },
+          "operationId": {
+            "type": "string",
+            "description": "Blueprint, graph, deterministic patch, or revision selector."
+          },
+          "nodes": {
+            "type": "array",
+            "description": "Required node kinds: existingNode, functionCall, variableGet, variableSet, typedOperator, branch, reroute, and comment. Nodes may include position, comment, tolerance, and inputDefaults.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Plan-local identity or node-specific selector."
+                },
+                "kind": {
+                  "type": "string",
+                  "description": "Plan-local identity or node-specific selector."
+                },
+                "nodeGuid": {
+                  "type": "string",
+                  "description": "Plan-local identity or node-specific selector."
+                },
+                "ownerClassPath": {
+                  "type": "string",
+                  "description": "Plan-local identity or node-specific selector."
+                },
+                "functionName": {
+                  "type": "string",
+                  "description": "Plan-local identity or node-specific selector."
+                },
+                "variableName": {
+                  "type": "string",
+                  "description": "Plan-local identity or node-specific selector."
+                },
+                "operator": {
+                  "type": "string",
+                  "description": "Plan-local identity or node-specific selector."
+                },
+                "comment": {
+                  "type": "string",
+                  "description": "Plan-local identity or node-specific selector."
+                },
+                "positionX": {
+                  "type": "integer"
+                },
+                "positionY": {
+                  "type": "integer"
+                },
+                "tolerance": {
+                  "type": "number"
+                },
+                "width": {
+                  "type": "integer"
+                },
+                "height": {
+                  "type": "integer"
+                },
+                "showBubbleWhenZoomed": {
+                  "type": "boolean",
+                  "description": "Comment bubble visibility; defaults true."
+                },
+                "color": {
+                  "type": "object",
+                  "properties": {
+                    "r": {
+                      "type": "number"
+                    },
+                    "g": {
+                      "type": "number"
+                    },
+                    "b": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "r",
+                    "g",
+                    "b"
+                  ]
+                },
+                "inputDefaults": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "pinName": {
+                        "type": "string",
+                        "description": "Exact input pin and one default source."
+                      },
+                      "defaultValue": {
+                        "type": "string",
+                        "description": "Exact input pin and one default source."
+                      },
+                      "defaultObjectPath": {
+                        "type": "string",
+                        "description": "Exact input pin and one default source."
+                      }
+                    },
+                    "required": [
+                      "pinName"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "kind"
+              ]
+            }
+          },
+          "connections": {
+            "type": "array",
+            "description": "Exact output-to-input connections. Occupied data inputs require exact existing source fields plus confirmDataReplacement=true.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sourceNodeId": {
+                  "type": "string",
+                  "description": "Plan node id and exact pin name."
+                },
+                "sourcePinName": {
+                  "type": "string",
+                  "description": "Plan node id and exact pin name."
+                },
+                "targetNodeId": {
+                  "type": "string",
+                  "description": "Plan node id and exact pin name."
+                },
+                "targetPinName": {
+                  "type": "string",
+                  "description": "Plan node id and exact pin name."
+                },
+                "existingSourceNodeId": {
+                  "type": "string",
+                  "description": "Plan node id and exact pin name."
+                },
+                "existingSourcePinName": {
+                  "type": "string",
+                  "description": "Plan node id and exact pin name."
+                },
+                "confirmDataReplacement": {
+                  "type": "boolean",
+                  "description": "Explicitly confirm replacement of the identified occupied data link."
+                }
+              },
+              "required": [
+                "sourceNodeId",
+                "sourcePinName",
+                "targetNodeId",
+                "targetPinName"
+              ]
+            }
+          },
+          "disconnections": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sourceNodeId": {
+                  "type": "string",
+                  "description": "Plan node id and exact linked pin name."
+                },
+                "sourcePinName": {
+                  "type": "string",
+                  "description": "Plan node id and exact linked pin name."
+                },
+                "targetNodeId": {
+                  "type": "string",
+                  "description": "Plan node id and exact linked pin name."
+                },
+                "targetPinName": {
+                  "type": "string",
+                  "description": "Plan node id and exact linked pin name."
+                },
+                "confirm": {
+                  "type": "boolean",
+                  "description": "Confirm this exact link disconnection."
+                }
+              },
+              "required": [
+                "sourceNodeId",
+                "sourcePinName",
+                "targetNodeId",
+                "targetPinName"
+              ]
+            }
+          },
+          "detailLevel": {
+            "type": "string",
+            "description": "summary (default) returns identities and link results; full includes every node pin."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Run complete preflight without mutation."
+          },
+          "compileAfterEdit": {
+            "type": "boolean",
+            "description": "Compile the edited Blueprint before any save. Defaults true."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and partially refresh only after successful compilation. Defaults false."
+          }
+        },
+        "required": [
+          "objectPath",
+          "patchId",
+          "nodes"
+        ]
+      }
+    },
+    {
+      "name": "ApplyBlueprintInteractionPlan",
+      "description": "Preflights and idempotently applies Blueprint interaction nodes, exact named-pin connections, and safe Sequence splices that preserve an existing execution route.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint, graph, or stable workflow selector."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Blueprint, graph, or stable workflow selector."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Blueprint, graph, or stable workflow selector."
+          },
+          "workflowId": {
+            "type": "string",
+            "description": "Blueprint, graph, or stable workflow selector."
+          },
+          "nodes": {
+            "type": "array",
+            "description": "Nodes: existingNode, customEvent, functionCall, variableGet, branch, or sequence. A sequence safely preserves one existing exec route via spliceAfterNodeId/spliceAfterPinName.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Stable node identity, kind, or type-specific reflected member selector."
+                },
+                "type": {
+                  "type": "string",
+                  "description": "Stable node identity, kind, or type-specific reflected member selector."
+                },
+                "nodeGuid": {
+                  "type": "string",
+                  "description": "Stable node identity, kind, or type-specific reflected member selector."
+                },
+                "eventName": {
+                  "type": "string",
+                  "description": "Stable node identity, kind, or type-specific reflected member selector."
+                },
+                "ownerClassPath": {
+                  "type": "string",
+                  "description": "Stable node identity, kind, or type-specific reflected member selector."
+                },
+                "functionName": {
+                  "type": "string",
+                  "description": "Stable node identity, kind, or type-specific reflected member selector."
+                },
+                "variableName": {
+                  "type": "string",
+                  "description": "Stable node identity, kind, or type-specific reflected member selector."
+                },
+                "spliceAfterNodeId": {
+                  "type": "string",
+                  "description": "Stable node identity, kind, or type-specific reflected member selector."
+                },
+                "spliceAfterPinName": {
+                  "type": "string",
+                  "description": "Stable node identity, kind, or type-specific reflected member selector."
+                },
+                "positionX": {
+                  "type": "integer"
+                },
+                "positionY": {
+                  "type": "integer"
+                },
+                "inputDefaults": {
+                  "type": "array",
+                  "description": "Optional exact input-pin defaults applied before connection validation. Each entry uses defaultValue or defaultObjectPath.",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "pinName": {
+                        "type": "string",
+                        "description": "Exact input pin and literal or UObject/UClass default."
+                      },
+                      "defaultValue": {
+                        "type": "string",
+                        "description": "Exact input pin and literal or UObject/UClass default."
+                      },
+                      "defaultObjectPath": {
+                        "type": "string",
+                        "description": "Exact input pin and literal or UObject/UClass default."
+                      }
+                    },
+                    "required": [
+                      "pinName"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "type"
+              ]
+            }
+          },
+          "connections": {
+            "type": "array",
+            "description": "Exact named output-to-input pin connections.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sourceNodeId": {
+                  "type": "string",
+                  "description": "Plan node id or exact live pin name."
+                },
+                "sourcePinName": {
+                  "type": "string",
+                  "description": "Plan node id or exact live pin name."
+                },
+                "targetNodeId": {
+                  "type": "string",
+                  "description": "Plan node id or exact live pin name."
+                },
+                "targetPinName": {
+                  "type": "string",
+                  "description": "Plan node id or exact live pin name."
+                }
+              },
+              "required": [
+                "sourceNodeId",
+                "sourcePinName",
+                "targetNodeId",
+                "targetPinName"
+              ]
+            }
+          },
+          "executionInsertions": {
+            "type": "array",
+            "description": "Atomic idempotent insertion of one impure node into an exact existing exec link.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sourceNodeId": {
+                  "type": "string",
+                  "description": "Exact plan node id and exec pin name."
+                },
+                "sourcePinName": {
+                  "type": "string",
+                  "description": "Exact plan node id and exec pin name."
+                },
+                "insertedNodeId": {
+                  "type": "string",
+                  "description": "Exact plan node id and exec pin name."
+                },
+                "insertedInputPinName": {
+                  "type": "string",
+                  "description": "Exact plan node id and exec pin name."
+                },
+                "insertedOutputPinName": {
+                  "type": "string",
+                  "description": "Exact plan node id and exec pin name."
+                },
+                "targetNodeId": {
+                  "type": "string",
+                  "description": "Exact plan node id and exec pin name."
+                },
+                "targetPinName": {
+                  "type": "string",
+                  "description": "Exact plan node id and exec pin name."
+                }
+              },
+              "required": [
+                "sourceNodeId",
+                "sourcePinName",
+                "insertedNodeId",
+                "insertedInputPinName",
+                "insertedOutputPinName",
+                "targetNodeId",
+                "targetPinName"
+              ]
+            }
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Preflight without mutation."
+          },
+          "compileAfterEdit": {
+            "type": "boolean",
+            "description": "Compile once after changes. Defaults true."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and partially refresh once. Defaults true."
+          }
+        },
+        "required": [
+          "objectPath",
+          "workflowId",
+          "nodes"
+        ]
+      }
+    },
+    {
+      "name": "AssetExists",
+      "description": "Checks whether an asset exists by object path without loading it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Asset object path, for example /Game/MyFolder/MyAsset.MyAsset"
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "BuildProjectIndex",
+      "description": "Expensive manual action that builds or rebuilds the local UnrealMCP project-understanding index. Prefer user-triggered rebuilds instead of automatic agent-triggered rebuilds.",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "CompileAllBlueprints",
+      "description": "Compiles multiple Blueprint assets under a package path and returns aggregate results.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "packagePath": {
+            "type": "string",
+            "description": "Package path scope, for example /Game. Defaults to /Game."
+          },
+          "recursive": {
+            "type": "boolean",
+            "description": "Whether to recurse subfolders. Defaults to true."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Optional max number of Blueprints to compile. Defaults to 100."
+          }
+        }
+      }
+    },
+    {
+      "name": "CompileBlueprint",
+      "description": "Compiles one Blueprint asset and returns compiler result details.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path, for example /Game/BP_MyActor.BP_MyActor"
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "ConnectBlueprintPins",
+      "description": "Validates and transactionally connects Blueprint pins, returning their resolved post-connection type model.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Stable Blueprint graph/node/pin selector."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Stable Blueprint graph/node/pin selector."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Stable Blueprint graph/node/pin selector."
+          },
+          "sourceNodeGuid": {
+            "type": "string",
+            "description": "Stable Blueprint graph/node/pin selector."
+          },
+          "sourcePinId": {
+            "type": "string",
+            "description": "Stable Blueprint graph/node/pin selector."
+          },
+          "sourcePinName": {
+            "type": "string",
+            "description": "Stable Blueprint graph/node/pin selector."
+          },
+          "targetNodeGuid": {
+            "type": "string",
+            "description": "Stable Blueprint graph/node/pin selector."
+          },
+          "targetPinId": {
+            "type": "string",
+            "description": "Stable Blueprint graph/node/pin selector."
+          },
+          "targetPinName": {
+            "type": "string",
+            "description": "Stable Blueprint graph/node/pin selector."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate without connection."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and refresh after connection."
+          }
+        },
+        "required": [
+          "objectPath",
+          "sourceNodeGuid",
+          "targetNodeGuid"
+        ]
+      }
+    },
+    {
+      "name": "CreateBlueprintAsset",
+      "description": "Creates a Blueprint asset with an explicit parent class. Rejects overwrite and supports dry-run and optional saving.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "packagePath": {
+            "type": "string",
+            "description": "New /Game/... package path without .uasset. Existing assets are never overwritten."
+          },
+          "parentClassPath": {
+            "type": "string",
+            "description": "Parent /Script/... or generated Blueprint class path."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate without creating the asset."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save immediately after creation. Defaults to false."
+          }
+        },
+        "required": [
+          "packagePath",
+          "parentClassPath"
+        ]
+      }
+    },
+    {
+      "name": "CreateBlueprintFunctionGraph",
+      "description": "Creates a uniquely named user Blueprint function graph and returns stable graph, entry, and return identities. Supports dry-run and optional save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint."
+          },
+          "functionName": {
+            "type": "string",
+            "description": "Unique function graph name."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate name without creation."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and refresh."
+          }
+        },
+        "required": [
+          "objectPath",
+          "functionName"
+        ]
+      }
+    },
+    {
+      "name": "CreateInputAction",
+      "description": "Creates a new UInputAction asset with an explicit value type. Rejects overwrite and supports dry-run and optional saving.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "packagePath": {
+            "type": "string",
+            "description": "New /Game/... package path without .uasset. Existing assets are never overwritten."
+          },
+          "valueType": {
+            "type": "string",
+            "description": "Boolean, Axis1D, Axis2D, or Axis3D (matches EInputActionValueType)."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate without creating the asset."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save immediately after creation. Defaults to false."
+          }
+        },
+        "required": [
+          "packagePath",
+          "valueType"
+        ]
+      }
+    },
+    {
+      "name": "CreateInputMappingContext",
+      "description": "Creates a new UInputMappingContext asset. Rejects overwrite and supports dry-run and optional saving.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "packagePath": {
+            "type": "string",
+            "description": "New /Game/... package path without .uasset. Existing assets are never overwritten."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate without creating the asset."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save immediately after creation. Defaults to false."
+          }
+        },
+        "required": [
+          "packagePath"
+        ]
+      }
+    },
+    {
+      "name": "DeleteBlueprintNode",
+      "description": "Deletes one Blueprint graph node by stable GUID. Requires confirm=true, supports dry-run, and reports affected pin links.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Stable graph name."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Exact graph GUID."
+          },
+          "nodeGuid": {
+            "type": "string",
+            "description": "Exact node GUID."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required for deletion."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Report impact without deletion."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and refresh after deletion."
+          }
+        },
+        "required": [
+          "objectPath",
+          "nodeGuid"
+        ]
+      }
+    },
+    {
+      "name": "DisconnectBlueprintPins",
+      "description": "Disconnects one exact Blueprint pin link or all links on one pin. Requires confirmation unless dry-run and reports affected links.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Stable graph/node/pin selector. Omit target selectors to disconnect all source-pin links."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Stable graph/node/pin selector. Omit target selectors to disconnect all source-pin links."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Stable graph/node/pin selector. Omit target selectors to disconnect all source-pin links."
+          },
+          "sourceNodeGuid": {
+            "type": "string",
+            "description": "Stable graph/node/pin selector. Omit target selectors to disconnect all source-pin links."
+          },
+          "sourcePinId": {
+            "type": "string",
+            "description": "Stable graph/node/pin selector. Omit target selectors to disconnect all source-pin links."
+          },
+          "sourcePinName": {
+            "type": "string",
+            "description": "Stable graph/node/pin selector. Omit target selectors to disconnect all source-pin links."
+          },
+          "targetNodeGuid": {
+            "type": "string",
+            "description": "Stable graph/node/pin selector. Omit target selectors to disconnect all source-pin links."
+          },
+          "targetPinId": {
+            "type": "string",
+            "description": "Stable graph/node/pin selector. Omit target selectors to disconnect all source-pin links."
+          },
+          "targetPinName": {
+            "type": "string",
+            "description": "Stable graph/node/pin selector. Omit target selectors to disconnect all source-pin links."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required for mutation."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Report affected links only."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and refresh."
+          }
+        },
+        "required": [
+          "objectPath",
+          "sourceNodeGuid"
+        ]
+      }
+    },
+    {
+      "name": "ExplainBlueprintRole",
+      "description": "Returns a structured indexed summary that helps explain a Blueprint's likely role, neighbors, and composition inside the project.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path, for example /Game/BP_MyActor.BP_MyActor"
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "ExplainBlueprintTrace",
+      "description": "Explains an indexed Blueprint trace in a higher-level, token-efficient summary with confidence markers and cross-Blueprint notes.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path, for example /Game/MyFolder/BP_Door.BP_Door."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Optional Blueprint graph name filter."
+          },
+          "startNodeQuery": {
+            "type": "string",
+            "description": "Optional node, event, function, variable, graph, or pin text to choose start nodes. When omitted, graph entry nodes are used."
+          },
+          "direction": {
+            "type": "string",
+            "description": "Traversal direction: forward, backward, or both. Defaults to forward."
+          },
+          "resolveExternalMembers": {
+            "type": "boolean",
+            "description": "Optional. When true, resolve node member owners back to indexed assets. Defaults to true."
+          },
+          "expandCalls": {
+            "type": "boolean",
+            "description": "Optional. When true, the explanation may continue into called functions or custom events. Defaults to true."
+          },
+          "followCrossBlueprintCalls": {
+            "type": "boolean",
+            "description": "Optional. When true, bounded call expansion may continue into target Blueprints. Defaults to true."
+          },
+          "maxDepth": {
+            "type": "integer",
+            "description": "Optional max traversal depth. Defaults to 4."
+          },
+          "maxNodes": {
+            "type": "integer",
+            "description": "Optional max traced node count. Defaults to 32."
+          },
+          "maxStartNodes": {
+            "type": "integer",
+            "description": "Optional max matched start nodes. Defaults to 6."
+          },
+          "maxCallDepth": {
+            "type": "integer",
+            "description": "Optional max call expansion depth. Defaults to 1."
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "ExplainFeatureWorkflow",
+      "description": "Explains a feature query by ranking likely entry assets, then summarizing each candidate's role and nearby indexed flow.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Feature name, asset name, or path fragment to explain, for example inventory, Door, or NiceActor."
+          },
+          "blueprintsOnly": {
+            "type": "boolean",
+            "description": "Whether to only use Blueprint assets as workflow entry points. Defaults to true."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Optional max entry points from 1 to 5. Defaults to 3."
+          },
+          "packagePath": {
+            "type": "string",
+            "description": "Optional package path prefix such as /Game/UI to narrow the search."
+          },
+          "contextObjectPath": {
+            "type": "string",
+            "description": "Optional related asset object path to boost directly connected candidates."
+          },
+          "contextPackageName": {
+            "type": "string",
+            "description": "Optional related asset package name when object path is not available."
+          },
+          "flowMaxDepth": {
+            "type": "integer",
+            "description": "Optional flow traversal depth from 1 to 3. Defaults to 2."
+          },
+          "flowMaxNodes": {
+            "type": "integer",
+            "description": "Optional flow traversal node cap from 1 to 30. Defaults to 12."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "FindActorsUsingBlueprint",
+      "description": "Finds actors in the active editor world whose class was generated from a specific Blueprint asset.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path, for example /Game/BP_MyActor.BP_MyActor."
+          },
+          "packageName": {
+            "type": "string",
+            "description": "Optional Blueprint package name when objectPath is not provided."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Optional max number of matching actors to return. Defaults to 200."
+          }
+        }
+      }
+    },
+    {
+      "name": "FindAssetsByClass",
+      "description": "Finds assets by Asset Registry class path, optionally scoped to a package path.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "classPath": {
+            "type": "string",
+            "description": "Class path to search for, for example /Script/Engine.Blueprint."
+          },
+          "packagePath": {
+            "type": "string",
+            "description": "Optional package path scope, for example /Game."
+          },
+          "recursivePaths": {
+            "type": "boolean",
+            "description": "Whether to recurse package subpaths when packagePath is supplied. Defaults to true."
+          },
+          "includeDerivedClasses": {
+            "type": "boolean",
+            "description": "Whether to include derived classes. Defaults to true."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Optional max result count. Defaults to 200."
+          }
+        },
+        "required": [
+          "classPath"
+        ]
+      }
+    },
+    {
+      "name": "FindAssetsByPath",
+      "description": "Finds assets under a package path, optionally filtered by class.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "packagePath": {
+            "type": "string",
+            "description": "Package path to search under, for example /Game/MyFolder."
+          },
+          "recursive": {
+            "type": "boolean",
+            "description": "Whether to recurse subfolders. Defaults to true."
+          },
+          "classPath": {
+            "type": "string",
+            "description": "Optional class path filter, for example /Script/Engine.Blueprint."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Optional max result count. Defaults to 200."
+          }
+        },
+        "required": [
+          "packagePath"
+        ]
+      }
+    },
+    {
+      "name": "FindBlueprintNodeReferences",
+      "description": "Finds indexed Blueprint nodes that reference a component variable, function, event, or other member across the project.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path that owns the target component variable, function, event, or node member."
+          },
+          "query": {
+            "type": "string",
+            "description": "Optional fuzzy lookup text matched against node titles, member names, and graph names."
+          },
+          "memberName": {
+            "type": "string",
+            "description": "Optional exact component variable, function, or event member name such as AC_MyFeature or SendGoldEvent."
+          },
+          "nodeGuid": {
+            "type": "string",
+            "description": "Optional exact node GUID when you want to target a known node identity."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Optional caller graph name filter."
+          },
+          "includeSameBlueprint": {
+            "type": "boolean",
+            "description": "Optional. When false, only return references from other Blueprints."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Optional maximum number of references to return. Defaults to 20."
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "FindBlueprintTraceStartPoints",
+      "description": "Finds likely indexed Blueprint graph nodes to use as trace starting points, ranked for tracing workflows.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path, for example /Game/MyFolder/BP_Door.BP_Door."
+          },
+          "query": {
+            "type": "string",
+            "description": "Optional query used to rank likely start nodes by node title, member name, node name, or graph name."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Optional Blueprint graph name filter, such as EventGraph or a function graph name."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Optional maximum number of ranked start points to return. Defaults to 12."
+          },
+          "includeEvents": {
+            "type": "boolean",
+            "description": "Optional. When true, include event and custom event nodes. Defaults to true."
+          },
+          "includeFunctionEntries": {
+            "type": "boolean",
+            "description": "Optional. When true, include function entry nodes. Defaults to true."
+          },
+          "includeCallSites": {
+            "type": "boolean",
+            "description": "Optional. When true, include call-function nodes, especially useful for cross-Blueprint tracing. Defaults to true."
+          },
+          "crossBlueprintOnly": {
+            "type": "boolean",
+            "description": "Optional. When true, return only call sites that target another Blueprint asset."
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "FindBlueprintVariableUsage",
+      "description": "Finds indexed Blueprint nodes that appear to read or write a variable, and summarizes their local connection counts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path, for example /Game/MyFolder/BP_Door.BP_Door."
+          },
+          "variableName": {
+            "type": "string",
+            "description": "Variable name or partial variable text to search for in the indexed Blueprint graph."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Optional Blueprint graph name filter, such as EventGraph."
+          }
+        },
+        "required": [
+          "objectPath",
+          "variableName"
+        ]
+      }
+    },
+    {
+      "name": "FindBrokenBlueprintReferences",
+      "description": "Finds project Blueprint references that are provably unresolved in the current project index. This is static index evidence, not a live compiler check.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Optional exact indexed project Blueprint object path."
+          },
+          "rootPath": {
+            "type": "string",
+            "description": "Optional /Game package-path scope. Alias of packagePath."
+          },
+          "packagePath": {
+            "type": "string",
+            "description": "Optional /Game package-path scope. Alias of rootPath."
+          },
+          "categories": {
+            "type": "array",
+            "description": "Optional evidence categories to include. Omit to run every category.",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "asset_dependency",
+                "component_blueprint",
+                "edge_source_node",
+                "edge_target_node",
+                "node_member_parent",
+                "pin_type",
+                "variable_type"
+              ]
+            }
+          },
+          "maxResults": {
+            "type": "integer",
+            "description": "Maximum findings to return after deterministic sorting. Defaults to 100.",
+            "default": 100,
+            "minimum": 1,
+            "maximum": 1000
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "FindCircularDependencies",
+      "description": "Finds deterministic circular dependency groups among indexed project Blueprints. Use the reported internal edges to identify dependency seams to break.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "rootPath": {
+            "type": "string",
+            "description": "Optional project package-path prefix to analyze, for example /Game/Features. Alias of packagePath."
+          },
+          "packagePath": {
+            "type": "string",
+            "description": "Optional project package-path prefix to analyze recursively, for example /Game/Features."
+          },
+          "minCycleSize": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 2,
+            "description": "Minimum number of Blueprints in a returned circular group. Defaults to 2; use 1 to include direct self-cycles."
+          },
+          "maxResults": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 50,
+            "description": "Maximum circular groups returned after deterministic size/name ordering. Defaults to 50."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "FindCrossBlueprintCalls",
+      "description": "Finds indexed Blueprint function call nodes that target other Blueprint assets, with compact or full output modes.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path, for example /Game/MyFolder/BP_Door.BP_Door."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Optional Blueprint graph name filter, such as EventGraph or a function graph name."
+          },
+          "outputMode": {
+            "type": "string",
+            "description": "Optional response mode: summary, compact, or full. Defaults to summary."
+          },
+          "includeSameBlueprintCalls": {
+            "type": "boolean",
+            "description": "Optional. When true, include same-Blueprint function calls as well. Defaults to false."
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "FindFeatureEntryPoints",
+      "description": "Finds likely starting assets for a feature by ranking indexed assets that match a query, optionally boosted by a related context asset.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Feature name, asset name, or path fragment to search for, for example inventory or Door."
+          },
+          "blueprintsOnly": {
+            "type": "boolean",
+            "description": "Whether to only return Blueprint assets. Defaults to true."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Optional max result count from 1 to 50. Defaults to 10."
+          },
+          "packagePath": {
+            "type": "string",
+            "description": "Optional package path prefix such as /Game/UI to narrow the search."
+          },
+          "contextObjectPath": {
+            "type": "string",
+            "description": "Optional related asset object path to boost directly connected candidates."
+          },
+          "contextPackageName": {
+            "type": "string",
+            "description": "Optional related asset package name when object path is not available."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "FindUnusedBlueprintAssets",
+      "description": "Finds conservative project Blueprint candidates with no indexed incoming package dependencies. Results are leads for review, never proof that an asset is unused.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "rootPath": {
+            "type": "string",
+            "description": "Optional /Game package-path prefix. Alias of packagePath."
+          },
+          "packagePath": {
+            "type": "string",
+            "description": "Optional /Game package-path prefix. Alias of rootPath."
+          },
+          "maxResults": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 100,
+            "description": "Maximum candidates to return."
+          },
+          "includePossibleRoots": {
+            "type": "boolean",
+            "default": false,
+            "description": "Include low-confidence assets with indexed root-like or indirect-entry-point signals."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "GetActorInfo",
+      "description": "Returns detailed information about one actor from the active editor world, including transform, components, and attached actors.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "actorObjectPath": {
+            "type": "string",
+            "description": "Optional exact actor object path from the current editor world."
+          },
+          "actorName": {
+            "type": "string",
+            "description": "Optional actor name to resolve when actorObjectPath is not provided."
+          },
+          "actorLabel": {
+            "type": "string",
+            "description": "Optional actor label to resolve when actorObjectPath is not provided."
+          }
+        }
+      }
+    },
+    {
+      "name": "GetAssetInfo",
+      "description": "Returns detailed Asset Registry information for one asset without loading it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Asset object path, for example /Game/MyFolder/MyAsset.MyAsset"
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "GetAssetReferencers",
+      "description": "Returns indexed package referencers for one asset or package.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Optional asset object path to resolve into a package, for example /Game/MyFolder/MyAsset.MyAsset."
+          },
+          "packageName": {
+            "type": "string",
+            "description": "Optional package name when objectPath is not provided, for example /Game/MyFolder/MyAsset."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Optional max result count. Defaults to 200."
+          }
+        }
+      }
+    },
+    {
+      "name": "GetAssetReferences",
+      "description": "Returns indexed package references for one asset or package.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Optional asset object path to resolve into a package, for example /Game/MyFolder/MyAsset.MyAsset."
+          },
+          "packageName": {
+            "type": "string",
+            "description": "Optional package name when objectPath is not provided, for example /Game/MyFolder/MyAsset."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Optional max result count. Defaults to 200."
+          }
+        }
+      }
+    },
+    {
+      "name": "GetBlueprintComponentDefaults",
+      "description": "Reads safely editable defaults from one existing Blueprint component template without mutating or compiling the asset.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "componentName": {
+            "type": "string",
+            "description": "Exact existing SCS component variable name."
+          },
+          "propertyNames": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "Exact reflected property name."
+            }
+          },
+          "maxProperties": {
+            "type": "integer",
+            "description": "Maximum returned properties, default 200."
+          }
+        },
+        "required": [
+          "objectPath",
+          "componentName"
+        ]
+      }
+    },
+    {
+      "name": "GetBlueprintComponentHierarchy",
+      "description": "Returns an indexed component hierarchy summary for one Blueprint asset.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path, for example /Game/BP_MyActor.BP_MyActor"
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "GetBlueprintDependencies",
+      "description": "Returns an indexed dependency summary for one Blueprint asset.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path, for example /Game/BP_MyActor.BP_MyActor"
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "GetBlueprintInfo",
+      "description": "Returns summary information about a Blueprint asset.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path, for example /Game/BP_MyActor.BP_MyActor"
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "GetBlueprintOverview",
+      "description": "Inspect a Blueprint asset in one bounded live read: parent, compile/dirty state, graph, variable, component and interface inventory. Filter and page members before requesting detailed pins. No compile, save, index refresh or level editing.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Exact Blueprint asset object path. Required; no current-level fallback."
+          },
+          "kind": {
+            "type": "string",
+            "description": "all (default), graph, variable, component, or interface."
+          },
+          "query": {
+            "type": "string",
+            "description": "Case-insensitive member-name substring, at most 256 characters."
+          },
+          "allowLoad": {
+            "type": "boolean",
+            "description": "Load the exact asset if needed; default true. False restricts inspection to resident objects."
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647,
+            "default": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 30
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "GetDependencies",
+      "description": "Returns Asset Registry package dependencies for one asset or package.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Optional asset object path to resolve into a package, for example /Game/MyFolder/MyAsset.MyAsset."
+          },
+          "packageName": {
+            "type": "string",
+            "description": "Optional package name when objectPath is not provided, for example /Game/MyFolder/MyAsset."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Optional max result count. Defaults to 200."
+          }
+        }
+      }
+    },
+    {
+      "name": "GetImplementedInterfaces",
+      "description": "Lists interfaces implemented by a Blueprint, with optional inherited interfaces.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path, for example /Game/BP_MyActor.BP_MyActor"
+          },
+          "includeInherited": {
+            "type": "boolean",
+            "description": "Whether to include inherited interfaces. Defaults to false."
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "GetIndexStatus",
+      "description": "Returns status information for the local UnrealMCP project index.",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "GetInputMappingContextMappings",
+      "description": "Reads back every key-mapping row (action, key, triggers, modifiers) in an InputMappingContext without loading it for editing.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target InputMappingContext asset object path."
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "GetLevelActorDependencies",
+      "description": "Returns actor-to-asset relationships for one placed actor, including class source, attached actors, and referenced component assets.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "actorObjectPath": {
+            "type": "string",
+            "description": "Optional exact actor object path from the current editor world."
+          },
+          "actorName": {
+            "type": "string",
+            "description": "Optional actor name to resolve when actorObjectPath is not provided."
+          },
+          "actorLabel": {
+            "type": "string",
+            "description": "Optional actor label to resolve when actorObjectPath is not provided."
+          }
+        }
+      }
+    },
+    {
+      "name": "GetMutationRequestStatus",
+      "description": "Returns the durable in-editor state and terminal response for one mutation operation ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "description": "Exact operation ID returned by a mutation request or adapter timeout."
+          }
+        },
+        "required": [
+          "operationId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "GetParentBlueprint",
+      "description": "Returns parent class information and resolves the parent Blueprint asset when applicable.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path, for example /Game/BP_MyActor.BP_MyActor"
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "GetReferencers",
+      "description": "Returns Asset Registry package referencers for one asset or package.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Optional asset object path to resolve into a package, for example /Game/MyFolder/MyAsset.MyAsset."
+          },
+          "packageName": {
+            "type": "string",
+            "description": "Optional package name when objectPath is not provided, for example /Game/MyFolder/MyAsset."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Optional max result count. Defaults to 200."
+          }
+        }
+      }
+    },
+    {
+      "name": "GetServerInfo",
+      "description": "Returns plugin, protocol, and engine version information.",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "HealthCheck",
+      "description": "Returns plugin health and readiness information.",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "InspectBlueprintNode",
+      "description": "Explains one or more indexed Blueprint nodes, including immediate previous and next connected nodes plus trace hints.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path, for example /Game/MyFolder/BP_Door.BP_Door."
+          },
+          "query": {
+            "type": "string",
+            "description": "Node search query matched against node title, member name, node name, graph name, or node type."
+          },
+          "nodeGuid": {
+            "type": "string",
+            "description": "Optional exact Blueprint node GUID. Use this when you already know the node identity."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Optional Blueprint graph name filter, such as EventGraph or a function graph name."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Optional maximum number of matching nodes to return. Defaults to 5."
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "InspectEnhancedInputActionWiring",
+      "description": "Finds Enhanced Input Action event nodes and reports exact Started/Triggered/Ongoing/Canceled/Completed execution routes.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Optional exact graph name."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Optional exact graph GUID."
+          },
+          "inputActionPath": {
+            "type": "string",
+            "description": "Optional exact InputAction object path filter."
+          },
+          "nodeGuid": {
+            "type": "string",
+            "description": "Optional exact Enhanced Input node GUID filter."
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "InspectLiveBlueprint",
+      "description": "Read-only live graph/node/pin inspection, including a map's embedded Level Blueprint. Defaults to the current editor level. No index, loading, PIE, compilation or saving.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Exact resident Blueprint or graph object path, including embedded LevelScriptBlueprint objects. Never loads assets."
+          },
+          "mapPath": {
+            "type": "string",
+            "description": "Loaded map package, world object path, or exact level path in the editor world. Exclusive with objectPath/level."
+          },
+          "level": {
+            "type": "string",
+            "description": "current (default) or persistent in the open editor world. Exclusive with objectPath/mapPath."
+          },
+          "graphPath": {
+            "type": "string",
+            "description": "Optional exact graph object path within the resolved Blueprint."
+          },
+          "mode": {
+            "type": "string",
+            "description": "graphs (default) or nodes. Node results include exact pins and links."
+          },
+          "nodeGuid": {
+            "type": "string",
+            "description": "Optional exact node GUID; implies nodes mode."
+          },
+          "query": {
+            "type": "string",
+            "description": "Optional member/title/name substring; implies nodes mode."
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Zero-based page offset, default 0."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Page size, default 50, maximum 200."
+          }
+        }
+      }
+    },
+    {
+      "name": "LayoutBlueprintNodes",
+      "description": "Deterministically lays out an explicit Blueprint node set by execution-flow depth with configurable spacing, collision avoidance, dry-run, and optional save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Stable graph name."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Exact graph GUID."
+          },
+          "nodeGuids": {
+            "type": "array",
+            "description": "Explicit stable node GUIDs to arrange.",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "startX": {
+            "type": "integer"
+          },
+          "startY": {
+            "type": "integer"
+          },
+          "horizontalSpacing": {
+            "type": "integer"
+          },
+          "verticalSpacing": {
+            "type": "integer"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Return proposed positions without moving nodes."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and partially refresh the index."
+          }
+        },
+        "required": [
+          "objectPath",
+          "nodeGuids"
+        ]
+      }
+    },
+    {
+      "name": "ListActors",
+      "description": "Lists actors from the active editor world so agents can inspect current level composition without modifying it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "description": "Optional max number of actors to return. Defaults to 250."
+          },
+          "selectedOnly": {
+            "type": "boolean",
+            "description": "Whether to only list selected actors. Defaults to false."
+          },
+          "search": {
+            "type": "string",
+            "description": "Optional case-insensitive actor name or label filter."
+          },
+          "levelName": {
+            "type": "string",
+            "description": "Optional exact level name filter."
+          },
+          "className": {
+            "type": "string",
+            "description": "Optional actor class name or class path filter."
+          }
+        }
+      }
+    },
+    {
+      "name": "ListAssets",
+      "description": "Lists assets under a package path without loading them.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "packagePath": {
+            "type": "string",
+            "description": "Package path to list, for example /Game or /Game/MyFolder. Defaults to /Game."
+          },
+          "recursive": {
+            "type": "boolean",
+            "description": "Whether to recurse into subfolders. Defaults to false."
+          },
+          "classPath": {
+            "type": "string",
+            "description": "Optional class path filter, for example /Script/Engine.Blueprint."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Optional max result count. Defaults to 200."
+          }
+        }
+      }
+    },
+    {
+      "name": "ListBlueprintGraphs",
+      "description": "Lists indexed graphs for one Blueprint with stable graph identity, GUID, type, entry node, and node count.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Indexed Blueprint object path."
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "ListBlueprintNodePins",
+      "description": "Lists live pins for one Blueprint node by stable graph and node GUID, including IDs, directions, types, defaults, and exact linked endpoints.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Stable Blueprint graph/node selector."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Stable Blueprint graph/node selector."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Stable Blueprint graph/node selector."
+          },
+          "nodeGuid": {
+            "type": "string",
+            "description": "Stable Blueprint graph/node selector."
+          }
+        },
+        "required": [
+          "objectPath",
+          "nodeGuid"
+        ]
+      }
+    },
+    {
+      "name": "ListChildBlueprints",
+      "description": "Lists child Blueprints whose parent class is this Blueprint's generated class.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path, for example /Game/BP_MyActor.BP_MyActor"
+          },
+          "recursive": {
+            "type": "boolean",
+            "description": "Whether to include descendants beyond direct children. Defaults to false."
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "ListComponents",
+      "description": "Lists Blueprint simple-construction-script components and hierarchy data.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path, for example /Game/BP_MyActor.BP_MyActor"
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "ListFolders",
+      "description": "Lists known Asset Registry package folders under a base path.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Base package path, for example /Game or /Game/MyFolder. Defaults to /Game."
+          },
+          "recursive": {
+            "type": "boolean",
+            "description": "Whether to recurse into nested subpaths. Defaults to false."
+          }
+        }
+      }
+    },
+    {
+      "name": "ListFunctions",
+      "description": "Lists Blueprint-declared function graphs and interface graphs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path, for example /Game/BP_MyActor.BP_MyActor"
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "ListSelectedActors",
+      "description": "Lists the currently selected actors from the active editor world.",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "ListTools",
+      "description": "Lists all registered Unreal MCP tools and schemas.",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "ListUnrealMCPAutomationTests",
+      "description": "Lists registered UnrealMCP editor automation tests available to the bounded static regression runner.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nameContains": {
+            "type": "string",
+            "description": "Optional case-insensitive substring applied only within registered UnrealMCP.* tests."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 256,
+            "description": "Maximum returned tests. Defaults to 100."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ListVariables",
+      "description": "Lists Blueprint-defined variables and their pin types.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path, for example /Game/BP_MyActor.BP_MyActor"
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "MoveBlueprintNode",
+      "description": "Moves a Blueprint node using explicit or relative collision-aware placement. Supports dry-run and optional save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Stable or unique graph name."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Exact graph GUID."
+          },
+          "nodeGuid": {
+            "type": "string",
+            "description": "Exact node GUID."
+          },
+          "relativeToNodeGuid": {
+            "type": "string",
+            "description": "Optional placement anchor."
+          },
+          "positionX": {
+            "type": "integer"
+          },
+          "positionY": {
+            "type": "integer"
+          },
+          "horizontalSpacing": {
+            "type": "integer"
+          },
+          "verticalOffset": {
+            "type": "integer"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Preview placement."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and refresh."
+          }
+        },
+        "required": [
+          "objectPath",
+          "nodeGuid"
+        ]
+      }
+    },
+    {
+      "name": "PlanProjectRefactor",
+      "description": "Builds a deterministic, evidence-backed, non-mutating Blueprint refactor plan from indexed architecture analyses. It never changes assets and never treats unused candidates as deletion instructions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "rootPath": {
+            "type": "string",
+            "description": "Optional /Game package-path scope. rootPath and packagePath are aliases."
+          },
+          "packagePath": {
+            "type": "string",
+            "description": "Optional /Game package-path scope. rootPath and packagePath are aliases."
+          },
+          "featureBoundaries": {
+            "type": "array",
+            "maxItems": 20,
+            "description": "Optional /Game feature boundaries to analyze independently, up to 20.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "maxActions": {
+            "type": "integer",
+            "default": 25,
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Maximum prioritized actions to return."
+          },
+          "includeEvidence": {
+            "type": "boolean",
+            "default": false,
+            "description": "Include detailed source analysis objects in addition to compact evidence references."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "RefreshBlueprintCallSites",
+      "description": "Finds every same-Blueprint and cross-Blueprint call site of a Blueprint function via the project index and reconstructs each call node to match the function's current signature, compiling callers without saving.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ownerBlueprint": {
+            "type": "string",
+            "description": "Object path of the Blueprint that owns the function whose signature changed."
+          },
+          "functionName": {
+            "type": "string",
+            "description": "Name of the function whose call sites should be refreshed."
+          },
+          "compileCallers": {
+            "type": "boolean",
+            "description": "Compile each affected caller Blueprint after reconstruction. Defaults to true."
+          },
+          "refreshIndex": {
+            "type": "boolean",
+            "description": "Reserved: only takes effect once an affected asset is saved and reindexed. Defaults to false."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Report which indexed call sites would be reconstructed without mutating any asset."
+          },
+          "operationId": {
+            "type": "string",
+            "description": "Optional client-assigned ID for mutation-request tracking via GetMutationRequestStatus."
+          }
+        },
+        "required": [
+          "ownerBlueprint",
+          "functionName"
+        ]
+      }
+    },
+    {
+      "name": "RefreshProjectIndex",
+      "description": "Refreshes only changed, added, deleted, or explicitly requested project assets in the existing UnrealMCP index. This is cheaper than BuildProjectIndex.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPaths": {
+            "type": "array",
+            "description": "Optional Blueprint asset object paths to refresh. Omit to auto-detect changed, added, and deleted project assets.",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "RemoveInputMappingContextMapping",
+      "description": "Removes one exact existing Action+Key mapping row from an InputMappingContext. Fails clearly rather than guessing when zero or more than one row matches.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target InputMappingContext asset object path."
+          },
+          "inputActionPath": {
+            "type": "string",
+            "description": "Exact UInputAction asset object path currently mapped."
+          },
+          "key": {
+            "type": "string",
+            "description": "FKey name of the exact row to remove, for example LeftMouseButton."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate and return the row that would be removed without removing it."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required true for a real removal after inspecting the dry-run row."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and partially refresh the index."
+          }
+        },
+        "required": [
+          "objectPath",
+          "inputActionPath",
+          "key"
+        ]
+      }
+    },
+    {
+      "name": "RunUnrealMCPAutomationTest",
+      "description": "Runs one exact synchronous UnrealMCP.* editor automation test and returns structured execution evidence.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "testName": {
+            "type": "string",
+            "description": "Exact registered synchronous UnrealMCP.* automation test name."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required acknowledgement that the test may create temporary editor assets."
+          }
+        },
+        "required": [
+          "testName",
+          "confirm"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "RunUnrealMCPAutomationTests",
+      "description": "Runs a bounded explicit list of synchronous UnrealMCP editor automation tests and returns one suite result.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "testNames": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 64,
+            "uniqueItems": true,
+            "description": "Explicit registered UnrealMCP.* tests in preferred order; isolation-sensitive negative tests run last.",
+            "items": {
+              "type": "string",
+              "description": "Exact registered test name."
+            }
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required acknowledgement that tests may create temporary editor assets."
+          },
+          "continueOnFailure": {
+            "type": "boolean",
+            "description": "Run the remaining requested tests after a failure. Defaults true."
+          }
+        },
+        "required": [
+          "testNames",
+          "confirm"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "SaveAllDirtyPackages",
+      "description": "Saves every dirty package without prompting, so a subsequent editor shutdown does not block on a save-confirmation dialog. Supports dry-run to report dirty packages without saving.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "dryRun": {
+            "type": "boolean",
+            "description": "Report dirty packages without saving."
+          }
+        }
+      }
+    },
+    {
+      "name": "SaveBlueprint",
+      "description": "Explicitly saves one Blueprint asset, refusing by default to write a Blueprint whose compile is not up to date, and reports its measured package dirty state.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint object path."
+          },
+          "requireUpToDateCompile": {
+            "type": "boolean",
+            "description": "Refuse to save a Blueprint whose compile status is not up to date. Defaults to true."
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "SaveValidatedBlueprints",
+      "description": "Saves an ordered list of already-compiled, dirty Blueprint assets one at a time, stopping at the first asset that is not saveable and reporting which assets are saved versus still dirty and unsaved.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPaths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Ordered Blueprint object paths to save, typically the owner plus every reconstructed caller from RefreshBlueprintCallSites."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Report which assets would be saved without saving any of them."
+          },
+          "continueOnFailure": {
+            "type": "boolean",
+            "description": "Continue attempting later assets after one fails, instead of stopping immediately. Defaults to false."
+          },
+          "requireUpToDateCompile": {
+            "type": "boolean",
+            "description": "Refuse to save a dirty asset whose Blueprint status is not up to date. Defaults to true."
+          },
+          "refreshIndex": {
+            "type": "boolean",
+            "description": "Partially refresh the project index for each asset saved. Defaults to true."
+          },
+          "operationId": {
+            "type": "string",
+            "description": "Optional client-assigned ID for mutation-request tracking via GetMutationRequestStatus."
+          }
+        },
+        "required": [
+          "objectPaths"
+        ]
+      }
+    },
+    {
+      "name": "SearchAssets",
+      "description": "Searches the Asset Registry without loading matching assets.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Case-insensitive asset name or path fragment."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "SetBlueprintComponentDefaults",
+      "description": "Transactionally validates and updates safely editable defaults on one existing Blueprint component template.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "componentName": {
+            "type": "string",
+            "description": "Exact existing SCS component variable name."
+          },
+          "propertyDefaults": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Properties expressed as JSON primitives or Unreal export-text strings."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate and return normalized values without mutation."
+          },
+          "compileAfterEdit": {
+            "type": "boolean",
+            "description": "Compile after a real change; defaults true."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and refresh the index after a real change; defaults true."
+          }
+        },
+        "required": [
+          "objectPath",
+          "componentName",
+          "propertyDefaults"
+        ]
+      }
+    },
+    {
+      "name": "SetBlueprintFunctionMetadata",
+      "description": "Idempotently sets category, description, pure, and const metadata on a Blueprint function graph.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Stable GUID of the target function graph."
+          },
+          "category": {
+            "type": "string",
+            "description": "Optional function category; an empty string clears it."
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional function description/tooltip; an empty string clears it."
+          },
+          "pure": {
+            "type": "boolean",
+            "description": "Optional Blueprint pure flag."
+          },
+          "const": {
+            "type": "boolean",
+            "description": "Optional const function flag."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Report the effective metadata without mutation."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and partially refresh the index after mutation."
+          }
+        },
+        "required": [
+          "objectPath",
+          "graphGuid"
+        ]
+      }
+    },
+    {
+      "name": "SetBlueprintNodeComment",
+      "description": "Sets a Blueprint node comment and optional comment-bubble visibility state. Idempotent, transactional, and supports dry-run and optional save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Stable or unique graph name."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Exact graph GUID."
+          },
+          "nodeGuid": {
+            "type": "string",
+            "description": "Exact node GUID."
+          },
+          "comment": {
+            "type": "string",
+            "description": "Replacement node comment; use an empty string to clear it."
+          },
+          "commentBubbleVisible": {
+            "type": "boolean",
+            "description": "Optional persisted comment-bubble visibility."
+          },
+          "commentBubblePinned": {
+            "type": "boolean",
+            "description": "Optional persisted comment-bubble pinned state."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Preview changes without mutation."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and partially refresh the index after mutation."
+          }
+        },
+        "required": [
+          "objectPath",
+          "nodeGuid",
+          "comment"
+        ]
+      }
+    },
+    {
+      "name": "SetBlueprintPinDefaultObject",
+      "description": "Sets an exact UObject or UClass default on an unconnected Blueprint input pin using stable graph, node, and pin identity. Supports dry-run and optional save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Exact Blueprint object path."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Graph name; graphGuid is preferred when available."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Stable graph GUID."
+          },
+          "nodeGuid": {
+            "type": "string",
+            "description": "Stable node GUID."
+          },
+          "pinId": {
+            "type": "string",
+            "description": "Stable input pin GUID; preferred over pinName."
+          },
+          "pinName": {
+            "type": "string",
+            "description": "Input pin name when pinId is unavailable."
+          },
+          "defaultObjectPath": {
+            "type": "string",
+            "description": "Exact UObject path, /Script/... UClass path, or generated Blueprint class path ending in _C."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate resolution and compatibility without mutating the Blueprint."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save the Blueprint and partially refresh its project-index entry after mutation."
+          }
+        },
+        "required": [
+          "objectPath",
+          "nodeGuid",
+          "defaultObjectPath"
+        ]
+      }
+    },
+    {
+      "name": "SetBlueprintPinDefaultValue",
+      "description": "Sets a validated literal default on an unconnected Blueprint input pin using stable node/pin identity. Supports dry-run and optional save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint graph/node/pin selector or literal value."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Blueprint graph/node/pin selector or literal value."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Blueprint graph/node/pin selector or literal value."
+          },
+          "nodeGuid": {
+            "type": "string",
+            "description": "Blueprint graph/node/pin selector or literal value."
+          },
+          "pinId": {
+            "type": "string",
+            "description": "Blueprint graph/node/pin selector or literal value."
+          },
+          "pinName": {
+            "type": "string",
+            "description": "Blueprint graph/node/pin selector or literal value."
+          },
+          "defaultValue": {
+            "type": "string",
+            "description": "Blueprint graph/node/pin selector or literal value."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate without mutation."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and refresh after mutation."
+          }
+        },
+        "required": [
+          "objectPath",
+          "nodeGuid",
+          "defaultValue"
+        ]
+      }
+    },
+    {
+      "name": "SetBlueprintPinSplit",
+      "description": "Splits a Blueprint struct pin into member sub-pins, or explicitly recombines it, using stable graph/node/pin identifiers.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Stable graph name."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Exact graph GUID."
+          },
+          "nodeGuid": {
+            "type": "string",
+            "description": "Exact node GUID."
+          },
+          "pinId": {
+            "type": "string",
+            "description": "Exact parent or member pin GUID."
+          },
+          "pinName": {
+            "type": "string",
+            "description": "Pin name fallback when unique."
+          },
+          "direction": {
+            "type": "string",
+            "description": "Optional input or output disambiguation."
+          },
+          "split": {
+            "type": "boolean",
+            "description": "True to split; false to recombine. Defaults to true."
+          },
+          "confirmRecombine": {
+            "type": "boolean",
+            "description": "Required when recombining existing sub-pins."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate and return the current pin model without mutation."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and partially refresh the index after mutation."
+          }
+        },
+        "required": [
+          "objectPath",
+          "nodeGuid"
+        ]
+      }
+    },
+    {
+      "name": "SetBlueprintSequenceOutputs",
+      "description": "Sets a Sequence node to 2-32 execution outputs. Removing outputs requires explicit confirmation, with separate confirmation for linked pins.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Stable or unique graph name."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Exact graph GUID."
+          },
+          "nodeGuid": {
+            "type": "string",
+            "description": "Exact Sequence node GUID."
+          },
+          "desiredOutputCount": {
+            "type": "integer",
+            "description": "Desired output count, clamped to the supported range 2-32."
+          },
+          "confirmRemove": {
+            "type": "boolean",
+            "description": "Required to remove any Sequence output pins."
+          },
+          "confirmRemoveLinkedPins": {
+            "type": "boolean",
+            "description": "Additionally required when removed outputs have links."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Preview count and affected trailing pins without mutation."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and partially refresh the index after mutation."
+          }
+        },
+        "required": [
+          "objectPath",
+          "nodeGuid",
+          "desiredOutputCount"
+        ]
+      }
+    },
+    {
+      "name": "SetInputMappingContextMappingKey",
+      "description": "Replaces the key of one exact Action+Key row, preserving its position, action, inline objects and metadata. Static asset editing only; no runtime mapping rebuild.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Exact InputMappingContext object path."
+          },
+          "inputActionPath": {
+            "type": "string",
+            "description": "Exact mapped InputAction object path."
+          },
+          "key": {
+            "type": "string",
+            "description": "Expected current key; ambiguity or a stale key is rejected."
+          },
+          "newKey": {
+            "type": "string",
+            "description": "Replacement FKey name."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate on a detached preview and report before/proposed row without editing."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required true for a real replacement."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Optional save and partial index refresh; default false. A no-op does not save."
+          }
+        },
+        "required": [
+          "objectPath",
+          "inputActionPath",
+          "key",
+          "newKey"
+        ]
+      }
+    },
+    {
+      "name": "SpliceBlueprintExecFlow",
+      "description": "Atomically inserts an ordered chain of existing nodes into one exact Blueprint execution link, with revision checks, idempotent retry, rollback, and compile-before-save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint, graph, splice, revision, node, or exact execution-pin selector."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Blueprint, graph, splice, revision, node, or exact execution-pin selector."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Blueprint, graph, splice, revision, node, or exact execution-pin selector."
+          },
+          "spliceId": {
+            "type": "string",
+            "description": "Blueprint, graph, splice, revision, node, or exact execution-pin selector."
+          },
+          "expectedGraphRevision": {
+            "type": "string",
+            "description": "Blueprint, graph, splice, revision, node, or exact execution-pin selector."
+          },
+          "sourceNodeGuid": {
+            "type": "string",
+            "description": "Blueprint, graph, splice, revision, node, or exact execution-pin selector."
+          },
+          "sourcePinName": {
+            "type": "string",
+            "description": "Blueprint, graph, splice, revision, node, or exact execution-pin selector."
+          },
+          "targetNodeGuid": {
+            "type": "string",
+            "description": "Blueprint, graph, splice, revision, node, or exact execution-pin selector."
+          },
+          "targetPinName": {
+            "type": "string",
+            "description": "Blueprint, graph, splice, revision, node, or exact execution-pin selector."
+          },
+          "operationId": {
+            "type": "string",
+            "description": "Blueprint, graph, splice, revision, node, or exact execution-pin selector."
+          },
+          "insertedNodes": {
+            "type": "array",
+            "description": "Ordered existing nodes to insert. Each node must have currently unwired exact execution input/output pins.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "nodeGuid": {
+                  "type": "string",
+                  "description": "Exact inserted node and execution-pin selector."
+                },
+                "inputPinName": {
+                  "type": "string",
+                  "description": "Exact inserted node and execution-pin selector."
+                },
+                "outputPinName": {
+                  "type": "string",
+                  "description": "Exact inserted node and execution-pin selector."
+                }
+              },
+              "required": [
+                "nodeGuid",
+                "inputPinName",
+                "outputPinName"
+              ]
+            }
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required true for a real splice, because the existing execution link is broken and rewired."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate the exact route and ordered chain without mutation."
+          },
+          "compileAfterEdit": {
+            "type": "boolean",
+            "description": "Compile before any save. Defaults true."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and partially refresh after successful compilation. Defaults false."
+          }
+        },
+        "required": [
+          "objectPath",
+          "spliceId",
+          "sourceNodeGuid",
+          "sourcePinName",
+          "targetNodeGuid",
+          "targetPinName",
+          "insertedNodes"
+        ]
+      }
+    },
+    {
+      "name": "SummarizeBlueprintCluster",
+      "description": "Summarizes the nearby indexed asset cluster around a starting Blueprint or asset.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Optional asset object path, for example /Game/BP_MyActor.BP_MyActor."
+          },
+          "packageName": {
+            "type": "string",
+            "description": "Optional package name when objectPath is not provided."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Optional max number of neighbor assets. Defaults to 25."
+          }
+        }
+      }
+    },
+    {
+      "name": "TraceBlueprintFlow",
+      "description": "Traces indexed Blueprint graph flow from matching nodes or graph entry nodes using the local UnrealMCP graph index.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path, for example /Game/MyFolder/BP_Door.BP_Door."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Optional Blueprint graph name filter, such as EventGraph or a function graph name."
+          },
+          "startNodeQuery": {
+            "type": "string",
+            "description": "Optional node, event, function, variable, graph, or pin text to choose start nodes. When omitted, graph entry nodes are used."
+          },
+          "outputMode": {
+            "type": "string",
+            "description": "Optional response mode: summary, compact, or full. Defaults to summary."
+          },
+          "resolveExternalMembers": {
+            "type": "boolean",
+            "description": "Optional. When true, node member owners are resolved back to indexed assets so cross-Blueprint references are visible in the trace output. Defaults to true."
+          },
+          "expandCalls": {
+            "type": "boolean",
+            "description": "Optional. When true, the trace may enter called functions or custom events using a bounded call-expansion budget. Defaults to true."
+          },
+          "followCrossBlueprintCalls": {
+            "type": "boolean",
+            "description": "Optional. When true, bounded call expansion may continue into target Blueprints as well. Defaults to true."
+          },
+          "direction": {
+            "type": "string",
+            "description": "Traversal direction: forward, backward, or both. Defaults to forward."
+          },
+          "maxDepth": {
+            "type": "integer",
+            "description": "Optional max traversal depth across graph edges. Defaults to 4, clamped to 0-12."
+          },
+          "maxNodes": {
+            "type": "integer",
+            "description": "Optional max traced node count. Defaults to 40, clamped to 1-200."
+          },
+          "maxStartNodes": {
+            "type": "integer",
+            "description": "Optional max number of matched start nodes to seed the trace. Defaults to 8, clamped to 1-32."
+          },
+          "maxCallDepth": {
+            "type": "integer",
+            "description": "Optional max number of function or custom-event call expansions. Defaults to 1, clamped to 0-6."
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "TraceFeatureFlow",
+      "description": "Traces a small indexed feature flow around a starting Blueprint or asset using dependencies and referencers.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Optional asset object path, for example /Game/BP_MyActor.BP_MyActor."
+          },
+          "packageName": {
+            "type": "string",
+            "description": "Optional package name when objectPath is not provided."
+          },
+          "maxDepth": {
+            "type": "integer",
+            "description": "Optional max traversal depth from 1 to 3. Defaults to 2."
+          },
+          "maxNodes": {
+            "type": "integer",
+            "description": "Optional max nodes to emit. Defaults to 20."
+          }
+        }
+      }
+    },
+    {
+      "name": "TraceLiveBlueprintFlow",
+      "description": "Trace live Blueprint execution and data links from an event or node, including embedded Level Blueprints, delays, and resident function/macro bodies. Read-only; no asset index or runtime evaluation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Exact resident Blueprint or graph object path, including embedded LevelScriptBlueprint objects. Never loads assets."
+          },
+          "mapPath": {
+            "type": "string",
+            "description": "Loaded map package, world object path, or exact level path in the editor world. Exclusive with objectPath/level."
+          },
+          "level": {
+            "type": "string",
+            "description": "current (default) or persistent in the open editor world. Exclusive with objectPath/mapPath."
+          },
+          "graphPath": {
+            "type": "string",
+            "description": "Optional exact graph object path within the resolved Blueprint."
+          },
+          "startNodeGuid": {
+            "type": "string",
+            "description": "Exact start node GUID. Exclusive with startEvent; use graphPath if ambiguous."
+          },
+          "startEvent": {
+            "type": "string",
+            "description": "Exact event member name. Defaults to BeginPlay (ReceiveBeginPlay)."
+          },
+          "includePins": {
+            "type": "boolean",
+            "description": "Include complete authored pin defaults and links for each node; default true."
+          },
+          "maxNodes": {
+            "type": "integer",
+            "description": "Traversal bound: maxNodes default 100/max 1000; maxDepth default 128/max 512; maxCallDepth default 4/max 16. Limits return explicit frontier evidence."
+          },
+          "maxDepth": {
+            "type": "integer",
+            "description": "Traversal bound: maxNodes default 100/max 1000; maxDepth default 128/max 512; maxCallDepth default 4/max 16. Limits return explicit frontier evidence."
+          },
+          "maxCallDepth": {
+            "type": "integer",
+            "description": "Traversal bound: maxNodes default 100/max 1000; maxDepth default 128/max 512; maxCallDepth default 4/max 16. Limits return explicit frontier evidence."
+          }
+        }
+      }
+    },
+    {
+      "name": "ValidateBlueprint",
+      "description": "Runs a no-save compile validation for one Blueprint and returns structured diagnostics and dirty state.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint object path."
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "WireBlueprintEventToFunction",
+      "description": "Idempotently ensures a custom event calls one exact Blueprint-callable function, optionally through a Blueprint component/member target. Refuses to replace existing event flow.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Exact graph name; use graphGuid when ambiguous."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Stable graph GUID."
+          },
+          "eventName": {
+            "type": "string",
+            "description": "Custom event to create or reuse."
+          },
+          "ownerClassPath": {
+            "type": "string",
+            "description": "Exact class that owns the BlueprintCallable function."
+          },
+          "functionName": {
+            "type": "string",
+            "description": "Exact reflected UFunction name."
+          },
+          "targetVariableName": {
+            "type": "string",
+            "description": "Optional Blueprint component/member variable used as the call target."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Preflight the workflow without mutation."
+          },
+          "compileAfterEdit": {
+            "type": "boolean",
+            "description": "Compile the touched Blueprint once. Defaults to true."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and partially refresh the touched asset once. Defaults to true."
+          },
+          "positionX": {
+            "type": "integer"
+          },
+          "positionY": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "objectPath",
+          "eventName",
+          "ownerClassPath",
+          "functionName"
+        ]
+      }
+    },
+    {
+      "name": "WireEnhancedInputActionToComponent",
+      "description": "Idempotently inserts one component function call into an exact Enhanced Input action phase while preserving its existing execution continuation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Exact graph name."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Exact graph GUID."
+          },
+          "inputActionPath": {
+            "type": "string",
+            "description": "Exact InputAction object path; nodeGuid is preferred when duplicate action nodes exist."
+          },
+          "nodeGuid": {
+            "type": "string",
+            "description": "Exact Enhanced Input Action node GUID."
+          },
+          "phase": {
+            "type": "string",
+            "description": "Started, Triggered, Ongoing, Canceled, or Completed."
+          },
+          "ownerClassPath": {
+            "type": "string",
+            "description": "Exact class owning the impure BlueprintCallable function."
+          },
+          "functionName": {
+            "type": "string",
+            "description": "Exact component function name."
+          },
+          "targetVariableName": {
+            "type": "string",
+            "description": "Existing Blueprint component/member variable used as call target."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate the route without mutation."
+          },
+          "compileAfterEdit": {
+            "type": "boolean",
+            "description": "Compile once after mutation; defaults true."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and refresh once after mutation; defaults true."
+          }
+        },
+        "required": [
+          "objectPath",
+          "phase",
+          "ownerClassPath",
+          "functionName",
+          "targetVariableName"
+        ]
+      }
+    },
+    {
+      "name": "WireSelectionWorkflow",
+      "description": "Idempotently scaffolds four collection-backed helper functions (SelectOne, ToggleSelection, ClearSelection, ContainsSelection) over a named array/set-of-object selection variable, composed from existing Blueprint authoring primitives.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "elementTypeObjectPath": {
+            "type": "string",
+            "description": "Class path of the object type the selection collection holds, e.g. an Actor subclass."
+          },
+          "selectionVariableName": {
+            "type": "string",
+            "description": "Collection variable name to create or reuse. Defaults to SelectedActors."
+          },
+          "collectionType": {
+            "type": "string",
+            "description": "array or set. Defaults to array."
+          },
+          "selectOneFunctionName": {
+            "type": "string",
+            "description": "Defaults to SelectOne."
+          },
+          "toggleSelectionFunctionName": {
+            "type": "string",
+            "description": "Defaults to ToggleSelection."
+          },
+          "clearSelectionFunctionName": {
+            "type": "string",
+            "description": "Defaults to ClearSelection."
+          },
+          "containsSelectionFunctionName": {
+            "type": "string",
+            "description": "Defaults to ContainsSelection."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Report a structural plan without mutating anything."
+          },
+          "compileAfterEdit": {
+            "type": "boolean",
+            "description": "Compile once after scaffolding. Defaults to true."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and partially refresh the index once after scaffolding. Defaults to true."
+          }
+        },
+        "required": [
+          "objectPath",
+          "elementTypeObjectPath"
+        ]
+      }
+    }
+  ],
+  "capturedUtc": "2026-10-30T09:54:02.5994435Z"
+}

@@ -1,4 +1,6 @@
 #include "UnrealMCPModule.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonReader.h"
 
 #include "Index/UnrealMCPProjectIndex.h"
 #include "MCP/MCPServer.h"
@@ -20,6 +22,7 @@
 #include "Tools/AddBlueprintFunctionParameterTool.h"
 #include "Tools/AddBlueprintInterfaceEventNodeTool.h"
 #include "Tools/AddBlueprintInterfaceFunctionGraphTool.h"
+#include "Tools/AddBlueprintInterfaceTool.h"
 #include "Tools/AddBlueprintOverrideEventNodeTool.h"
 #include "Tools/AddBlueprintDelegateNodeTool.h"
 #include "Tools/AddBlueprintDelegateEventNodeTool.h"
@@ -351,6 +354,7 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FRefreshBlueprintCallSitesTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintInterfaceEventNodeTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintInterfaceFunctionGraphTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintInterfaceTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintOverrideEventNodeTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintDelegateNodeTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintDelegateEventNodeTool>());
@@ -433,4 +437,15 @@ void FUnrealMCPModule::StopTransport()
         UE_LOG(LogUnrealMCP, Log, TEXT("Stopped %s transport."), *Transport->GetTransportName());
         Transport.Reset();
     }
+}
+
+FString FUnrealMCPModule::ExecuteToolJson(const FString& ToolName, const FString& ParamsJson)
+{
+    // The integration uses the same dispatch, operation tracking and tool validation as the adapter.
+    TSharedPtr<FJsonObject> Params;
+    if (!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(ParamsJson), Params) || !Params.IsValid())
+        return TEXT("{\"error\":{\"message\":\"Invalid tool parameters JSON\"}}");
+    UnrealMCP::FMCPRequest Request; Request.Id = FGuid::NewGuid().ToString(); Request.Method = ToolName; Request.Params = Params;
+    FMCPServer& Server = Get().GetServer();
+    return Server.SerializeResponse(Server.HandleRequest(Request));
 }

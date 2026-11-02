@@ -33,6 +33,16 @@ UnrealMCP::FMCPResponse FAddBlueprintCommentNodeTool::Execute(const UnrealMCP::F
         Request.Params->TryGetNumberField(TEXT("height"), HeightValue);
     }
 
+    const TSharedPtr<FJsonObject>* RequestedColor = nullptr;
+    if (Request.Params->TryGetObjectField(TEXT("color"), RequestedColor))
+    {
+        for (const TCHAR* ChannelName : {TEXT("r"), TEXT("g"), TEXT("b")})
+        {
+            double Value = 0;
+            if (!(*RequestedColor)->TryGetNumberField(ChannelName, Value) || !FMath::IsFinite(Value) || Value < 0)
+                return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, TEXT("Comment color requires finite nonnegative r/g/b."));
+        }
+    }
     const int32 Width = FMath::Clamp(FMath::RoundToInt(WidthValue), 200, 4000);
     const int32 Height = FMath::Clamp(FMath::RoundToInt(HeightValue), 100, 4000);
     bool Dry = UnrealMCP::BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("dryRun"), false);
@@ -66,10 +76,19 @@ UnrealMCP::FMCPResponse FAddBlueprintCommentNodeTool::Execute(const UnrealMCP::F
         B->Modify();
         Graph->Modify();
         auto* Node = NewObject<UEdGraphNode_Comment>(Graph);
-        Node->NodeComment = Text;
         Node->NodeWidth = Width;
         Node->NodeHeight = Height;
         UnrealMCP::BlueprintGraphEditToolUtils::PlaceNewNode(Graph, Node, P);
+        // PostPlacedNewNode initializes the default title, so apply authored properties afterwards.
+        Node->NodeComment = Text;
+        Node->bCommentBubbleVisible_InDetailsPanel = UnrealMCP::BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("showBubbleWhenZoomed"), true);
+        Node->bCommentBubbleVisible = Node->bCommentBubbleVisible_InDetailsPanel;
+        Node->bColorCommentBubble = true;
+        const TSharedPtr<FJsonObject>* Color = nullptr;
+        if (Request.Params->TryGetObjectField(TEXT("color"), Color))
+        {
+            Node->CommentColor = FLinearColor((*Color)->GetNumberField(TEXT("r")), (*Color)->GetNumberField(TEXT("g")), (*Color)->GetNumberField(TEXT("b")), 1.f);
+        }
         FBlueprintEditorUtils::MarkBlueprintAsModified(B);
         NG = UnrealMCP::BlueprintGraphEditToolUtils::GetNodeGuid(Node);
         return UnrealMCP::BlueprintGraphEditToolUtils::SaveAndRefreshIfRequested(B, O, Save, File, Idx, IdxErr, E);
@@ -85,6 +104,7 @@ UnrealMCP::FMCPResponse FAddBlueprintCommentNodeTool::Execute(const UnrealMCP::F
     auto J = BuildBooleanResult(true);
     J->SetStringField(TEXT("nodeGuid"), NG);
     J->SetStringField(TEXT("commentText"), Text);
+    J->SetBoolField(TEXT("showBubbleWhenZoomed"), UnrealMCP::BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("showBubbleWhenZoomed"), true));
     J->SetNumberField(TEXT("positionX"), P.X);
     J->SetNumberField(TEXT("positionY"), P.Y);
     J->SetNumberField(TEXT("width"), Width);
@@ -117,6 +137,13 @@ TSharedPtr<FJsonObject> FAddBlueprintCommentNodeTool::BuildInputSchema() const
         P->SetObjectField(N, I);
     }
 
+    auto Color = MakeShared<FJsonObject>(); Color->SetStringField(TEXT("type"), TEXT("object"));
+    auto Channels = MakeShared<FJsonObject>(); auto Channel = MakeShared<FJsonObject>(); Channel->SetStringField(TEXT("type"), TEXT("number"));
+    for (const TCHAR* ChannelName : {TEXT("r"), TEXT("g"), TEXT("b")}) Channels->SetObjectField(ChannelName, Channel);
+    Color->SetObjectField(TEXT("properties"), Channels);
+    Color->SetArrayField(TEXT("required"), {MakeShared<FJsonValueString>(TEXT("r")), MakeShared<FJsonValueString>(TEXT("g")), MakeShared<FJsonValueString>(TEXT("b"))});
+    P->SetObjectField(TEXT("color"), Color);
+    P->SetObjectField(TEXT("showBubbleWhenZoomed"), BuildBoolProperty(TEXT("Show bubble when zoomed; defaults true.")));
     P->SetObjectField(TEXT("dryRun"), BuildBoolProperty(TEXT("Preview bounds.")));
     P->SetObjectField(TEXT("saveAfterEdit"), BuildBoolProperty(TEXT("Save and refresh.")));
     S->SetObjectField(TEXT("properties"), P);

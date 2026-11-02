@@ -16,6 +16,7 @@
 #include "Misc/ScopeExit.h"
 #include "ObjectTools.h"
 #include "Tools/AddBlueprintInterfaceFunctionGraphTool.h"
+#include "Tools/AddBlueprintInterfaceTool.h"
 
 namespace
 {
@@ -316,4 +317,58 @@ bool FUnrealMCPAddBlueprintInterfaceFunctionGraphLiveTest::RunTest(
     return !HasAnyErrors();
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUnrealMCPAttachInterfaceTest, "UnrealMCP.Blueprint.Authoring.Interface.Attach", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FUnrealMCPAttachInterfaceTest::RunTest(const FString& Parameters)
+{
+    const FString Suffix = FGuid::NewGuid().ToString(EGuidFormats::Digits);
+    UBlueprint* Interface = CreateBlueprintFixture(TEXT("/Game/UnrealMCP_Automation/BPI_Attach_") + Suffix, UInterface::StaticClass(), BPTYPE_Interface);
+    UBlueprint* Target = CreateBlueprintFixture(TEXT("/Game/UnrealMCP_Automation/BP_Attach_") + Suffix, AActor::StaticClass(), BPTYPE_Normal);
+    ON_SCOPE_EXIT { ObjectTools::DeleteObjectsUnchecked({Target, Interface}); };
+    if (!TestNotNull(TEXT("Interface signature"), AddOutputBearingInterfaceFunction(Interface))) return false;
+    FKismetEditorUtilities::CompileBlueprint(Interface);
+    FKismetEditorUtilities::CompileBlueprint(Target);
+    UnrealMCP::FMCPRequest Request; Request.Params = MakeShared<FJsonObject>();
+    Request.Params->SetStringField(TEXT("objectPath"), Target->GetPathName());
+    Request.Params->SetStringField(TEXT("interfaceClassPath"), Interface->GeneratedClass->GetPathName());
+    Request.Params->SetBoolField(TEXT("dryRun"), true);
+    const int32 Before = Target->ImplementedInterfaces.Num();
+    auto Preview = FAddBlueprintInterfaceTool().Execute(Request);
+    TestTrue(TEXT("Preflight succeeds"), Preview.Result->GetBoolField(TEXT("success")));
+    TestEqual(TEXT("Dry-run preserves interface inventory"), Target->ImplementedInterfaces.Num(), Before);
+    Request.Params->SetBoolField(TEXT("dryRun"), false);
+    Target->GetOutermost()->SetDirtyFlag(true);
+    Request.Params->SetBoolField(TEXT("saveAfterEdit"), true);
+    auto Dirty = FAddBlueprintInterfaceTool().Execute(Request);
+    TestFalse(TEXT("Saving pre-existing unsaved work is refused"), Dirty.Result->GetBoolField(TEXT("success")));
+    TestEqual(TEXT("Save refusal preserves interface inventory"), Target->ImplementedInterfaces.Num(), Before);
+    Request.Params->SetBoolField(TEXT("saveAfterEdit"), false);
+    auto Apply = FAddBlueprintInterfaceTool().Execute(Request);
+    TestTrue(TEXT("Attachment succeeds"), Apply.Result->GetBoolField(TEXT("success")));
+    TestTrue(TEXT("Attachment compiles"), Apply.Result->GetBoolField(TEXT("compileSucceeded")));
+    TestEqual(TEXT("One interface attached"), Target->ImplementedInterfaces.Num(), Before + 1);
+    TestTrue(TEXT("Signature-correct function exists"), Target->GeneratedClass->FindFunctionByName(FName(FunctionName)) != nullptr);
+    auto Retry = FAddBlueprintInterfaceTool().Execute(Request);
+    TestTrue(TEXT("Retry reports existing interface"), Retry.Result->GetBoolField(TEXT("alreadyExists")));
+    TestFalse(TEXT("Retry does not attach again"), Retry.Result->GetBoolField(TEXT("added")));
+    TestEqual(TEXT("No duplicate interface"), Target->ImplementedInterfaces.Num(), Before + 1);
+    UBlueprint* Child = CreateBlueprintFixture(TEXT("/Game/UnrealMCP_Automation/BP_AttachChild_") + Suffix, Target->GeneratedClass, BPTYPE_Normal);
+    Request.Params->SetStringField(TEXT("objectPath"), Child->GetPathName());
+    auto InheritedResult = FAddBlueprintInterfaceTool().Execute(Request);
+    TestTrue(TEXT("Inherited implementation detected"), InheritedResult.Result->GetBoolField(TEXT("inherited")));
+    TestEqual(TEXT("Inherited interface not duplicated directly"), Child->ImplementedInterfaces.Num(), 0);
+    ObjectTools::DeleteObjectsUnchecked({Child});
+    UBlueprint* Collision = CreateBlueprintFixture(TEXT("/Game/UnrealMCP_Automation/BP_AttachCollision_") + Suffix, AActor::StaticClass(), BPTYPE_Normal);
+    AddOutputBearingInterfaceFunction(Collision);
+    Request.Params->SetStringField(TEXT("objectPath"), Collision->GetPathName());
+    auto Conflict = FAddBlueprintInterfaceTool().Execute(Request);
+    TestFalse(TEXT("Existing function is not replaced"), Conflict.Result->GetBoolField(TEXT("success")));
+    TestEqual(TEXT("Collision leaves interface inventory unchanged"), Collision->ImplementedInterfaces.Num(), 0);
+    ObjectTools::DeleteObjectsUnchecked({Collision});
+    Request.Params->SetStringField(TEXT("objectPath"), Target->GetPathName());
+    Request.Params->SetStringField(TEXT("interfaceClassPath"), TEXT("/Script/Engine.Actor"));
+    auto Invalid = FAddBlueprintInterfaceTool().Execute(Request);
+    TestFalse(TEXT("Non-interface class rejected"), Invalid.Result->GetBoolField(TEXT("success")));
+    return true;
+}
 #endif // WITH_DEV_AUTOMATION_TESTS
