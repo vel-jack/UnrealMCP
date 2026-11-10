@@ -48,6 +48,12 @@ Coding agents and contributors should read [AGENTS.md](AGENTS.md) before changin
 - `GetImplementedInterfaces`
 - `ListChildBlueprints`
 - `CompileBlueprint`
+- `FindClassUsages`
+- `ConsolidateAndDeleteAsset`
+- `RetargetBlueprintNode`
+- `ListBlueprintLocalVariables`
+- `AddBlueprintLocalVariable`
+- `RemoveBlueprintLocalVariable`
 - `CompileAllBlueprints`
 - `CreateBlueprintAsset`
 - `AddBlueprintComponent`
@@ -539,6 +545,18 @@ Follow [ROADMAP.md](ROADMAP.md): reliable compound operations, bounded query/evi
 `AddBlueprintCommentNode` applies authored text after placement and accepts optional RGB `color` and `showBubbleWhenZoomed` (default true), avoiding follow-up title/colour/bubble edits.
 
 The exported in-process `FUnrealMCPModule::ExecuteToolJson` bridge forwards requests through the existing native dispatch/tracking path. The optional GraphXPort Conflict Toolset uses it for guarded preview/apply workflows exposed through Epic's official MCP; this native plugin does not depend on GraphXPort. These additions were compiled and tested with UE 5.8; UE 5.4 compatibility has not been freshly tested.
+
+## Tooling requirements pass (P1 batch)
+
+Implemented from `UnrealMCP_ToolingRequirements.md` (R2, R3, R7, R11, R12). Requirements that name Epic's official `BlueprintTools.*`/DSL tools (R1, R5, R6, R8-R10) are not native and remain tracked in ROADMAP.md.
+
+- `CompileBlueprint` now also returns `status`, `errors[{graph, nodeGuid, message}]` and `warnings[...]`; node and graph come from the compiler message's object token and are empty when the compiler did not attach a node. `messages`, `errorCount` and `warningCount` are unchanged.
+- `FindClassUsages(objectPath, classOrAssetPath, limit)` scans one Blueprint live, including collapsed/macro/function graphs, and tags each hit as `cast_target`, `function_call`, `variable_access`, `pin_type`, `pin_default`, `function_parameter`, `local_variable`, `member_variable`, `component`, `parent_class` or `interface`, with graph, node GUID and pin. Matching is by owning package, so one call covers a class, its `_C` generated class, structs and enums. `registryDependency` reports the Asset Registry edge; when it exists but nothing live uses the target, a single `stale_import_only` hit is returned. Read-only.
+- `ConsolidateAndDeleteAsset(oldAssetPath, replacementAssetPath, dryRun, confirm)` wraps the editor's Replace References: it repoints all referencers, deletes the old asset and reports `referencersBefore`, `referencersAfter`, `dirtiedPackages`, failures and `oldAssetStillExists`. It never saves; save the dirtied packages explicitly. Requires `confirm=true`; dry-run lists referencers only.
+- `RetargetBlueprintNode(objectPath, graphName|graphGuid, nodeGuid, newClassPath, dryRun, confirm)` retargets a cast node, including a "Bad cast node" whose class is gone, without needing the old class. Links on the old class-named result pin move to the new result pin; `droppedLinks` lists any the schema refused. Casts only for now.
+- `ListBlueprintLocalVariables`, `AddBlueprintLocalVariable` (type arguments as in `AddBlueprintVariable`; idempotent by name) and `RemoveBlueprintLocalVariable` (requires `confirm`; reports leftover Get/Set nodes) manage function-graph locals. The DSL `(local name type)` form is not part of this pass.
+
+The adapter classifies `Consolidate*` and `Retarget*` tools as tracked mutations. These tools were compile-checked only; no live editor test or native automation test exists for them yet, and the bundled `unreal-tools.json` catalog has not been refreshed.
 
 ## Blueprint interface attachment (2026-10-30)
 

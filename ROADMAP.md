@@ -1,5 +1,11 @@
 # UnrealMCP: Capability and Context Efficiency Roadmap
 
+Tooling requirements pass (source: `UnrealMCP_ToolingRequirements.md` from the DSM refactor):
+
+- [x] R11 structured compile result, R7 `FindClassUsages`, R12 `ConsolidateAndDeleteAsset`, R3 local variable tools, R2 `RetargetBlueprintNode` (casts): implemented natively; see README. Pending: live editor verification, native automation tests, catalog refresh.
+- [ ] R4 inherited-variable getters in `ApplyBlueprintGraphPatch`, R14 `WaitForUnrealReady`/`WaitForUnrealExit`, R15 binary merge replay, R13 save warning for broken nodes, and skills S1-S3: native, not started.
+- [ ] R1, R5, R6, R8, R9, R10 target Epic's official `BlueprintTools.*`/DSL tools, which this plugin does not own. They need native equivalents here or an upstream request. R1 in particular needs `FBlueprintEditorUtils::FindBlueprintForGraph` in whatever tool takes a graph.
+
 October 30, 2026 discovery index: added `docs/MCP-Tool-Index.md`, official discovery metadata snapshot and `Scripts/refresh_tool_index.py`. The index routes custom and official tools using short descriptions, without schemas. Snapshot regeneration is offline; `--official-url` performs read-only live discovery. Agent instructions require checking both routes before claiming a capability is absent. No editor assets or native APIs change.
 
 October 30, 2026 catalog refresh: added the bundled native catalog captured from the running DSM UE 5.8 editor (120 tools, including `AddBlueprintInterface`). Current adapter source builds without errors or warnings; existing live adapter discovery checks pass against DSM. Active clients still run the September 8 adapter binary; the verified current build is under `Adapter/UnrealMCP.Adapter/bin/ManifestRefresh`. Close clients and rebuild the normal Release output before reconnecting to activate current discovery and catalog notifications. No native source or index schema changed.

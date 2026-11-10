@@ -386,8 +386,8 @@ internal sealed partial class UnrealSessionManager
 
         string[] mutationPrefixes =
         [
-            "Add", "Apply", "Compile", "Connect", "Create", "Delete", "Disconnect",
-            "Layout", "Move", "Refresh", "Remove", "RunUnrealMCPAutomationTest", "Save", "Set",
+            "Add", "Apply", "Compile", "Connect", "Consolidate", "Create", "Delete", "Disconnect",
+            "Layout", "Move", "Refresh", "Remove", "Retarget", "RunUnrealMCPAutomationTest", "Save", "Set",
             "Splice", "Wire"
         ];
         return mutationPrefixes.Any(prefix => toolName.StartsWith(prefix, StringComparison.Ordinal));

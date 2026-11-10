@@ -41,6 +41,10 @@
 #include "Tools/AddInputMappingContextMappingTool.h"
 #include "Tools/ConnectBlueprintPinsTool.h"
 #include "Tools/CompileBlueprintTool.h"
+#include "Tools/FindClassUsagesTool.h"
+#include "Tools/RetargetBlueprintNodeTool.h"
+#include "Tools/BlueprintLocalVariableTools.h"
+#include "Tools/ConsolidateAndDeleteAssetTool.h"
 #include "Tools/CreateBlueprintAssetTool.h"
 #include "Tools/CreateBlueprintFunctionGraphTool.h"
 #include "Tools/CreateInputActionTool.h"
@@ -322,6 +326,12 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FGetLevelActorDependenciesTool>());
     Registry.RegisterTool(MakeShared<FListSelectedActorsTool>());
     Registry.RegisterTool(MakeShared<FCompileBlueprintTool>());
+    Registry.RegisterTool(MakeShared<FFindClassUsagesTool>());
+    Registry.RegisterTool(MakeShared<FRetargetBlueprintNodeTool>());
+    Registry.RegisterTool(MakeShared<FListBlueprintLocalVariablesTool>());
+    Registry.RegisterTool(MakeShared<FAddBlueprintLocalVariableTool>());
+    Registry.RegisterTool(MakeShared<FRemoveBlueprintLocalVariableTool>());
+    Registry.RegisterTool(MakeShared<FConsolidateAndDeleteAssetTool>());
     Registry.RegisterTool(MakeShared<FCompileAllBlueprintsTool>());
     Registry.RegisterTool(MakeShared<FCreateBlueprintAssetTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintComponentTool>());
