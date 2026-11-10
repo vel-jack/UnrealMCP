@@ -71,7 +71,7 @@ UnrealMCP::FMCPResponse FSetInputMappingContextMappingKeyTool::Execute(const Unr
             return false;
         }
         const int32 Index = Indices[0];
-        FScriptArrayHelper Rows(Mappings, Mappings->ContainerPtrToValuePtr<void>(Context));
+        FScriptArrayHelper Rows(Mappings, InputAssetToolUtils::GetMappingsArrayPtr(Context, Mappings));
         void* Row = Rows.GetRawPtr(Index);
         Before = InputAssetToolUtils::SerializeMappingRow(Row, RowStruct, Index);
         FStructOnScope Original(RowStruct), Proposed(RowStruct);
@@ -88,7 +88,7 @@ UnrealMCP::FMCPResponse FSetInputMappingContextMappingKeyTool::Execute(const Unr
             return false;
         }
         Preview->ClearFlags(RF_Public | RF_Standalone);
-        FScriptArrayHelper PreviewRows(Mappings, Mappings->ContainerPtrToValuePtr<void>(Preview));
+        FScriptArrayHelper PreviewRows(Mappings, InputAssetToolUtils::GetMappingsArrayPtr(Preview, Mappings));
         *KeyProperty->ContainerPtrToValuePtr<FKey>(PreviewRows.GetRawPtr(Index)) = NewKey;
         FDataValidationContext PreviewValidation;
         if (static_cast<const UObject*>(Preview)->IsDataValid(PreviewValidation) == EDataValidationResult::Invalid)

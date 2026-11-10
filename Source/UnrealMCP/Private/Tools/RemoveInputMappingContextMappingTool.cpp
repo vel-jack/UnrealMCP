@@ -94,7 +94,7 @@ UnrealMCP::FMCPResponse FRemoveInputMappingContextMappingTool::Execute(const Unr
 
         UScriptStruct* MappingStruct = InputAssetToolUtils::GetMappingElementStruct(MappingsProperty);
         {
-            FScriptArrayHelper Helper(MappingsProperty, MappingsProperty->ContainerPtrToValuePtr<void>(ContextObject));
+            FScriptArrayHelper Helper(MappingsProperty, InputAssetToolUtils::GetMappingsArrayPtr(ContextObject, MappingsProperty));
             RemovedRow = InputAssetToolUtils::SerializeMappingRow(Helper.GetRawPtr(MatchingIndices[0]), MappingStruct, MatchingIndices[0]);
         }
 

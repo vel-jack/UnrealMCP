@@ -109,14 +109,34 @@ namespace UnrealMCP::InputAssetToolUtils
         return true;
     }
 
+    // UE 5.7+ stores rows in DefaultKeyMappings.Mappings; the top-level Mappings array is deprecated and no longer written by MapKey.
+    inline FStructProperty* FindDefaultKeyMappingsProperty(UClass* ContextClass)
+    {
+        return CastField<FStructProperty>(ContextClass->FindPropertyByName(TEXT("DefaultKeyMappings")));
+    }
+
     inline FArrayProperty* FindMappingsProperty(UClass* ContextClass, FString& OutError)
     {
-        FArrayProperty* Prop = CastField<FArrayProperty>(ContextClass->FindPropertyByName(TEXT("Mappings")));
+        const FStructProperty* DefaultKeyMappings = FindDefaultKeyMappingsProperty(ContextClass);
+        FArrayProperty* Prop = DefaultKeyMappings != nullptr
+            ? CastField<FArrayProperty>(DefaultKeyMappings->Struct->FindPropertyByName(TEXT("Mappings")))
+            : CastField<FArrayProperty>(ContextClass->FindPropertyByName(TEXT("Mappings")));
         if (Prop == nullptr)
         {
             OutError = TEXT("UInputMappingContext no longer exposes a reflected 'Mappings' array property.");
         }
         return Prop;
+    }
+
+    // Address of the array FindMappingsProperty returned, whether it is nested in DefaultKeyMappings or top-level.
+    inline void* GetMappingsArrayPtr(UObject* ContextObject, FArrayProperty* MappingsProperty)
+    {
+        const FStructProperty* DefaultKeyMappings = FindDefaultKeyMappingsProperty(ContextObject->GetClass());
+        if (DefaultKeyMappings != nullptr && MappingsProperty->GetOwnerStruct() == DefaultKeyMappings->Struct)
+        {
+            return MappingsProperty->ContainerPtrToValuePtr<void>(DefaultKeyMappings->ContainerPtrToValuePtr<void>(ContextObject));
+        }
+        return MappingsProperty->ContainerPtrToValuePtr<void>(ContextObject);
     }
 
     inline UScriptStruct* GetMappingElementStruct(FArrayProperty* MappingsProperty)
@@ -185,7 +205,7 @@ namespace UnrealMCP::InputAssetToolUtils
             return 0;
         }
 
-        FScriptArrayHelper Helper(MappingsProperty, MappingsProperty->ContainerPtrToValuePtr<void>(ContextObject));
+        FScriptArrayHelper Helper(MappingsProperty, GetMappingsArrayPtr(ContextObject, MappingsProperty));
         int32 Count = 0;
         for (int32 Idx = 0; Idx < Helper.Num(); ++Idx)
         {

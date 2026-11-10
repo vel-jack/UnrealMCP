@@ -90,7 +90,7 @@ UnrealMCP::FMCPResponse FAddInputMappingContextMappingTool::Execute(const Unreal
             bAlreadyExists = true;
             ResultIndex = ExistingIndices[0];
             UScriptStruct* MappingStruct = InputAssetToolUtils::GetMappingElementStruct(MappingsProperty);
-            FScriptArrayHelper Helper(MappingsProperty, MappingsProperty->ContainerPtrToValuePtr<void>(ContextObject));
+            FScriptArrayHelper Helper(MappingsProperty, InputAssetToolUtils::GetMappingsArrayPtr(ContextObject, MappingsProperty));
             RowResult = InputAssetToolUtils::SerializeMappingRow(Helper.GetRawPtr(ResultIndex), MappingStruct, ResultIndex);
             return true;
         }
@@ -117,7 +117,7 @@ UnrealMCP::FMCPResponse FAddInputMappingContextMappingTool::Execute(const Unreal
         }
         ResultIndex = NewIndices.Last();
         UScriptStruct* MappingStruct = InputAssetToolUtils::GetMappingElementStruct(MappingsProperty);
-        FScriptArrayHelper Helper(MappingsProperty, MappingsProperty->ContainerPtrToValuePtr<void>(ContextObject));
+        FScriptArrayHelper Helper(MappingsProperty, InputAssetToolUtils::GetMappingsArrayPtr(ContextObject, MappingsProperty));
         RowResult = InputAssetToolUtils::SerializeMappingRow(Helper.GetRawPtr(ResultIndex), MappingStruct, ResultIndex);
 
         ContextObject->GetPackage()->MarkPackageDirty();

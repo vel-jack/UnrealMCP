@@ -51,7 +51,7 @@ UnrealMCP::FMCPResponse FGetInputMappingContextMappingsTool::Execute(const Unrea
             return false;
         }
 
-        FScriptArrayHelper Helper(MappingsProperty, MappingsProperty->ContainerPtrToValuePtr<void>(ContextObject));
+        FScriptArrayHelper Helper(MappingsProperty, InputAssetToolUtils::GetMappingsArrayPtr(ContextObject, MappingsProperty));
         for (int32 Idx = 0; Idx < Helper.Num(); ++Idx)
         {
             Rows.Add(MakeShared<FJsonValueObject>(

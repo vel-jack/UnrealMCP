@@ -69,6 +69,7 @@ bool FUnrealMCPEnhancedInputAssetsLiveTest::RunTest(const FString& Parameters)
     };
     auto Success = [&](const TCHAR* Label, const FMCPResponse& Response)
     {
+        if (Response.Error.IsSet()) AddInfo(FString::Printf(TEXT("%s error: %s"), Label, *Response.Error->Message));
         return TestFalse(Label, Response.Error.IsSet()) && TestTrue(TEXT("Structured success"),
             Response.Result.IsValid() && Response.Result->GetBoolField(TEXT("success")));
     };
@@ -156,7 +157,7 @@ bool FUnrealMCPEnhancedInputAssetsLiveTest::RunTest(const FString& Parameters)
     UScriptStruct* MappingStruct = InputAssetToolUtils::GetMappingElementStruct(MappingProperty);
     auto CurrentRow = [&]() -> void*
     {
-        FScriptArrayHelper Helper(MappingProperty, MappingProperty->ContainerPtrToValuePtr<void>(Context));
+        FScriptArrayHelper Helper(MappingProperty, InputAssetToolUtils::GetMappingsArrayPtr(Context, MappingProperty));
         return Helper.GetRawPtr(0);
     };
     // Populate inline objects and modern metadata directly as test fixtures, not as new public authoring APIs.
@@ -242,7 +243,7 @@ bool FUnrealMCPEnhancedInputAssetsLiveTest::RunTest(const FString& Parameters)
     FArrayProperty* Mappings = InputAssetToolUtils::FindMappingsProperty(Context->GetClass(), Error);
     if (!TestNotNull(TEXT("Mapping array reflected"), Mappings)) return false;
     {
-        FScriptArrayHelper Helper(Mappings, Mappings->ContainerPtrToValuePtr<void>(Context));
+        FScriptArrayHelper Helper(Mappings, InputAssetToolUtils::GetMappingsArrayPtr(Context, Mappings));
         const int32 DuplicateIndex = Helper.AddValue();
         Mappings->Inner->CopySingleValue(Helper.GetRawPtr(DuplicateIndex), Helper.GetRawPtr(0));
         Args->SetBoolField(TEXT("confirm"), true);

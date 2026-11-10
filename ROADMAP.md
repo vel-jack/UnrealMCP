@@ -3,8 +3,10 @@
 Tooling requirements pass (source: `UnrealMCP_ToolingRequirements.md` from the DSM refactor):
 
 - [x] R11 structured compile result, R7 `FindClassUsages`, R12 `ConsolidateAndDeleteAsset`, R3 local variable tools, R2 `RetargetBlueprintNode` (casts): implemented natively; see README. Pending: live editor verification, native automation tests, catalog refresh.
+- [x] R1 for this plugin's own tools: graphs resolve through `GetAllGraphs` (includes collapsed subgraphs) and owners through `GetTypedOuter<UBlueprint>`. `UnrealMCP.Blueprint.Authoring.CollapsedGraph.Live` adds, connects and deletes nodes inside a `K2Node_Composite` graph; passes on UE 5.8 (UGitClientSample, Nov 10 2026). 
+- [x] Enhanced Input mapping tools on UE 5.7+: rows now live in `DefaultKeyMappings.Mappings` (top-level `Mappings` is deprecated and no longer written by `MapKey`). `InputAssetToolUtils::FindMappingsProperty`/`GetMappingsArrayPtr` pick the nested array when present and fall back to `Mappings` on 5.4. All 25 `UnrealMCP.` tests pass on 5.8; 5.4 build not re-run.
 - [ ] R4 inherited-variable getters in `ApplyBlueprintGraphPatch`, R14 `WaitForUnrealReady`/`WaitForUnrealExit`, R15 binary merge replay, R13 save warning for broken nodes, and skills S1-S3: native, not started.
-- [ ] R1, R5, R6, R8, R9, R10 target Epic's official `BlueprintTools.*`/DSL tools, which this plugin does not own. They need native equivalents here or an upstream request. R1 in particular needs `FBlueprintEditorUtils::FindBlueprintForGraph` in whatever tool takes a graph.
+- [ ] R5, R6, R8, R9, R10 target Epic's official `BlueprintTools.*`/DSL tools, which this plugin does not own. They need native equivalents here or an upstream request.
 
 October 30, 2026 discovery index: added `docs/MCP-Tool-Index.md`, official discovery metadata snapshot and `Scripts/refresh_tool_index.py`. The index routes custom and official tools using short descriptions, without schemas. Snapshot regeneration is offline; `--official-url` performs read-only live discovery. Agent instructions require checking both routes before claiming a capability is absent. No editor assets or native APIs change.
 
