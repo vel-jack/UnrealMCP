@@ -1,5 +1,6 @@
 {
   "formatVersion": 1,
+  "capturedUtc": "2026-11-11T07:42:32.9092867Z",
   "tools": [
     {
       "name": "AddBlueprintArrayOperationNode",
@@ -813,6 +814,72 @@
       }
     },
     {
+      "name": "AddBlueprintLocalVariable",
+      "description": "Transactionally adds a typed local variable to one Blueprint function graph (type/containerType/valueType as in AddBlueprintVariable). Idempotent by name. Use AddBlueprintVariableGetNode/SetNode-style graph tools or ApplyBlueprintGraphPatch afterwards to read/write it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Function graph name (or name::guid) from ListBlueprintGraphs."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Function graph GUID; alternative to graphName."
+          },
+          "variableName": {
+            "type": "string",
+            "description": "New local variable name."
+          },
+          "type": {
+            "type": "string",
+            "description": "Type name as in AddBlueprintVariable (bool, int, float, string, object, struct, ...)."
+          },
+          "typeObjectPath": {
+            "type": "string",
+            "description": "Class/struct/enum path for object, class, struct or enum types."
+          },
+          "containerType": {
+            "type": "string",
+            "description": "none, array, set or map."
+          },
+          "valueType": {
+            "type": "string",
+            "description": "Map value type."
+          },
+          "valueTypeObjectPath": {
+            "type": "string",
+            "description": "Map value object/struct path."
+          },
+          "defaultValue": {
+            "type": "string",
+            "description": "Optional default as export text."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate without changing."
+          },
+          "compileAfterEdit": {
+            "type": "boolean",
+            "description": "Compile after the edit (default false)."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save after the edit (default false)."
+          }
+        },
+        "required": [
+          "objectPath",
+          "variableName",
+          "type"
+        ]
+      }
+    },
+    {
       "name": "AddBlueprintMacroNode",
       "description": "Adds a macro instance from a Blueprint macro library, including StandardMacros such as ForEachLoop.",
       "inputSchema": {
@@ -1399,7 +1466,7 @@
     },
     {
       "name": "AddInputMappingContextMapping",
-      "description": "Adds one key-mapping row to an existing InputMappingContext. Idempotent if the identical Action+Key row already exists.",
+      "description": "Adds one key-mapping row to an existing InputMappingContext. Idempotent if the identical Action\u002BKey row already exists.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2019,7 +2086,7 @@
     },
     {
       "name": "CompileBlueprint",
-      "description": "Compiles one Blueprint asset and returns compiler result details.",
+      "description": "Compiles one Blueprint asset and returns structured status, errors[{graph,nodeGuid,message}] and warnings[] plus the raw message list.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2088,6 +2155,35 @@
           "objectPath",
           "sourceNodeGuid",
           "targetNodeGuid"
+        ]
+      }
+    },
+    {
+      "name": "ConsolidateAndDeleteAsset",
+      "description": "Editor \u0027Replace References\u0027 equivalent: repoints every referencer of oldAssetPath to replacementAssetPath, then deletes the old asset (leaving a redirector as the editor does). Requires confirm=true unless dryRun=true; dry-run lists the referencers that would be touched. Does not save: dirtied packages are returned so they can be saved explicitly.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "oldAssetPath": {
+            "type": "string",
+            "description": "Asset to retire, e.g. /Game/BP_Vehicle.BP_Vehicle"
+          },
+          "replacementAssetPath": {
+            "type": "string",
+            "description": "Asset all references are repointed to; must be a compatible type."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "List referencers without changing anything."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required for a real run: the old asset is deleted."
+          }
+        },
+        "required": [
+          "oldAssetPath",
+          "replacementAssetPath"
         ]
       }
     },
@@ -2306,7 +2402,7 @@
     },
     {
       "name": "ExplainBlueprintRole",
-      "description": "Returns a structured indexed summary that helps explain a Blueprint's likely role, neighbors, and composition inside the project.",
+      "description": "Returns a structured indexed summary that helps explain a Blueprint\u0027s likely role, neighbors, and composition inside the project.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2378,7 +2474,7 @@
     },
     {
       "name": "ExplainFeatureWorkflow",
-      "description": "Explains a feature query by ranking likely entry assets, then summarizing each candidate's role and nearby indexed flow.",
+      "description": "Explains a feature query by ranking likely entry assets, then summarizing each candidate\u0027s role and nearby indexed flow.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2685,6 +2781,31 @@
           }
         },
         "required": []
+      }
+    },
+    {
+      "name": "FindClassUsages",
+      "description": "Finds every use of a class/struct/enum/asset inside one Blueprint, tagged by kind (cast_target, function_call, variable_access, pin_type, pin_default, function_parameter, local_variable, member_variable, component, parent_class, interface) with graph/node GUID/pin, including collapsed graphs. Reports registryDependency and a stale_import_only hit when the package still depends on the target but no live use exists.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint to scan, e.g. /Game/BP_Plan.BP_Plan"
+          },
+          "classOrAssetPath": {
+            "type": "string",
+            "description": "Class, struct, enum or asset to look for, e.g. /Game/BP_Vehicle.BP_Vehicle or /Game/BP_Vehicle.BP_Vehicle_C"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Max hits returned (default 100, max 500); totalHits still counts everything."
+          }
+        },
+        "required": [
+          "objectPath",
+          "classOrAssetPath"
+        ]
       }
     },
     {
@@ -3199,7 +3320,7 @@
     },
     {
       "name": "InspectLiveBlueprint",
-      "description": "Read-only live graph/node/pin inspection, including a map's embedded Level Blueprint. Defaults to the current editor level. No index, loading, PIE, compilation or saving.",
+      "description": "Read-only live graph/node/pin inspection, including a map\u0027s embedded Level Blueprint. Defaults to the current editor level. No index, loading, PIE, compilation or saving.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3366,6 +3487,30 @@
       }
     },
     {
+      "name": "ListBlueprintLocalVariables",
+      "description": "Lists the local variables (name, GUID, type, default) of one Blueprint function graph.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Function graph name (or name::guid) from ListBlueprintGraphs."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Function graph GUID; alternative to graphName."
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
       "name": "ListBlueprintNodePins",
       "description": "Lists live pins for one Blueprint node by stable graph and node GUID, including IDs, directions, types, defaults, and exact linked endpoints.",
       "inputSchema": {
@@ -3396,7 +3541,7 @@
     },
     {
       "name": "ListChildBlueprints",
-      "description": "Lists child Blueprints whose parent class is this Blueprint's generated class.",
+      "description": "Lists child Blueprints whose parent class is this Blueprint\u0027s generated class.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3606,7 +3751,7 @@
     },
     {
       "name": "RefreshBlueprintCallSites",
-      "description": "Finds every same-Blueprint and cross-Blueprint call site of a Blueprint function via the project index and reconstructs each call node to match the function's current signature, compiling callers without saving.",
+      "description": "Finds every same-Blueprint and cross-Blueprint call site of a Blueprint function via the project index and reconstructs each call node to match the function\u0027s current signature, compiling callers without saving.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3658,8 +3803,49 @@
       }
     },
     {
+      "name": "RemoveBlueprintLocalVariable",
+      "description": "Removes one local variable from a Blueprint function graph. Requires confirm=true unless dryRun=true; reports how many Get/Set nodes still reference the name.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Function graph name (or name::guid) from ListBlueprintGraphs."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Function graph GUID; alternative to graphName."
+          },
+          "variableName": {
+            "type": "string",
+            "description": "Local variable to remove."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Report access nodes without removing."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required for a real removal."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save after the edit (default false)."
+          }
+        },
+        "required": [
+          "objectPath",
+          "variableName"
+        ]
+      }
+    },
+    {
       "name": "RemoveInputMappingContextMapping",
-      "description": "Removes one exact existing Action+Key mapping row from an InputMappingContext. Fails clearly rather than guessing when zero or more than one row matches.",
+      "description": "Removes one exact existing Action\u002BKey mapping row from an InputMappingContext. Fails clearly rather than guessing when zero or more than one row matches.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3692,6 +3878,52 @@
           "objectPath",
           "inputActionPath",
           "key"
+        ]
+      }
+    },
+    {
+      "name": "RetargetBlueprintNode",
+      "description": "Retargets a cast node (including a \u0027Bad cast node\u0027 whose class was deleted) to newClassPath without needing the old class. Output links whose pins still exist survive; the old class-named result pin\u0027s links move to the new result pin. Requires confirm=true unless dryRun=true.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Graph name from ListBlueprintGraphs."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Graph GUID; alternative to graphName."
+          },
+          "nodeGuid": {
+            "type": "string",
+            "description": "GUID of the cast node to retarget."
+          },
+          "newClassPath": {
+            "type": "string",
+            "description": "Class to cast to, e.g. /Game/BP_Vehicles.BP_Vehicles_C"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Report what would be retargeted."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required for a real retarget."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save after the edit (default false)."
+          }
+        },
+        "required": [
+          "objectPath",
+          "nodeGuid",
+          "newClassPath"
         ]
       }
     },
@@ -3973,6 +4205,72 @@
       }
     },
     {
+      "name": "SetBlueprintParameter",
+      "description": "Changes the type and/or name of one parameter on a custom event, function entry or function result node, updating call sites in one undoable transaction. Rolls back when links would break (unless confirm=true) or compilation fails.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint object path."
+          },
+          "nodeGuid": {
+            "type": "string",
+            "description": "Custom event, function entry or function result node GUID (any graph, including collapsed)."
+          },
+          "parameterName": {
+            "type": "string",
+            "description": "Current parameter name."
+          },
+          "newName": {
+            "type": "string",
+            "description": "Optional new parameter name; call sites are renamed too."
+          },
+          "type": {
+            "type": "string",
+            "description": "Optional new type (same vocabulary as AddBlueprintFunctionParameter), e.g. object."
+          },
+          "typeObjectPath": {
+            "type": "string",
+            "description": "Class/struct/enum path for object, class, struct or enum types, e.g. /Game/BP_Weapon.BP_Weapon_C."
+          },
+          "containerType": {
+            "type": "string",
+            "description": "none, array, set, or map. Default none."
+          },
+          "valueType": {
+            "type": "string",
+            "description": "Map value type."
+          },
+          "valueTypeObjectPath": {
+            "type": "string",
+            "description": "Class path for object/class Map values."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Apply, measure broken links, then roll back."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required when the change breaks existing links."
+          },
+          "compile": {
+            "type": "boolean",
+            "description": "Compile after the edit and roll back on new errors. Default true."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save and partially refresh the index after a successful edit."
+          }
+        },
+        "required": [
+          "objectPath",
+          "nodeGuid",
+          "parameterName"
+        ]
+      }
+    },
+    {
       "name": "SetBlueprintPinDefaultObject",
       "description": "Sets an exact UObject or UClass default on an unconnected Blueprint input pin using stable graph, node, and pin identity. Supports dry-run and optional save.",
       "inputSchema": {
@@ -4181,7 +4479,7 @@
     },
     {
       "name": "SetInputMappingContextMappingKey",
-      "description": "Replaces the key of one exact Action+Key row, preserving its position, action, inline objects and metadata. Static asset editing only; no runtime mapping rebuild.",
+      "description": "Replaces the key of one exact Action\u002BKey row, preserving its position, action, inline objects and metadata. Static asset editing only; no runtime mapping rebuild.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4675,6 +4973,5 @@
         ]
       }
     }
-  ],
-  "capturedUtc": "2026-10-30T09:54:02.5994435Z"
+  ]
 }
