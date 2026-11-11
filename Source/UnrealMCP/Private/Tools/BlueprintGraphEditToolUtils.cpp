@@ -358,6 +358,8 @@ namespace UnrealMCP::BlueprintGraphEditToolUtils
 
     void PlaceNewNode(UEdGraph* Graph, UEdGraphNode* Node, const FPlacement& Placement)
     {
+        // Matches FEdGraphSchemaAction_NewNode: without this, later undo/rollback cannot restore the node's pins and links.
+        Node->SetFlags(RF_Transactional);
         Graph->AddNode(Node, true, false);
         Node->CreateNewGuid();
         Node->PostPlacedNewNode();

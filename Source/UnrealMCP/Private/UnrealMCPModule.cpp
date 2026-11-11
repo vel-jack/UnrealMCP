@@ -20,6 +20,7 @@
 #include "Tools/AddBlueprintCustomEventNodeTool.h"
 #include "Tools/AddBlueprintFunctionCallNodeTool.h"
 #include "Tools/AddBlueprintFunctionParameterTool.h"
+#include "Tools/SetBlueprintParameterTool.h"
 #include "Tools/AddBlueprintInterfaceEventNodeTool.h"
 #include "Tools/AddBlueprintInterfaceFunctionGraphTool.h"
 #include "Tools/AddBlueprintInterfaceTool.h"
@@ -361,6 +362,7 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FAddBlueprintCustomEventNodeTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintFunctionCallNodeTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintFunctionParameterTool>());
+    Registry.RegisterTool(MakeShared<FSetBlueprintParameterTool>());
     Registry.RegisterTool(MakeShared<FRefreshBlueprintCallSitesTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintInterfaceEventNodeTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintInterfaceFunctionGraphTool>());

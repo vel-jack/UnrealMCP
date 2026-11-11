@@ -89,6 +89,7 @@ Coding agents and contributors should read [AGENTS.md](AGENTS.md) before changin
 - `AddBlueprintCustomEventNode`
 - `AddBlueprintFunctionCallNode`
 - `AddBlueprintFunctionParameter`
+- `SetBlueprintParameter`
 - `AddBlueprintInterfaceEventNode`
 - `AddBlueprintInterfaceFunctionGraph`
 - `SetBlueprintFunctionMetadata`
@@ -237,6 +238,8 @@ Output-bearing interface graph creation is regression-tested by `UnrealMCP.Bluep
 `AddBlueprintTypedOperatorNode` provides exact object equality/inequality, Boolean `AND`/`OR`/`NOT`, and Vector add/subtract/nearly-equal operations. Vector nearly-equal accepts an optional non-negative `tolerance`.
 
 Function-call, typed-operator, Branch, Variable Get/Set, and Reroute dry-runs now return complete predicted pin arrays from detached preview nodes without changing the graph. Each serialized pin includes its direction, full scalar/container type, default source/value, exec/data classification, self-pin classification, hidden state, wildcard state through its category, and `requiresExplicitTarget` for external instance calls. These tools report `pinsPredicted`, while function calls also report top-level `requiresExplicitTarget`, allowing declarative graph-patch preflight to validate complete planned wiring before mutation.
+
+`SetBlueprintParameter` changes the type and/or name of an existing parameter on a custom event, function entry or function result node (`nodeGuid`, `parameterName`, then `type`/`typeObjectPath` and/or `newName`), the same edit as the Details panel's Inputs/Outputs. Call sites in loaded Blueprints, function-input getters and compatible links follow. Links the new type can't keep are reported (`brokenLinkCount`, `linksBefore`/`linksAfter`) and need `confirm=true`; `dryRun` applies, measures and rolls back. It compiles by default and rolls back on new compile errors.
 
 `AddBlueprintVariable` and `AddBlueprintFunctionParameter` accept `containerType` values `none`, `array`, `set`, or `map`. For Maps, `type` describes the key and `valueType` describes the value; object/class terminals use their corresponding object-path fields. Existing `isArray=true` requests remain supported. `ConnectBlueprintPins` now returns pin types before and after connection, complete resolved node pin lists, and `wildcardResolved` when Unreal specializes a wildcard from the first typed connection.
 
