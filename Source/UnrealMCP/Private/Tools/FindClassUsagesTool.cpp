@@ -19,13 +19,17 @@ namespace
     struct FUsageCollector
     {
         FName TargetPackage;
+        FString NativeTargetPath; // set for /Script targets, where a package holds many unrelated classes
         int32 Limit = 100;
         int32 Total = 0;
         TArray<TSharedPtr<FJsonValue>> Hits;
 
         bool Matches(const UObject* Object) const
         {
-            return Object && Object->GetOutermost()->GetFName() == TargetPackage;
+            if (Object == nullptr) return false;
+            return NativeTargetPath.IsEmpty()
+                ? Object->GetOutermost()->GetFName() == TargetPackage
+                : Object->GetPathName().Equals(NativeTargetPath, ESearchCase::IgnoreCase);
         }
 
         void Add(const TCHAR* Kind, const FString& Graph, const FString& NodeGuid, const FString& Pin, const FString& Detail)
@@ -128,6 +132,15 @@ UnrealMCP::FMCPResponse FFindClassUsagesTool::Execute(const UnrealMCP::FMCPReque
     Collector.Limit = FMath::Clamp(static_cast<int32>(LimitValue), 1, 500);
     // Accepts /Game/Pkg.Obj, /Game/Pkg.Obj_C or a bare package name; usage is matched by owning package.
     Collector.TargetPackage = FName(*FPackageName::ObjectPathToPackageName(TargetPath));
+    if (TargetPath.StartsWith(TEXT("/Script/")))
+    {
+        if (!TargetPath.Contains(TEXT(".")))
+        {
+            return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams,
+                TEXT("Native targets need a full path such as /Script/Engine.Pawn; a bare /Script package matches every class in it."));
+        }
+        Collector.NativeTargetPath = TargetPath;
+    }
 
     bool bRegistryDependency = false;
     int32 GraphCount = 0;
@@ -200,7 +213,7 @@ UnrealMCP::FMCPResponse FFindClassUsagesTool::Execute(const UnrealMCP::FMCPReque
     }
 
     // The package still points at the target while nothing live uses it: a stale import-table entry.
-    if (bRegistryDependency && Collector.Total == 0)
+    if (bRegistryDependency && Collector.Total == 0 && Collector.NativeTargetPath.IsEmpty())
     {
         Collector.Add(TEXT("stale_import_only"), FString(), FString(), FString(), TEXT("Package depends on target but no graph, variable, component or pin uses it. Recompile and resave, or fix redirectors."));
     }

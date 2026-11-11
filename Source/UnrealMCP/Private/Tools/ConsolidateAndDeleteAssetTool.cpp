@@ -2,6 +2,12 @@
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Dom/JsonObject.h"
+#include "EdGraph/EdGraph.h"
+#include "Engine/Blueprint.h"
+#include "K2Node_EditablePinBase.h"
+#include "K2Node_FunctionEntry.h"
+#include "Kismet2/BlueprintEditorUtils.h"
+#include "UObject/UObjectIterator.h"
 #include "Misc/PackageName.h"
 #include "ObjectTools.h"
 #include "UObject/ObjectRedirector.h"
@@ -19,6 +25,54 @@ namespace
             Values.Add(MakeShared<FJsonValueString>(Name.ToString()));
         }
         return Values;
+    }
+
+    bool RepointPinType(FEdGraphPinType& Type, const TMap<UObject*, UObject*>& Map)
+    {
+        bool bChanged = false;
+        for (TWeakObjectPtr<UObject>* Slot : {&Type.PinSubCategoryObject, &Type.PinValueType.TerminalSubCategoryObject})
+        {
+            if (UObject* const* Replacement = Map.Find(Slot->Get())) { *Slot = *Replacement; bChanged = true; }
+        }
+        return bChanged;
+    }
+
+    // Blueprint pin types hold classes through weak pointers, which consolidation's reference replacement
+    // does not rewrite: once the old class is deleted they silently become None. Repoint them first.
+    TArray<FName> RepointBlueprintPinTypes(const TMap<UObject*, UObject*>& Map)
+    {
+        TArray<FName> Touched;
+        for (TObjectIterator<UBlueprint> It; It; ++It)
+        {
+            UBlueprint* Blueprint = *It;
+            if (Blueprint->HasAnyFlags(RF_ClassDefaultObject) || Map.Contains(Blueprint)) continue;
+            bool bChanged = false;
+            for (FBPVariableDescription& Variable : Blueprint->NewVariables) bChanged |= RepointPinType(Variable.VarType, Map);
+            TArray<UEdGraph*> Graphs;
+            Blueprint->GetAllGraphs(Graphs);
+            for (UEdGraph* Graph : Graphs)
+            {
+                if (Graph == nullptr) continue;
+                for (UEdGraphNode* Node : Graph->Nodes)
+                {
+                    if (Node == nullptr) continue;
+                    if (UK2Node_FunctionEntry* Entry = Cast<UK2Node_FunctionEntry>(Node))
+                        for (FBPVariableDescription& Local : Entry->LocalVariables) bChanged |= RepointPinType(Local.VarType, Map);
+                    if (UK2Node_EditablePinBase* Editable = Cast<UK2Node_EditablePinBase>(Node))
+                        for (const TSharedPtr<FUserPinInfo>& UserPin : Editable->UserDefinedPins)
+                            if (UserPin.IsValid()) bChanged |= RepointPinType(UserPin->PinType, Map);
+                    for (UEdGraphPin* Pin : Node->Pins)
+                        if (Pin) bChanged |= RepointPinType(Pin->PinType, Map);
+                }
+            }
+            if (bChanged)
+            {
+                Blueprint->Modify();
+                FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+                Touched.Add(Blueprint->GetPackage()->GetFName());
+            }
+        }
+        return Touched;
     }
 
     // Referencing packages other than the asset's own package.
@@ -85,10 +139,26 @@ UnrealMCP::FMCPResponse FConsolidateAndDeleteAssetTool::Execute(const UnrealMCP:
                 return true;
             }
 
+            // Referencers must be in memory for consolidation to repoint them at all.
+            for (const FName& Referencer : ReferencersBefore)
+            {
+                LoadPackage(nullptr, *Referencer.ToString(), LOAD_None);
+            }
+            TMap<UObject*, UObject*> ClassMap;
+            const UBlueprint* OldBlueprint = Cast<UBlueprint>(OldObject);
+            const UBlueprint* NewBlueprint = Cast<UBlueprint>(NewObject);
+            if (OldBlueprint && NewBlueprint && NewBlueprint->GeneratedClass)
+            {
+                if (OldBlueprint->GeneratedClass) ClassMap.Add(OldBlueprint->GeneratedClass, NewBlueprint->GeneratedClass);
+                if (OldBlueprint->SkeletonGeneratedClass) ClassMap.Add(OldBlueprint->SkeletonGeneratedClass, NewBlueprint->GeneratedClass);
+            }
+            ClassMap.Add(OldObject, NewObject);
+            TArray<FName> RepointedPackages;
             TArray<UObject*> ToConsolidate{OldObject};
             ObjectTools::FConsolidationResults Results;
             {
                 const FScopedTransaction Transaction(NSLOCTEXT("UnrealMCP", "ConsolidateAndDelete", "UnrealMCP Consolidate And Delete Asset"));
+                RepointedPackages = RepointBlueprintPinTypes(ClassMap);
                 Results = ObjectTools::ConsolidateObjects(NewObject, ToConsolidate, /*bShowDeleteConfirmation=*/false);
             }
 
@@ -102,7 +172,11 @@ UnrealMCP::FMCPResponse FConsolidateAndDeleteAssetTool::Execute(const UnrealMCP:
             }
             for (const UPackage* Package : Results.DirtiedPackages)
             {
-                Dirtied.Add(Package->GetFName());
+                Dirtied.AddUnique(Package->GetFName());
+            }
+            for (const FName& Package : RepointedPackages)
+            {
+                Dirtied.AddUnique(Package);
             }
 
             bOldStillExists = FindObject<UObject>(nullptr, *OldPath) != nullptr
