@@ -97,16 +97,17 @@ UnrealMCP::FMCPResponse FInspectDataTableRowsTool::Execute(const UnrealMCP::FMCP
             TArray<TSharedPtr<FJsonValue>> TruncatedFields;
             for (TFieldIterator<FProperty> It(Table->GetRowStruct()); It; ++It)
             {
+                const FString FieldName = Table->GetRowStruct()->GetAuthoredNameForField(*It);
                 const void* Value = It->ContainerPtrToValuePtr<void>(RowData);
                 FString Exported;
                 It->ExportTextItem_Direct(Exported, Value, nullptr, nullptr, PPF_None);
                 if (Exported.Len() > 8192)
                 {
                     Exported.LeftInline(8192);
-                    TruncatedFields.Add(MakeShared<FJsonValueString>(It->GetName()));
+                    TruncatedFields.Add(MakeShared<FJsonValueString>(FieldName));
                 }
-                Fields->SetStringField(It->GetName(), Exported);
-                InspectReferences(*It, Value, It->GetName(), Broken);
+                Fields->SetStringField(FieldName, Exported);
+                InspectReferences(*It, Value, FieldName, Broken);
             }
             Row->SetObjectField(TEXT("fields"), Fields);
             Row->SetArrayField(TEXT("truncatedFields"), TruncatedFields);

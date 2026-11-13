@@ -11,6 +11,23 @@
 
 namespace
 {
+    FProperty* FindRowField(const UScriptStruct* RowStruct, const TCHAR* Name, FString& Error)
+    {
+        FProperty* Match = nullptr;
+        for (TFieldIterator<FProperty> It(RowStruct); It; ++It)
+        {
+            if (!It->GetName().Equals(Name) && !RowStruct->GetAuthoredNameForField(*It).Equals(Name)) continue;
+            if (Match && Match != *It)
+            {
+                Error = FString::Printf(TEXT("Ambiguous row field name: %s"), Name);
+                return nullptr;
+            }
+            Match = *It;
+        }
+        if (!Match) Error = FString::Printf(TEXT("Unknown row field: %s"), Name);
+        return Match;
+    }
+
     const TCHAR* ToolName(FDataTableRowMutationTool::EAction Action)
     {
         switch (Action)
@@ -25,10 +42,14 @@ namespace
         uint8* Preview, bool bAllowEmpty, FString& Error)
     {
         if (!Fields.IsValid() || (!bAllowEmpty && Fields->Values.IsEmpty())) { Error = TEXT("fields must contain at least one property."); return false; }
+        TSet<const FProperty*> Seen;
         for (const auto& Pair : Fields->Values)
         {
-            FProperty* Property = RowStruct->FindPropertyByName(FName(*Pair.Key));
-            if (!Property || !Pair.Value.IsValid() || Pair.Value->Type != EJson::String)
+            FProperty* Property = FindRowField(RowStruct, *Pair.Key, Error);
+            if (!Property) return false;
+            if (Seen.Contains(Property)) { Error = FString::Printf(TEXT("Field supplied twice: %s"), *Pair.Key); return false; }
+            Seen.Add(Property);
+            if (!Pair.Value.IsValid() || Pair.Value->Type != EJson::String)
             {
                 Error = FString::Printf(TEXT("Unknown field or non-string export text: %s"), *Pair.Key);
                 return false;
@@ -93,7 +114,8 @@ UnrealMCP::FMCPResponse FDataTableRowMutationTool::Execute(const UnrealMCP::FMCP
         if (Existing) Table->GetRowStruct()->CopyScriptStruct(Preview.GetStructMemory(), Existing);
         for (const auto& Pair : (*Fields)->Values)
         {
-            if (FProperty* Property = Table->GetRowStruct()->FindPropertyByName(FName(*Pair.Key)))
+            FString FieldError;
+            if (FProperty* Property = FindRowField(Table->GetRowStruct(), *Pair.Key, FieldError))
             {
                 if (Existing)
                 {
@@ -107,7 +129,8 @@ UnrealMCP::FMCPResponse FDataTableRowMutationTool::Execute(const UnrealMCP::FMCP
         bChanged = !Existing;
         for (const auto& Pair : (*Fields)->Values)
         {
-            FProperty* Property = Table->GetRowStruct()->FindPropertyByName(FName(*Pair.Key));
+            FString FieldError;
+            FProperty* Property = FindRowField(Table->GetRowStruct(), *Pair.Key, FieldError);
             FString Text;
             Property->ExportTextItem_Direct(Text, Property->ContainerPtrToValuePtr<void>(Preview.GetStructMemory()), nullptr, nullptr, PPF_None);
             Current->SetStringField(Pair.Key, Text);

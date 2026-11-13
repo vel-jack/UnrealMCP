@@ -6,13 +6,17 @@
 #include "EdGraph/EdGraph.h"
 #include "Engine/Blueprint.h"
 #include "K2Node_GetDataTableRow.h"
+#include "Kismet2/StructureEditorUtils.h"
 #include "Misc/AutomationTest.h"
+#include "StructUtils/UserDefinedStruct.h"
 #include "Tests/UnrealMCPDataTableTestRow.h"
 #include "Tools/DataTableRowMutationTool.h"
 #include "Tools/FindDataTableReferencesTool.h"
 #include "Tools/InspectDataTableRowsTool.h"
 #include "UObject/Package.h"
+#include "UObject/StructOnScope.h"
 #include "UObject/StrongObjectPtr.h"
+#include "UserDefinedStructure/UserDefinedStructEditorData.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUnrealMCPDataTableRowsTest,
     "UnrealMCP.DataTable.Rows.Live",
@@ -92,6 +96,50 @@ bool FUnrealMCPDataTableRowsTest::RunTest(const FString& Parameters)
     if (!TestFalse(TEXT("Direct reference search succeeds"), References.Error.IsSet())) return false;
     TestEqual(TEXT("Node reference found"), References.Result->GetIntegerField(TEXT("totalHitsInScannedBlueprints")), 1);
     TestEqual(TEXT("Exact node GUID returned"), References.Result->GetArrayField(TEXT("references"))[0]->AsObject()->GetStringField(TEXT("nodeGuid")), Node->NodeGuid.ToString(EGuidFormats::DigitsWithHyphensLower));
+    return true;
+}
+#endif
+
+#if WITH_DEV_AUTOMATION_TESTS
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUnrealMCPDataTableAuthoredNameTest,
+    "UnrealMCP.DataTable.AuthoredFieldName.Live",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUnrealMCPDataTableAuthoredNameTest::RunTest(const FString& Parameters)
+{
+    UUserDefinedStruct* RowStruct = FStructureEditorUtils::CreateUserDefinedStruct(GetTransientPackage(), NAME_None, RF_Transient);
+    if (!TestNotNull(TEXT("Temporary user-defined row struct"), RowStruct)) return false;
+    const FGuid FieldGuid = FStructureEditorUtils::GetVarDesc(RowStruct)[0].VarGuid;
+    if (!TestTrue(TEXT("Display name set"), FStructureEditorUtils::RenameVariable(RowStruct, FieldGuid, TEXT("Class")))) return false;
+    FProperty* Field = FStructureEditorUtils::GetPropertyByGuid(RowStruct, FieldGuid);
+    if (!TestNotNull(TEXT("Compiled field"), Field)) return false;
+    TestNotEqual(TEXT("Generated internal name differs from display name"), Field->GetName(), FString(TEXT("Class")));
+
+    TStrongObjectPtr<UDataTable> Table(NewObject<UDataTable>(GetTransientPackage(), NAME_None, RF_Transient));
+    FStructOnScope RowData(RowStruct);
+    TMap<FName, const uint8*> Data;
+    Data.Add(TEXT("AGS"), RowData.GetStructMemory());
+    if (!TestTrue(TEXT("User-defined row created"), Table->CreateTableFromRawData(Data, RowStruct).IsEmpty())) return false;
+
+    UnrealMCP::FMCPRequest Request;
+    Request.Id = TEXT("authored-name-test");
+    Request.Params = MakeShared<FJsonObject>();
+    Request.Params->SetStringField(TEXT("objectPath"), Table->GetPathName());
+    const FInspectDataTableRowsTool Read;
+    const auto Before = Read.Execute(Request);
+    if (!TestFalse(TEXT("Read succeeds"), Before.Error.IsSet())) return false;
+    TestTrue(TEXT("Display name exposed"), Before.Result->GetArrayField(TEXT("rows"))[0]->AsObject()->GetObjectField(TEXT("fields"))->HasField(TEXT("Class")));
+
+    Request.Params->SetStringField(TEXT("rowName"), TEXT("AGS"));
+    TSharedRef<FJsonObject> Fields = MakeShared<FJsonObject>();
+    Fields->SetStringField(TEXT("Class"), TEXT("True"));
+    Request.Params->SetObjectField(TEXT("fields"), Fields);
+    const FDataTableRowMutationTool Set(FDataTableRowMutationTool::EAction::Set);
+    const auto Changed = Set.Execute(Request);
+    if (!TestFalse(TEXT("Set by display name succeeds"), Changed.Error.IsSet())) return false;
+    TestTrue(TEXT("Set reports a change"), Changed.Result->GetBoolField(TEXT("changed")));
+    const auto After = Read.Execute(Request);
+    TestEqual(TEXT("Display-name readback"), After.Result->GetArrayField(TEXT("rows"))[0]->AsObject()->GetObjectField(TEXT("fields"))->GetStringField(TEXT("Class")), FString(TEXT("True")));
     return true;
 }
 #endif
