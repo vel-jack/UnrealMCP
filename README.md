@@ -4,7 +4,7 @@
 
 See [MCP Tool Index](docs/MCP-Tool-Index.md) for a searchable routing index across custom and official MCP tools, without full schemas. Regenerate it with `python Scripts/refresh_tool_index.py`; add `--official-url <endpoint>` to capture official discovery metadata live. Without an endpoint, the generator uses the checked-in official metadata snapshot and bundled native catalog, retaining their capture dates. Exact input schemas are fetched from the owning server when needed.
 
-`Adapter/UnrealMCP.Adapter/unreal-tools.json` contains 133 native tool definitions captured from the UGitClientSample UE 5.8 editor on November 13, 2026. The adapter copies this catalog into build output for offline discovery; a successful live attachment remains authoritative.
+`Adapter/UnrealMCP.Adapter/unreal-tools.json` contains 139 native tool definitions captured from the UGitClientSample UE 5.8 editor on November 13, 2026. The adapter copies this catalog into build output for offline discovery; a successful live attachment remains authoritative.
 
 If a registered tool is missing, call `unreal.adapter.RefreshToolManifest`, then re-list tools. In compact mode use `SearchTools`, `GetToolSchema`, and `CallTool`. If these discovery tools are themselves missing, check the running adapter version: refreshing a catalog cannot upgrade an old executable. Close clients using the adapter, run `Adapter/BuildAdapter.bat`, and reconnect them. Updating the plugin DLL alone does not update the external adapter.
 

@@ -11,6 +11,7 @@
 #include "Tools/BlueprintEditToolUtils.h"
 #include "Tools/BlueprintGraphEditToolUtils.h"
 #include "Tools/BlueprintToolUtils.h"
+#include "UObject/UnrealType.h"
 
 namespace
 {
@@ -374,4 +375,113 @@ TSharedPtr<FJsonObject> FRemoveBlueprintLocalVariableTool::BuildInputSchema() co
         AddProp(P, TEXT("confirm"), TEXT("boolean"), TEXT("Required for a real removal."));
         AddProp(P, TEXT("saveAfterEdit"), TEXT("boolean"), TEXT("Save after the edit (default false)."));
     }, {TEXT("objectPath"), TEXT("variableName")});
+}
+
+FSetBlueprintLocalVariableDefaultTool::FSetBlueprintLocalVariableDefaultTool()
+    : FMCPToolBase(TEXT("SetBlueprintLocalVariableDefault"), TEXT("Sets the export-text default of an existing Blueprint function local variable."))
+{
+}
+
+UnrealMCP::FMCPResponse FSetBlueprintLocalVariableDefaultTool::Execute(const UnrealMCP::FMCPRequest& Request) const
+{
+    FLocalArgs Args;
+    FString DefaultValue;
+    if (!ReadCommonArgs(Request.Params, true, Args) || !Request.Params->TryGetStringField(TEXT("defaultValue"), DefaultValue))
+    {
+        return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams,
+            TEXT("SetBlueprintLocalVariableDefault requires objectPath, graphName or graphGuid, variableName, and defaultValue."));
+    }
+
+    const bool bDryRun = Edit::GetOptionalBool(Request.Params, TEXT("dryRun"), false);
+    const bool bCompile = Edit::GetOptionalBool(Request.Params, TEXT("compileAfterEdit"), false);
+    const bool bSave = Edit::GetOptionalBool(Request.Params, TEXT("saveAfterEdit"), false);
+    bool bChanged = false;
+    bool bCompileSucceeded = false;
+    FString SavedFilename, ExecutionError;
+    const bool bOk = UnrealMCP::BlueprintToolUtils::ExecuteOnGameThreadSync([&](FString& OutError)
+    {
+        UBlueprint* Blueprint = nullptr;
+        UEdGraph* Graph = nullptr;
+        UK2Node_FunctionEntry* Entry = nullptr;
+        if (!ResolveFunctionGraph(Args, Blueprint, Graph, Entry, OutError)) return false;
+
+        FBPVariableDescription* Variable = Entry->LocalVariables.FindByPredicate([&](const FBPVariableDescription& Candidate)
+        {
+            return Candidate.VarName == FName(*Args.VariableName);
+        });
+        if (!Variable)
+        {
+            OutError = TEXT("The function graph has no local variable with that name.");
+            return false;
+        }
+        UFunction* Function = Blueprint->GeneratedClass ? Blueprint->GeneratedClass->FindFunctionByName(Graph->GetFName()) : nullptr;
+        FProperty* Property = Function ? FindFProperty<FProperty>(Function, *Args.VariableName) : nullptr;
+        if (!Property)
+        {
+            OutError = TEXT("Could not resolve the compiled local property; compile the Blueprint and retry.");
+            return false;
+        }
+        bool bValidDefault = true;
+        if (!DefaultValue.IsEmpty())
+        {
+            void* Preview = Property->AllocateAndInitializeValue();
+            const TCHAR* End = Property->ImportText_Direct(*DefaultValue, Preview, Blueprint->GeneratedClass->GetDefaultObject(), PPF_None);
+            bValidDefault = End && FString(End).TrimStartAndEnd().IsEmpty();
+            Property->DestroyAndFreeValue(Preview);
+        }
+        if (!bValidDefault)
+        {
+            OutError = FString::Printf(TEXT("Invalid export text for local '%s' (%s): '%s'."),
+                *Args.VariableName, *Property->GetCPPType(), *DefaultValue);
+            return false;
+        }
+        bChanged = Variable->DefaultValue != DefaultValue;
+        if (bDryRun) return true;
+        if (bChanged)
+        {
+            const FScopedTransaction Transaction(NSLOCTEXT("UnrealMCP", "SetBlueprintLocalVariableDefault", "UnrealMCP Set Blueprint Local Default"));
+            Blueprint->Modify();
+            Entry->Modify();
+            Variable->DefaultValue = DefaultValue;
+            FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+        }
+        if (bCompile)
+        {
+            FKismetEditorUtilities::CompileBlueprint(Blueprint, EBlueprintCompileOptions::SkipSave | EBlueprintCompileOptions::SkipGarbageCollection);
+            bCompileSucceeded = Blueprint->Status == BS_UpToDate || Blueprint->Status == BS_UpToDateWithWarnings;
+            if (!bCompileSucceeded)
+            {
+                OutError = TEXT("Local default was set, but compilation failed; use CompileBlueprint for diagnostics.");
+                return false;
+            }
+        }
+        if (bSave && bChanged && !Edit::SaveAsset(Blueprint, SavedFilename, OutError)) return false;
+        return true;
+    }, ExecutionError);
+    if (!bOk) return BuildError(Request, UnrealMCP::EMCPErrorCode::InternalError, ExecutionError);
+
+    UnrealMCP::FMCPResponse Response;
+    Response.Id = Request.Id;
+    TSharedRef<FJsonObject> Result = BuildBooleanResult(true);
+    Result->SetBoolField(TEXT("dryRun"), bDryRun);
+    Result->SetBoolField(TEXT("changed"), bChanged && !bDryRun);
+    Result->SetBoolField(TEXT("compiled"), bCompile && !bDryRun);
+    Result->SetBoolField(TEXT("compileSucceeded"), bCompileSucceeded);
+    Result->SetBoolField(TEXT("saved"), bSave && bChanged && !bDryRun);
+    Result->SetStringField(TEXT("savedFilename"), SavedFilename);
+    Result->SetStringField(TEXT("defaultValue"), DefaultValue);
+    Response.Result = Result;
+    return Response;
+}
+
+TSharedPtr<FJsonObject> FSetBlueprintLocalVariableDefaultTool::BuildInputSchema() const
+{
+    return BuildSchema([](const TSharedRef<FJsonObject>& P)
+    {
+        AddProp(P, TEXT("variableName"), TEXT("string"), TEXT("Existing local variable name."));
+        AddProp(P, TEXT("defaultValue"), TEXT("string"), TEXT("New default as Unreal export text; empty string clears it."));
+        AddProp(P, TEXT("dryRun"), TEXT("boolean"), TEXT("Validate the target without changing it."));
+        AddProp(P, TEXT("compileAfterEdit"), TEXT("boolean"), TEXT("Compile after setting the default."));
+        AddProp(P, TEXT("saveAfterEdit"), TEXT("boolean"), TEXT("Save after setting the default."));
+    }, {TEXT("objectPath"), TEXT("variableName"), TEXT("defaultValue")});
 }

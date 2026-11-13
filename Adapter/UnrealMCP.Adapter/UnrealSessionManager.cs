@@ -199,16 +199,44 @@ internal sealed partial class UnrealSessionManager
         return BuildStatusPayload(attach);
     }
 
-    public async Task<JsonObject> RequestShutdownAsync(CancellationToken cancellationToken)
+    public async Task<JsonObject> RequestShutdownAsync(JsonNode? arguments, CancellationToken cancellationToken)
     {
         if (_activeProject is null)
         {
             return BuildProjectNotSelectedPayload("RequestUnrealShutdown");
         }
 
-        // Saving is a separate, explicitly selected asset operation. Let Unreal prompt for dirty work.
-
         var processes = FindRunningEditorProcesses(_activeProject.ProjectName);
+        if (processes.Count > 1 && (_launchedProcess is null || _launchedProcess.HasExited))
+            return new JsonObject
+            {
+                ["success"] = false,
+                ["errorCode"] = "ambiguous_editor_session",
+                ["message"] = "More than one Editor window matches this project name; select and close the exact window manually.",
+                ["projectPath"] = _activeProject.ProjectPath
+            };
+        if (_launchedProcess is not null && !_launchedProcess.HasExited)
+            processes = [ _launchedProcess ];
+
+        bool discardDirty = false;
+        if (arguments is JsonObject shutdownArgs && shutdownArgs["discardDirty"] is JsonNode discardNode
+            && (discardNode is not JsonValue discardValue || !discardValue.TryGetValue(out discardDirty)))
+            return new JsonObject { ["success"] = false, ["errorCode"] = "invalid_arguments", ["message"] = "discardDirty must be a boolean." };
+        JsonArray? discardedPackages = null;
+        if (discardDirty && processes.Count > 0)
+        {
+            var (discardResult, discardError) = await InvokeUnrealToolAsync(
+                "DiscardDirtyPackagesForShutdown", new JsonObject { ["confirm"] = true }, cancellationToken);
+            if (discardError)
+                return new JsonObject
+                {
+                    ["success"] = false,
+                    ["errorCode"] = "discard_failed",
+                    ["message"] = "Could not discard dirty packages; the Editor was left open.",
+                    ["discardResult"] = discardResult.DeepClone()
+                };
+            discardedPackages = discardResult["discardedPackages"]?.DeepClone() as JsonArray;
+        }
         foreach (var process in processes)
         {
             if (!process.HasExited)
@@ -228,7 +256,7 @@ internal sealed partial class UnrealSessionManager
         while (DateTime.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (FindRunningEditorProcesses(_activeProject.ProjectName).Count == 0)
+            if (processes.All(process => process.HasExited))
             {
                 _sessionState = "unreal_not_running";
                 _cachedInitializeResult = null;
@@ -238,19 +266,33 @@ internal sealed partial class UnrealSessionManager
                     ["success"] = true,
                     ["projectPath"] = _activeProject.ProjectPath,
                     ["sessionState"] = _sessionState,
-                    ["message"] = "Requested Unreal Editor shutdown and the selected project is no longer running."
+                    ["message"] = "Requested Unreal Editor shutdown and the selected project is no longer running.",
+                    ["discardedPackages"] = discardedPackages
                 };
             }
 
             await Task.Delay(250, cancellationToken);
         }
 
+        JsonObject? restoreResult = null;
+        if (discardedPackages is { Count: > 0 })
+        {
+            var (result, _) = await InvokeUnrealToolAsync("DiscardDirtyPackagesForShutdown", new JsonObject
+            {
+                ["confirm"] = true,
+                ["restoreDirty"] = true,
+                ["packageNames"] = discardedPackages.DeepClone()
+            }, cancellationToken);
+            restoreResult = result;
+        }
         return new JsonObject
         {
             ["success"] = false,
             ["projectPath"] = _activeProject.ProjectPath,
             ["sessionState"] = "shutdown_pending",
             ["message"] = "Requested Unreal Editor shutdown, but the process is still running.",
+            ["discardedPackages"] = discardedPackages,
+            ["restoreResult"] = restoreResult?.DeepClone(),
             ["recommendedAction"] = "Close the Unreal Editor window manually or retry RequestUnrealShutdown."
         };
     }
@@ -369,7 +411,7 @@ internal sealed partial class UnrealSessionManager
     // This list is a stopgap: the authoritative fix is native per-tool metadata (see ROADMAP E1).
     private static readonly string[] AdditionalMutationToolNames =
     [
-        "BuildProjectIndex", "ValidateBlueprint"
+        "BuildProjectIndex", "DiscardDirtyPackagesForShutdown", "ValidateBlueprint"
     ];
 
     internal static bool IsMutationTool(string toolName)
@@ -387,7 +429,7 @@ internal sealed partial class UnrealSessionManager
         string[] mutationPrefixes =
         [
             "Add", "Apply", "Compile", "Connect", "Consolidate", "Create", "Delete", "Disconnect",
-            "Layout", "Move", "Refresh", "Remove", "Retarget", "RunUnrealMCPAutomationTest", "Save", "Set",
+            "Layout", "Move", "Refresh", "Remove", "Reset", "Retarget", "RunUnrealMCPAutomationTest", "Save", "Set",
             "Splice", "Wire"
         ];
         return mutationPrefixes.Any(prefix => toolName.StartsWith(prefix, StringComparison.Ordinal));

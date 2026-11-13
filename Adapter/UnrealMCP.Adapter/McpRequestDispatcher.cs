@@ -99,7 +99,7 @@ internal sealed partial class McpRequestDispatcher(
                 "unreal.adapter.AttachToUnrealProject" => await _sessionManager.AttachToProjectAsync(arguments, cancellationToken),
                 "unreal.adapter.ReconnectUnreal" => await _sessionManager.ReconnectAsync(cancellationToken),
                 "unreal.adapter.RefreshToolManifest" => await _sessionManager.AttachToProjectAsync(arguments, cancellationToken),
-                "unreal.adapter.RequestUnrealShutdown" => await _sessionManager.RequestShutdownAsync(cancellationToken),
+                "unreal.adapter.RequestUnrealShutdown" => await _sessionManager.RequestShutdownAsync(arguments, cancellationToken),
                 _ => null
             };
 
@@ -175,8 +175,8 @@ internal sealed partial class McpRequestDispatcher(
                 CreateObjectSchema(("projectPath", "string", "Optional absolute project path to select before refreshing.", false))),
             new McpToolDefinition(
                 "unreal.adapter.RequestUnrealShutdown",
-                "Requests a graceful shutdown for the selected Unreal Editor window.",
-                CreateObjectSchema())
+                "Requests a graceful shutdown for the selected Unreal Editor window. discardDirty=true explicitly drops unsaved package changes without saving.",
+                CreateObjectSchema(("discardDirty", "boolean", "Discard unsaved package changes before closing the selected Editor; default false.", false)))
         ];
     }
 

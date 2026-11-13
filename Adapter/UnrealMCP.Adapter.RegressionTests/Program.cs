@@ -34,11 +34,14 @@ if (args.FirstOrDefault() == "--overview")
     return;
 }
 
-if (args.FirstOrDefault() == "--shutdown")
+if (args.FirstOrDefault() is "--shutdown" or "--shutdown-discard")
 {
     await using var client = new StdioClient(args[1], ["serve", "--project", args[2]]);
     await client.Initialize();
-    var result = await client.Call("unreal.adapter.RequestUnrealShutdown", new JsonObject());
+    var result = await client.Call("unreal.adapter.RequestUnrealShutdown", new JsonObject
+    {
+        ["discardDirty"] = args[0] == "--shutdown-discard"
+    });
     Console.WriteLine(result["result"]?["structuredContent"]?.ToJsonString());
     Check(result["result"]?["structuredContent"]?["success"]?.GetValue<bool>() == true, "Explicit project shutdown completed without automatic saving");
     return;
@@ -100,6 +103,10 @@ try
             Check(list["result"]!["tools"]!.AsArray().Single(t => t!["name"]!.GetValue<string>() == name)!
                 ["inputSchema"]!["properties"]?["operationId"] is not null, $"{name} schema advertises operationId");
         }
+        Check(UnrealSessionManager.IsMutationTool("ResetBlueprintClassDefaults"), "Reset class defaults is classified as a mutation");
+        Check(UnrealSessionManager.IsMutationTool("DiscardDirtyPackagesForShutdown"), "Discard shutdown preparation is classified as a mutation");
+        Check(list["result"]!["tools"]!.AsArray().Single(t => t!["name"]!.GetValue<string>() == "unreal.adapter.RequestUnrealShutdown")!
+            ["inputSchema"]!["properties"]?["discardDirty"] is not null, "Shutdown schema advertises explicit discardDirty");
 
         pipe.IncludeNewTool = true;
         var attach = await client.Call("unreal.adapter.AttachToUnrealProject", new JsonObject());
@@ -135,6 +142,12 @@ try
                   mutationPayload["mutationMayStillBeRunning"]!.GetValue<bool>(), $"{name} timeout preserves uncertain mutation identity");
             Check(pipe.LastOperationId == operationId, $"{name} forwards the supplied operationId");
         }
+
+        var pendingShutdown = await client.Call("unreal.adapter.RequestUnrealShutdown", new JsonObject { ["discardDirty"] = true });
+        var pendingPayload = pendingShutdown["result"]!["structuredContent"]!;
+        Check(pendingPayload["sessionState"]?.GetValue<string>() == "shutdown_pending"
+            && pendingPayload["restoreResult"]?["success"]?.GetValue<bool>() == true
+            && pipe.DiscardCalls == 2, "Pending discard shutdown restores dirty flags");
 
         pipe.Available = false;
         list = await client.Request("tools/list", new JsonObject());
@@ -255,6 +268,7 @@ sealed class FakeNativePipe : IAsyncDisposable
     public volatile bool StallReadTool;
     public string? LastOperationId;
     public int SaveAllCalls;
+    public int DiscardCalls;
 
     public FakeNativePipe(string name) => loop = Task.Run(async () =>
     {
@@ -295,6 +309,13 @@ sealed class FakeNativePipe : IAsyncDisposable
                 // Model an established native read that never produces a response.
                 await reader.ReadLineAsync(stop.Token);
                 continue;
+            }
+            else if (method == "DiscardDirtyPackagesForShutdown")
+            {
+                Interlocked.Increment(ref DiscardCalls);
+                response["result"] = request["params"]?["restoreDirty"]?.GetValue<bool>() == true
+                    ? new JsonObject { ["success"] = true, ["restoredPackages"] = new JsonArray("/Game/Fixture") }
+                    : new JsonObject { ["success"] = true, ["discardedPackages"] = new JsonArray("/Game/Fixture") };
             }
             else response["result"] = new JsonObject { ["success"] = true };
             await writer.WriteLineAsync(response.ToJsonString());

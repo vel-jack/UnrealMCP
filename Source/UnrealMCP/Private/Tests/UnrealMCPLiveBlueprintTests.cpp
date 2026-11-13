@@ -153,6 +153,14 @@ bool FUnrealMCPLiveBlueprintTest::RunTest(const FString& Parameters)
     if (!TestFalse(TEXT("Direct graph path resolves"), Page.Error.IsSet())) return false;
     TestTrue(TEXT("Page truncation visible"), Page.Result->GetBoolField(TEXT("hasMore")));
     TestFalse(TEXT("Partial page is not complete"), Page.Result->GetBoolField(TEXT("coverageComplete")));
+    Request.Params->SetStringField(TEXT("outputMode"), TEXT("compact"));
+    auto Compact = Inspector.Execute(Request);
+    if (!TestFalse(TEXT("Compact inspection succeeds"), Compact.Error.IsSet())) return false;
+    const auto CompactNode = Compact.Result->GetArrayField(TEXT("nodes"))[0]->AsObject();
+    TestTrue(TEXT("Compact node identifies its title"), CompactNode->HasField(TEXT("title")));
+    TestTrue(TEXT("Compact node keeps links"), CompactNode->HasField(TEXT("links")));
+    TestFalse(TEXT("Compact node omits pin dumps"), CompactNode->HasField(TEXT("pins")));
+    Request.Params->RemoveField(TEXT("outputMode"));
     Request.Params->SetStringField(TEXT("nodeGuid"), Delay->NodeGuid.ToString());
     auto DelayResult = Inspector.Execute(Request);
     if (!TestFalse(TEXT("Exact GUID inspection"), DelayResult.Error.IsSet())) return false;

@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "capturedUtc": "2026-11-13T05:55:21.5518387Z",
+  "capturedUtc": "2026-11-13T09:49:50.1183121Z",
   "tools": [
     {
       "name": "AddBlueprintArrayOperationNode",
@@ -2096,6 +2096,37 @@
       }
     },
     {
+      "name": "CompareBlueprintClassDefaults",
+      "description": "Compares two Blueprint CDOs by property name, including properties present on one side only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPathA": {
+            "type": "string",
+            "description": "First Blueprint object path."
+          },
+          "objectPathB": {
+            "type": "string",
+            "description": "Second Blueprint object path."
+          },
+          "onlyDifferent": {
+            "type": "boolean",
+            "description": "Return only differing or missing properties; default true."
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "objectPathA",
+          "objectPathB"
+        ]
+      }
+    },
+    {
       "name": "CompileAllBlueprints",
       "description": "Compiles multiple Blueprint assets under a package path and returns aggregate results.",
       "inputSchema": {
@@ -2369,6 +2400,34 @@
           "objectPath",
           "nodeGuid"
         ]
+      }
+    },
+    {
+      "name": "DiscardDirtyPackagesForShutdown",
+      "description": "Clears dirty flags on explicitly discarded editor packages before shutdown, without saving them.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "confirm": {
+            "type": "boolean",
+            "description": "Required to discard unsaved package changes."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "List dirty packages without clearing flags."
+          },
+          "restoreDirty": {
+            "type": "boolean",
+            "description": "Restore dirty flags for exact packageNames if shutdown did not finish."
+          },
+          "packageNames": {
+            "type": "array",
+            "description": "Optional exact package names to discard; omitted means all dirty packages.",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
       }
     },
     {
@@ -3041,6 +3100,42 @@
       }
     },
     {
+      "name": "GetBlueprintClassDefaults",
+      "description": "Reads paged Blueprint class default values and parent overrides without modifying the asset.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "objectPath"
+        ],
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Exact Blueprint object path."
+          },
+          "propertyNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "includeInherited": {
+            "type": "boolean",
+            "description": "Include parent properties; default true."
+          },
+          "onlyOverridden": {
+            "type": "boolean",
+            "description": "Return values different from the parent CDO."
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    {
       "name": "GetBlueprintComponentDefaults",
       "description": "Reads safely editable defaults from one existing Blueprint component template without mutating or compiling the asset.",
       "inputSchema": {
@@ -3423,6 +3518,10 @@
           "mode": {
             "type": "string",
             "description": "graphs (default) or nodes. Node results include exact pins and links."
+          },
+          "outputMode": {
+            "type": "string",
+            "description": "full (default) or compact. Compact nodes include title, member, and visible links as title.pin endpoints."
           },
           "nodeGuid": {
             "type": "string",
@@ -3987,6 +4086,63 @@
       }
     },
     {
+      "name": "ResetBlueprintClassDefaults",
+      "description": "Resets inherited Blueprint class defaults to their parent CDO values.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "objectPath",
+          "propertyNames"
+        ],
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Exact Blueprint object path."
+          },
+          "propertyNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "includeInherited": {
+            "type": "boolean",
+            "description": "Include parent properties; default true."
+          },
+          "onlyOverridden": {
+            "type": "boolean",
+            "description": "Return values different from the parent CDO."
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Preflight without mutation."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required for a real edit."
+          },
+          "compile": {
+            "type": "boolean",
+            "description": "Compile after reset; default true."
+          },
+          "save": {
+            "type": "boolean",
+            "description": "Save this Blueprint package; default false."
+          },
+          "allowDirty": {
+            "type": "boolean",
+            "description": "Allow a pre-existing dirty Blueprint."
+          }
+        }
+      }
+    },
+    {
       "name": "RetargetBlueprintNode",
       "description": "Retargets a cast node (including a \u0027Bad cast node\u0027 whose class was deleted) to newClassPath without needing the old class. Output links whose pins still exist survive; the old class-named result pin\u0027s links move to the new result pin. Requires confirm=true unless dryRun=true.",
       "inputSchema": {
@@ -4191,6 +4347,50 @@
       }
     },
     {
+      "name": "SetBlueprintClassDefaults",
+      "description": "Preflights and transactionally sets Blueprint class defaults, including inherited properties.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "objectPath",
+          "values"
+        ],
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Exact Blueprint object path."
+          },
+          "values": {
+            "type": "object",
+            "description": "Property name to Unreal export-text value.",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Preflight without mutation."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required for a real edit."
+          },
+          "compile": {
+            "type": "boolean",
+            "description": "Compile after editing; default true."
+          },
+          "save": {
+            "type": "boolean",
+            "description": "Save this Blueprint package; default false."
+          },
+          "allowDirty": {
+            "type": "boolean",
+            "description": "Allow a pre-existing dirty Blueprint; default false."
+          }
+        }
+      }
+    },
+    {
       "name": "SetBlueprintComponentDefaults",
       "description": "Transactionally validates and updates safely editable defaults on one existing Blueprint component template.",
       "inputSchema": {
@@ -4271,6 +4471,52 @@
         "required": [
           "objectPath",
           "graphGuid"
+        ]
+      }
+    },
+    {
+      "name": "SetBlueprintLocalVariableDefault",
+      "description": "Sets the export-text default of an existing Blueprint function local variable.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Function graph name (or name::guid) from ListBlueprintGraphs."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Function graph GUID; alternative to graphName."
+          },
+          "variableName": {
+            "type": "string",
+            "description": "Existing local variable name."
+          },
+          "defaultValue": {
+            "type": "string",
+            "description": "New default as Unreal export text; empty string clears it."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate the target without changing it."
+          },
+          "compileAfterEdit": {
+            "type": "boolean",
+            "description": "Compile after setting the default."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Save after setting the default."
+          }
+        },
+        "required": [
+          "objectPath",
+          "variableName",
+          "defaultValue"
         ]
       }
     },
@@ -4795,7 +5041,7 @@
     },
     {
       "name": "TraceBlueprintFlow",
-      "description": "Traces indexed Blueprint graph flow from matching nodes or graph entry nodes using the local UnrealMCP graph index.",
+      "description": "Traces Blueprint graph flow from the project index; refreshes the selected Blueprint once if start nodes are missing.",
       "inputSchema": {
         "type": "object",
         "properties": {

@@ -33,3 +33,13 @@ public:
 protected:
     virtual TSharedPtr<FJsonObject> BuildInputSchema() const override;
 };
+
+class FSetBlueprintLocalVariableDefaultTool final : public FMCPToolBase
+{
+public:
+    FSetBlueprintLocalVariableDefaultTool();
+    virtual UnrealMCP::FMCPResponse Execute(const UnrealMCP::FMCPRequest& Request) const override;
+
+protected:
+    virtual TSharedPtr<FJsonObject> BuildInputSchema() const override;
+};

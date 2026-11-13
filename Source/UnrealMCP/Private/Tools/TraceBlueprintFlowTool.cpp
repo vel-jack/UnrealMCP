@@ -3,6 +3,8 @@
 #include "Containers/Queue.h"
 #include "SQLitePreparedStatement.h"
 #include "Tools/IndexedQueryToolUtils.h"
+#include "Tools/BlueprintEditToolUtils.h"
+#include "Tools/BlueprintToolUtils.h"
 #include "Tools/TraceBlueprintFlowToolInternal.h"
 
 namespace
@@ -110,7 +112,7 @@ namespace
 }
 
 FTraceBlueprintFlowTool::FTraceBlueprintFlowTool()
-    : FMCPToolBase(TEXT("TraceBlueprintFlow"), TEXT("Traces indexed Blueprint graph flow from matching nodes or graph entry nodes using the local UnrealMCP graph index."))
+    : FMCPToolBase(TEXT("TraceBlueprintFlow"), TEXT("Traces Blueprint graph flow from the project index; refreshes the selected Blueprint once if start nodes are missing."))
 {
 }
 
@@ -170,7 +172,16 @@ UnrealMCP::FMCPResponse FTraceBlueprintFlowTool::Execute(const UnrealMCP::FMCPRe
     bool bTruncated = false;
 
     FString Error;
-    const bool bQuerySucceeded = UnrealMCP::IndexedQueryToolUtils::ExecuteWithProjectIndex(
+    auto RunIndexedQuery = [&]()
+    {
+    State = FTraceTraversalState();
+    StartNodeKeysFinal.Reset();
+    VisitedOrderFinal.Reset();
+    TraversedEdgesFinal.Reset();
+    StartNodeCount = 0;
+    bMatchedStartNodes = false;
+    bTruncated = false;
+    return UnrealMCP::IndexedQueryToolUtils::ExecuteWithProjectIndex(
         [&](FSQLiteDatabase& Database, FString& OutExecError)
         {
             if (!LoadBlueprintTraceData(Database, ObjectPath, bResolveExternalMembers, State, OutExecError))
@@ -355,6 +366,22 @@ UnrealMCP::FMCPResponse FTraceBlueprintFlowTool::Execute(const UnrealMCP::FMCPRe
             return true;
         },
         Error);
+    };
+
+    bool bQuerySucceeded = RunIndexedQuery();
+    bool bIndexRefreshed = false;
+    if (bQuerySucceeded && !bMatchedStartNodes)
+    {
+        FString RefreshError;
+        bIndexRefreshed = UnrealMCP::BlueprintToolUtils::ExecuteOnGameThreadSync([&](FString& OutError)
+        {
+            return UnrealMCP::BlueprintEditToolUtils::RefreshAssetIndex(ObjectPath, OutError);
+        }, RefreshError);
+        if (!bIndexRefreshed)
+            return BuildError(Request, UnrealMCP::EMCPErrorCode::InternalError,
+                FString::Printf(TEXT("TraceBlueprintFlow could not refresh the selected Blueprint index: %s"), *RefreshError));
+        bQuerySucceeded = RunIndexedQuery();
+    }
 
     if (!bQuerySucceeded)
     {
@@ -385,6 +412,7 @@ UnrealMCP::FMCPResponse FTraceBlueprintFlowTool::Execute(const UnrealMCP::FMCPRe
         StartNodeKeysFinal,
         VisitedOrderFinal,
         TraversedEdgesFinal);
+    Response.Result->SetBoolField(TEXT("indexRefreshed"), bIndexRefreshed);
     return Response;
 }
 

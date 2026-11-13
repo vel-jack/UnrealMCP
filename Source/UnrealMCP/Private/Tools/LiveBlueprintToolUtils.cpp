@@ -275,6 +275,29 @@ namespace UnrealMCP::LiveBlueprintToolUtils
         return Result;
     }
 
+    TSharedRef<FJsonObject> DescribeCompactNode(UEdGraphNode* Node)
+    {
+        auto Result = MakeShared<FJsonObject>();
+        Result->SetStringField(TEXT("nodeGuid"), BlueprintGraphEditToolUtils::GetNodeGuid(Node));
+        Result->SetStringField(TEXT("graphPath"), Node->GetGraph()->GetPathName());
+        Result->SetStringField(TEXT("title"), Node->GetNodeTitle(ENodeTitleType::ListView).ToString());
+        Result->SetStringField(TEXT("member"), MemberName(Node));
+        TArray<TSharedPtr<FJsonValue>> Links;
+        for (const UEdGraphPin* Pin : Node->Pins)
+        {
+            if (!Pin || Pin->bHidden) continue;
+            for (const UEdGraphPin* Linked : Pin->LinkedTo)
+            {
+                if (!Linked || !Linked->GetOwningNode()) continue;
+                const FString EndpointName = FString::Printf(TEXT("%s.%s"),
+                    *Linked->GetOwningNode()->GetNodeTitle(ENodeTitleType::ListView).ToString(), *Linked->PinName.ToString());
+                Links.Add(MakeShared<FJsonValueString>(FString::Printf(TEXT("%s -> %s"), *Pin->PinName.ToString(), *EndpointName)));
+            }
+        }
+        Result->SetArrayField(TEXT("links"), Links);
+        return Result;
+    }
+
     TSharedPtr<FJsonObject> TargetSchema()
     {
         using namespace BlueprintEditToolUtils;
@@ -291,6 +314,12 @@ namespace UnrealMCP::LiveBlueprintToolUtils
         FTarget Target;
         if (!Resolve(Params, Target, Error)) return false;
         const FString Mode = String(Params, TEXT("mode"));
+        const FString OutputMode = String(Params, TEXT("outputMode"));
+        if (!OutputMode.IsEmpty() && OutputMode != TEXT("full") && OutputMode != TEXT("compact"))
+        {
+            Error = TEXT("invalid_output_mode: outputMode must be full or compact.");
+            return false;
+        }
         if (!Mode.IsEmpty() && Mode != TEXT("graphs") && Mode != TEXT("nodes"))
         {
             Error = TEXT("invalid_mode: mode must be graphs or nodes.");
@@ -325,11 +354,13 @@ namespace UnrealMCP::LiveBlueprintToolUtils
                 ++Scanned;
                 if (!Guid.IsEmpty() && Node->NodeGuid != ParsedGuid) continue;
                 if (!Query.IsEmpty() && !MemberName(Node).Contains(Query) && !Node->GetNodeTitle(ENodeTitleType::ListView).ToString().Contains(Query) && !Node->GetName().Contains(Query)) continue;
-                if (Matched++ >= Offset && Items.Num() < Limit) Items.Add(MakeShared<FJsonValueObject>(DescribeNode(Node, true)));
+                if (Matched++ >= Offset && Items.Num() < Limit)
+                    Items.Add(MakeShared<FJsonValueObject>(OutputMode == TEXT("compact") ? DescribeCompactNode(Node) : DescribeNode(Node, true)));
             }
         }
         Result = DescribeTarget(Target);
         Result->SetArrayField(bNodes ? TEXT("nodes") : TEXT("graphs"), Items);
+        Result->SetStringField(TEXT("outputMode"), OutputMode == TEXT("compact") ? TEXT("compact") : TEXT("full"));
         Result->SetNumberField(TEXT("scannedCount"), Scanned);
         Result->SetNumberField(TEXT("matchedCount"), Matched);
         Result->SetNumberField(TEXT("offset"), Offset);

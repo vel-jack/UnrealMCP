@@ -45,6 +45,8 @@
 #include "Tools/FindClassUsagesTool.h"
 #include "Tools/RetargetBlueprintNodeTool.h"
 #include "Tools/BlueprintLocalVariableTools.h"
+#include "Tools/BlueprintClassDefaultsTools.h"
+#include "Tools/DiscardDirtyPackagesForShutdownTool.h"
 #include "Tools/ConsolidateAndDeleteAssetTool.h"
 #include "Tools/CreateBlueprintAssetTool.h"
 #include "Tools/CreateBlueprintFunctionGraphTool.h"
@@ -342,6 +344,12 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FListBlueprintLocalVariablesTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintLocalVariableTool>());
     Registry.RegisterTool(MakeShared<FRemoveBlueprintLocalVariableTool>());
+    Registry.RegisterTool(MakeShared<FSetBlueprintLocalVariableDefaultTool>());
+    Registry.RegisterTool(MakeShared<FGetBlueprintClassDefaultsTool>());
+    Registry.RegisterTool(MakeShared<FSetBlueprintClassDefaultsTool>());
+    Registry.RegisterTool(MakeShared<FResetBlueprintClassDefaultsTool>());
+    Registry.RegisterTool(MakeShared<FCompareBlueprintClassDefaultsTool>());
+    Registry.RegisterTool(MakeShared<FDiscardDirtyPackagesForShutdownTool>());
     Registry.RegisterTool(MakeShared<FConsolidateAndDeleteAssetTool>());
     Registry.RegisterTool(MakeShared<FCompileAllBlueprintsTool>());
     Registry.RegisterTool(MakeShared<FCreateBlueprintAssetTool>());

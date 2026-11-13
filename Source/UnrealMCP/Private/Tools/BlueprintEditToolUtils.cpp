@@ -95,6 +95,36 @@ namespace UnrealMCP::BlueprintEditToolUtils
                 : UEdGraphSchema_K2::PC_Double;
         }
         else if (Normalized == TEXT("int") || Normalized == TEXT("integer")) OutPinType.PinCategory = UEdGraphSchema_K2::PC_Int;
+        else if (Normalized == TEXT("byte") || Normalized == TEXT("enum"))
+        {
+            OutPinType.PinCategory = UEdGraphSchema_K2::PC_Byte;
+            if (!TypeObjectPath.IsEmpty())
+            {
+                UEnum* Enum = LoadObject<UEnum>(nullptr, *TypeObjectPath);
+                if (!Enum)
+                {
+                    OutError = FString::Printf(TEXT("Could not resolve enum '%s'."), *TypeObjectPath);
+                    return false;
+                }
+                OutPinType.PinSubCategoryObject = Enum;
+            }
+            else if (Normalized == TEXT("enum"))
+            {
+                OutError = TEXT("Enum type requires typeObjectPath.");
+                return false;
+            }
+        }
+        else if (Normalized == TEXT("struct"))
+        {
+            UScriptStruct* Struct = LoadObject<UScriptStruct>(nullptr, *TypeObjectPath);
+            if (!Struct)
+            {
+                OutError = FString::Printf(TEXT("Could not resolve struct '%s'."), *TypeObjectPath);
+                return false;
+            }
+            OutPinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
+            OutPinType.PinSubCategoryObject = Struct;
+        }
         else if (Normalized == TEXT("string")) OutPinType.PinCategory = UEdGraphSchema_K2::PC_String;
         else if (Normalized == TEXT("name")) OutPinType.PinCategory = UEdGraphSchema_K2::PC_Name;
         else if (Normalized == TEXT("text")) OutPinType.PinCategory = UEdGraphSchema_K2::PC_Text;

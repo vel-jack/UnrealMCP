@@ -28,6 +28,7 @@ TSharedPtr<FJsonObject> FInspectLiveBlueprintTool::BuildInputSchema() const
     Schema->SetStringField(TEXT("type"), TEXT("object"));
     auto Properties = LiveBlueprintToolUtils::TargetSchema();
     Properties->SetObjectField(TEXT("mode"), BlueprintEditToolUtils::BuildStringProperty(TEXT("graphs (default) or nodes. Node results include exact pins and links.")));
+    Properties->SetObjectField(TEXT("outputMode"), BlueprintEditToolUtils::BuildStringProperty(TEXT("full (default) or compact. Compact nodes include title, member, and visible links as title.pin endpoints.")));
     Properties->SetObjectField(TEXT("nodeGuid"), BlueprintEditToolUtils::BuildStringProperty(TEXT("Optional exact node GUID; implies nodes mode.")));
     Properties->SetObjectField(TEXT("query"), BlueprintEditToolUtils::BuildStringProperty(TEXT("Optional member/title/name substring; implies nodes mode.")));
     for (const TCHAR* FieldName : {TEXT("offset"), TEXT("limit")})

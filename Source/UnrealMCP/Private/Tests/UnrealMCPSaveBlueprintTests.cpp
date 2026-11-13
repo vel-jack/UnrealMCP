@@ -13,6 +13,7 @@
 #include "Misc/PackageName.h"
 #include "Misc/ScopeExit.h"
 #include "Tools/SaveBlueprintTool.h"
+#include "Tools/DiscardDirtyPackagesForShutdownTool.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FUnrealMCPSaveBlueprintTest,
@@ -65,6 +66,23 @@ bool FUnrealMCPSaveBlueprintTest::RunTest(const FString& Parameters)
     FKismetEditorUtilities::CompileBlueprint(
         Blueprint, EBlueprintCompileOptions::SkipSave | EBlueprintCompileOptions::SkipGarbageCollection);
     FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+    FDiscardDirtyPackagesForShutdownTool DiscardTool;
+    UnrealMCP::FMCPRequest DiscardRequest;
+    DiscardRequest.Id = TEXT("discard-shutdown-fixture");
+    DiscardRequest.Params = MakeShared<FJsonObject>();
+    DiscardRequest.Params->SetArrayField(TEXT("packageNames"), {MakeShared<FJsonValueString>(PackagePath)});
+    DiscardRequest.Params->SetBoolField(TEXT("dryRun"), true);
+    const auto DryDiscard = DiscardTool.Execute(DiscardRequest);
+    TestTrue(TEXT("Discard dry run finds the fixture"), DryDiscard.Result.IsValid() && DryDiscard.Result->GetIntegerField(TEXT("count")) == 1);
+    TestTrue(TEXT("Discard dry run preserves dirty state"), Package->IsDirty());
+    DiscardRequest.Params->SetBoolField(TEXT("dryRun"), false);
+    TestTrue(TEXT("Discard requires confirmation"), DiscardTool.Execute(DiscardRequest).Error.IsSet());
+    DiscardRequest.Params->SetBoolField(TEXT("confirm"), true);
+    const auto Discarded = DiscardTool.Execute(DiscardRequest);
+    TestTrue(TEXT("Discard clears only the fixture dirty flag"), Discarded.Result.IsValid() && !Package->IsDirty());
+    DiscardRequest.Params->SetBoolField(TEXT("restoreDirty"), true);
+    const auto Restored = DiscardTool.Execute(DiscardRequest);
+    TestTrue(TEXT("Failed-shutdown recovery restores dirty flag"), Restored.Result.IsValid() && Package->IsDirty());
     TestFalse(TEXT("Fixture is not compile-up-to-date"),
         Blueprint->Status == BS_UpToDate || Blueprint->Status == BS_UpToDateWithWarnings);
 
