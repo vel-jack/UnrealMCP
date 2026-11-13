@@ -4,7 +4,7 @@
 
 See [MCP Tool Index](docs/MCP-Tool-Index.md) for a searchable routing index across custom and official MCP tools, without full schemas. Regenerate it with `python Scripts/refresh_tool_index.py`; add `--official-url <endpoint>` to capture official discovery metadata live. Without an endpoint, the generator uses the checked-in official metadata snapshot and bundled native catalog, retaining their capture dates. Exact input schemas are fetched from the owning server when needed.
 
-`Adapter/UnrealMCP.Adapter/unreal-tools.json` contains the native tool definitions captured from the DSM UE 5.8 editor on October 30, 2026 (120 tools, including `AddBlueprintInterface`). The adapter copies this catalog into build output for offline discovery; a successful live attachment remains authoritative.
+`Adapter/UnrealMCP.Adapter/unreal-tools.json` contains 133 native tool definitions captured from the UGitClientSample UE 5.8 editor on November 13, 2026. The adapter copies this catalog into build output for offline discovery; a successful live attachment remains authoritative.
 
 If a registered tool is missing, call `unreal.adapter.RefreshToolManifest`, then re-list tools. In compact mode use `SearchTools`, `GetToolSchema`, and `CallTool`. If these discovery tools are themselves missing, check the running adapter version: refreshing a catalog cannot upgrade an old executable. Close clients using the adapter, run `Adapter/BuildAdapter.bat`, and reconnect them. Updating the plugin DLL alone does not update the external adapter.
 
@@ -33,6 +33,12 @@ Coding agents and contributors should read [AGENTS.md](AGENTS.md) before changin
 - `SearchAssets`
 - `AssetExists`
 - `GetAssetInfo`
+- `InspectDataTableRows`
+- `FindDataTableReferences`
+- `SetDataTableRowFields`
+- `AddDataTableRow`
+- `RemoveDataTableRow`
+- `SaveDataTable`
 - `ListAssets`
 - `ListFolders`
 - `GetDependencies`
@@ -134,6 +140,8 @@ Coding agents and contributors should read [AGENTS.md](AGENTS.md) before changin
 - `tools/list` JSON-RPC method
 
 ## Project Index
+
+`InspectDataTableRows` reads one DataTable by object path with `offset` and `limit` (1–100), returns row fields as Unreal export text, and resolves soft object/class references on the game thread to flag missing targets. Hard references that deserialize as null have no surviving target path and cannot be distinguished from intentionally empty fields. `SetDataTableRowFields`, `AddDataTableRow`, and `RemoveDataTableRow` preflight export-text values, use editor transactions, and leave the asset dirty. `SaveDataTable` saves only that table; re-read rows after saving. `FindDataTableReferences` reports direct Blueprint pin defaults, with graph, node GUID, and pin; its project-wide scan uses Asset Registry referencers and reports candidate coverage. Dynamically supplied DataTables are outside that search.
 
 The plugin now includes a local SQLite index stored under `Saved/UnrealMCP/ProjectIndex.sqlite3`.
 
@@ -559,7 +567,7 @@ Implemented from `UnrealMCP_ToolingRequirements.md` (R2, R3, R7, R11, R12). Requ
 - `RetargetBlueprintNode(objectPath, graphName|graphGuid, nodeGuid, newClassPath, dryRun, confirm)` retargets a cast node, including a "Bad cast node" whose class is gone, without needing the old class. Links on the old class-named result pin move to the new result pin; `droppedLinks` lists any the schema refused. Casts only for now.
 - `ListBlueprintLocalVariables`, `AddBlueprintLocalVariable` (type arguments as in `AddBlueprintVariable`; idempotent by name) and `RemoveBlueprintLocalVariable` (requires `confirm`; reports leftover Get/Set nodes) manage function-graph locals. The DSL `(local name type)` form is not part of this pass.
 
-The adapter classifies `Consolidate*` and `Retarget*` tools as tracked mutations. These tools were compile-checked only; no live editor test or native automation test exists for them yet, and the bundled `unreal-tools.json` catalog has not been refreshed.
+The adapter classifies `Consolidate*` and `Retarget*` tools as tracked mutations. The bundled `unreal-tools.json` catalog includes them.
 
 ## Blueprint interface attachment (2026-10-30)
 

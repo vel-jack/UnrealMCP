@@ -71,6 +71,10 @@
 #include "Tools/FindUnusedBlueprintAssetsTool.h"
 #include "Tools/GetActorInfoTool.h"
 #include "Tools/GetAssetInfoTool.h"
+#include "Tools/DataTableRowMutationTool.h"
+#include "Tools/FindDataTableReferencesTool.h"
+#include "Tools/SaveDataTableTool.h"
+#include "Tools/InspectDataTableRowsTool.h"
 #include "Tools/GetAssetReferencersTool.h"
 #include "Tools/GetAssetReferencesTool.h"
 #include "Tools/GetBlueprintComponentHierarchyTool.h"
@@ -297,6 +301,12 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FSearchAssetsTool>());
     Registry.RegisterTool(MakeShared<FAssetExistsTool>());
     Registry.RegisterTool(MakeShared<FGetAssetInfoTool>());
+    Registry.RegisterTool(MakeShared<FInspectDataTableRowsTool>());
+    Registry.RegisterTool(MakeShared<FFindDataTableReferencesTool>());
+    Registry.RegisterTool(MakeShared<FDataTableRowMutationTool>(FDataTableRowMutationTool::EAction::Set));
+    Registry.RegisterTool(MakeShared<FDataTableRowMutationTool>(FDataTableRowMutationTool::EAction::Add));
+    Registry.RegisterTool(MakeShared<FDataTableRowMutationTool>(FDataTableRowMutationTool::EAction::Remove));
+    Registry.RegisterTool(MakeShared<FSaveDataTableTool>());
     Registry.RegisterTool(MakeShared<FListAssetsTool>());
     Registry.RegisterTool(MakeShared<FListFoldersTool>());
     Registry.RegisterTool(MakeShared<FGetDependenciesTool>());

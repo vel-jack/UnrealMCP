@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "capturedUtc": "2026-11-11T07:42:32.9092867Z",
+  "capturedUtc": "2026-11-13T05:55:21.5518387Z",
   "tools": [
     {
       "name": "AddBlueprintArrayOperationNode",
@@ -1414,6 +1414,38 @@
         "required": [
           "objectPath",
           "variableName"
+        ]
+      }
+    },
+    {
+      "name": "AddDataTableRow",
+      "description": "Transactionally edits one DataTable row in memory; leaves the asset dirty for an explicit save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string"
+          },
+          "rowName": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "dryRun": {
+            "type": "boolean"
+          },
+          "confirm": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "objectPath",
+          "rowName",
+          "fields"
         ]
       }
     },
@@ -2837,6 +2869,33 @@
       }
     },
     {
+      "name": "FindDataTableReferences",
+      "description": "Finds Blueprint nodes with a direct DataTable pin default, scanning registry referencers or one specified Blueprint.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string"
+          },
+          "blueprintObjectPath": {
+            "type": "string"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "maxAssets": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
       "name": "FindFeatureEntryPoints",
       "description": "Finds likely starting assets for a feature by ranking indexed assets that match a query, optionally boosted by a related context asset.",
       "inputSchema": {
@@ -3279,6 +3338,27 @@
           "limit": {
             "type": "integer",
             "description": "Optional maximum number of matching nodes to return. Defaults to 5."
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "InspectDataTableRows",
+      "description": "Reads paged DataTable rows as export text and reports soft references that cannot resolve, without changing the table.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
           }
         },
         "required": [
@@ -3844,6 +3924,31 @@
       }
     },
     {
+      "name": "RemoveDataTableRow",
+      "description": "Transactionally edits one DataTable row in memory; leaves the asset dirty for an explicit save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string"
+          },
+          "rowName": {
+            "type": "string"
+          },
+          "dryRun": {
+            "type": "boolean"
+          },
+          "confirm": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "objectPath",
+          "rowName"
+        ]
+      }
+    },
+    {
       "name": "RemoveInputMappingContextMapping",
       "description": "Removes one exact existing Action\u002BKey mapping row from an InputMappingContext. Fails clearly rather than guessing when zero or more than one row matches.",
       "inputSchema": {
@@ -4008,6 +4113,21 @@
           "requireUpToDateCompile": {
             "type": "boolean",
             "description": "Refuse to save a Blueprint whose compile status is not up to date. Defaults to true."
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "SaveDataTable",
+      "description": "Saves exactly one DataTable package after explicit row edits and reports the resulting dirty state.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string"
           }
         },
         "required": [
@@ -4474,6 +4594,38 @@
           "objectPath",
           "nodeGuid",
           "desiredOutputCount"
+        ]
+      }
+    },
+    {
+      "name": "SetDataTableRowFields",
+      "description": "Transactionally edits one DataTable row in memory; leaves the asset dirty for an explicit save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string"
+          },
+          "rowName": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "dryRun": {
+            "type": "boolean"
+          },
+          "confirm": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "objectPath",
+          "rowName",
+          "fields"
         ]
       }
     },
