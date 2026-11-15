@@ -22,6 +22,8 @@
 #include "Tools/AddBlueprintFunctionParameterTool.h"
 #include "Tools/SetBlueprintParameterTool.h"
 #include "Tools/ReparentBlueprintTool.h"
+#include "Tools/BlueprintMemberRemovalTools.h"
+#include "Tools/UserDefinedStructMemberTools.h"
 #include "Tools/AssetManagementTools.h"
 #include "Tools/AddBlueprintInterfaceEventNodeTool.h"
 #include "Tools/AddBlueprintInterfaceFunctionGraphTool.h"
@@ -383,6 +385,11 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FAddBlueprintFunctionCallNodeTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintFunctionParameterTool>());
     Registry.RegisterTool(MakeShared<FSetBlueprintParameterTool>());
+    Registry.RegisterTool(MakeShared<FRemoveBlueprintMemberTool>(false));
+    Registry.RegisterTool(MakeShared<FRemoveBlueprintMemberTool>(true));
+    Registry.RegisterTool(MakeShared<FUserDefinedStructMemberTool>(EUserStructMemberOperation::Inspect));
+    Registry.RegisterTool(MakeShared<FUserDefinedStructMemberTool>(EUserStructMemberOperation::Add));
+    Registry.RegisterTool(MakeShared<FUserDefinedStructMemberTool>(EUserStructMemberOperation::Remove));
     Registry.RegisterTool(MakeShared<FReparentBlueprintTool>());
     Registry.RegisterTool(MakeShared<FMoveAssetTool>());
     Registry.RegisterTool(MakeShared<FFixupRedirectorsTool>());

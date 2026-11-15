@@ -2,8 +2,8 @@
 
 Generated metadata only; fetch the exact live schema before execution.
 
-Custom catalog captured: 2026-11-15T02:34:00.9774610Z. Official catalog captured: 2026-10-30T09:56:38.641Z.
-Contains 144 custom tools and 838 official tools across 53 toolsets.
+Custom catalog captured: 2026-11-15T03:19:15.2881133Z. Official catalog captured: 2026-10-30T09:56:38.641Z.
+Contains 149 custom tools and 838 official tools across 53 toolsets.
 
 Search this file with `rg -i 'interface|delete.*node|merge'`. Descriptions are shortened; a missing keyword is not proof a capability is absent.
 
@@ -44,6 +44,7 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `AddDataTableRow` | Transactionally edits one DataTable row in memory; leaves the asset dirty for an explicit save. |
 | Custom | `native registry` | `AddEnhancedInputActionNode` | Adds an Enhanced Input Action event node for an exact InputAction asset without requiring Enhanced Input as a hard plugin dependency. |
 | Custom | `native registry` | `AddInputMappingContextMapping` | Adds one key-mapping row to an existing InputMappingContext. Idempotent if the identical Action+Key row already exists. |
+| Custom | `native registry` | `AddUserDefinedStructMember` | Inspect, add or remove authored members of a user-defined struct using Unreal's structure editor. Inspection includes member GUIDs,... |
 | Custom | `native registry` | `AnalyzeBlueprintCoupling` | Ranks project Blueprint assets by indexed package dependency coupling. This is static package-reference analysis, not runtime call coupling. |
 | Custom | `native registry` | `AnalyzeFeatureBoundary` | Analyzes static indexed package dependencies crossing a required /Game feature boundary. It does not infer runtime architecture. |
 | Custom | `native registry` | `AnalyzeProjectArchitecture` | Returns a compact, fault-tolerant static architecture overview composed from the indexed cycle, coupling, broken-reference, unused-candidate, and... |
@@ -106,6 +107,7 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `InspectDataTableRows` | Reads paged DataTable rows as export text and reports soft references that cannot resolve, without changing the table. |
 | Custom | `native registry` | `InspectEnhancedInputActionWiring` | Finds Enhanced Input Action event nodes and reports exact Started/Triggered/Ongoing/Canceled/Completed execution routes. |
 | Custom | `native registry` | `InspectLiveBlueprint` | Read-only live graph/node/pin inspection, including a map's embedded Level Blueprint. Defaults to the current editor level. No index, loading,... |
+| Custom | `native registry` | `InspectUserDefinedStruct` | Inspect, add or remove authored members of a user-defined struct using Unreal's structure editor. Inspection includes member GUIDs,... |
 | Custom | `native registry` | `LayoutBlueprintNodes` | Deterministically lays out an explicit Blueprint node set by execution-flow depth with configurable spacing, collision avoidance, dry-run, and... |
 | Custom | `native registry` | `ListActors` | Lists actors from the active editor world so agents can inspect current level composition without modifying it. |
 | Custom | `native registry` | `ListAssets` | Lists assets under a package path without loading them. |
@@ -125,9 +127,12 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `PlanProjectRefactor` | Builds a deterministic, evidence-backed, non-mutating Blueprint refactor plan from indexed architecture analyses. It never changes assets and... |
 | Custom | `native registry` | `RefreshBlueprintCallSites` | Finds every same-Blueprint and cross-Blueprint call site of a Blueprint function via the project index and reconstructs each call node to match... |
 | Custom | `native registry` | `RefreshProjectIndex` | Refreshes only changed, added, deleted, or explicitly requested project assets in the existing UnrealMCP index. This is cheaper than... |
+| Custom | `native registry` | `RemoveBlueprintFunction` | Removes one locally declared Blueprint member variable or function graph. Dry-run reports usage and indexed referencer packages. Refuses used... |
 | Custom | `native registry` | `RemoveBlueprintLocalVariable` | Removes one local variable from a Blueprint function graph. Requires confirm=true unless dryRun=true; reports how many Get/Set nodes still... |
+| Custom | `native registry` | `RemoveBlueprintVariable` | Removes one locally declared Blueprint member variable or function graph. Dry-run reports usage and indexed referencer packages. Refuses used... |
 | Custom | `native registry` | `RemoveDataTableRow` | Transactionally edits one DataTable row in memory; leaves the asset dirty for an explicit save. |
 | Custom | `native registry` | `RemoveInputMappingContextMapping` | Removes one exact existing Action+Key mapping row from an InputMappingContext. Fails clearly rather than guessing when zero or more than one row... |
+| Custom | `native registry` | `RemoveUserDefinedStructMember` | Inspect, add or remove authored members of a user-defined struct using Unreal's structure editor. Inspection includes member GUIDs,... |
 | Custom | `native registry` | `ReparentBlueprint` | Changes a Blueprint's parent class. Dry-run/preflight lists graph nodes using old-parent members the new parent lacks (graph, nodeGuid, member),... |
 | Custom | `native registry` | `ResetBlueprintClassDefaults` | Resets inherited Blueprint class defaults to their parent CDO values. |
 | Custom | `native registry` | `RetargetBlueprintNode` | Retargets a cast node (including a 'Bad cast node' whose class was deleted) to newClassPath without needing the old class. Output links whose pins... |

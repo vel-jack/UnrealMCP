@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "capturedUtc": "2026-11-15T02:34:00.9774610Z",
+  "capturedUtc": "2026-11-15T03:19:15.2881133Z",
   "tools": [
     {
       "name": "AddBlueprintArrayOperationNode",
@@ -1498,7 +1498,7 @@
     },
     {
       "name": "AddInputMappingContextMapping",
-      "description": "Adds one key-mapping row to an existing InputMappingContext. Idempotent if the identical Action\u002BKey row already exists.",
+      "description": "Adds one key-mapping row to an existing InputMappingContext. Idempotent if the identical Action+Key row already exists.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1527,6 +1527,64 @@
           "objectPath",
           "inputActionPath",
           "key"
+        ]
+      }
+    },
+    {
+      "name": "AddUserDefinedStructMember",
+      "description": "Inspect, add or remove authored members of a user-defined struct using Unreal's structure editor. Inspection includes member GUIDs, authored/internal names, types and defaults. Mutations support dryRun, require confirm, compile the struct, never save dependents, and report newly dirtied packages. Referenced structs require allowReferenced=true; removal can discard stored member values. Native structs are excluded.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "User-defined struct asset path; native structs are not supported."
+          },
+          "memberName": {
+            "type": "string",
+            "description": "Authored display name; remove also accepts internal name."
+          },
+          "type": {
+            "type": "string",
+            "description": "Type argument as in AddBlueprintVariable; containerType is none, array, set or map."
+          },
+          "typeObjectPath": {
+            "type": "string",
+            "description": "Type argument as in AddBlueprintVariable; containerType is none, array, set or map."
+          },
+          "containerType": {
+            "type": "string",
+            "description": "Type argument as in AddBlueprintVariable; containerType is none, array, set or map."
+          },
+          "valueType": {
+            "type": "string",
+            "description": "Type argument as in AddBlueprintVariable; containerType is none, array, set or map."
+          },
+          "valueTypeObjectPath": {
+            "type": "string",
+            "description": "Type argument as in AddBlueprintVariable; containerType is none, array, set or map."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate and report only."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required to apply."
+          },
+          "allowReferenced": {
+            "type": "boolean",
+            "description": "Allow dependent assets to be reconstructed/dirtied, and potential loss of removed-member data. Default false."
+          },
+          "save": {
+            "type": "boolean",
+            "description": "Save the edited struct after compilation; never saves dependent packages. Default false."
+          }
+        },
+        "required": [
+          "objectPath",
+          "memberName",
+          "type"
         ]
       }
     },
@@ -2223,7 +2281,7 @@
     },
     {
       "name": "ConsolidateAndDeleteAsset",
-      "description": "Editor \u0027Replace References\u0027 equivalent: repoints every referencer of oldAssetPath to replacementAssetPath, then deletes the old asset (leaving a redirector as the editor does). Requires confirm=true unless dryRun=true; dry-run lists the referencers that would be touched. Does not save: dirtied packages are returned so they can be saved explicitly.",
+      "description": "Editor 'Replace References' equivalent: repoints every referencer of oldAssetPath to replacementAssetPath, then deletes the old asset (leaving a redirector as the editor does). Requires confirm=true unless dryRun=true; dry-run lists the referencers that would be touched. Does not save: dirtied packages are returned so they can be saved explicitly.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2559,7 +2617,7 @@
     },
     {
       "name": "ExplainBlueprintRole",
-      "description": "Returns a structured indexed summary that helps explain a Blueprint\u0027s likely role, neighbors, and composition inside the project.",
+      "description": "Returns a structured indexed summary that helps explain a Blueprint's likely role, neighbors, and composition inside the project.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2631,7 +2689,7 @@
     },
     {
       "name": "ExplainFeatureWorkflow",
-      "description": "Explains a feature query by ranking likely entry assets, then summarizing each candidate\u0027s role and nearby indexed flow.",
+      "description": "Explains a feature query by ranking likely entry assets, then summarizing each candidate's role and nearby indexed flow.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3088,7 +3146,7 @@
     },
     {
       "name": "FixupRedirectors",
-      "description": "Editor \u0027Fix Up Redirectors in Folder\u0027: finds redirectors under packagePath (recursive by default), resaves their referencers and deletes them. Dry-run lists redirectors and referencers only.",
+      "description": "Editor 'Fix Up Redirectors in Folder': finds redirectors under packagePath (recursive by default), resaves their referencers and deletes them. Dry-run lists redirectors and referencers only.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3593,7 +3651,7 @@
     },
     {
       "name": "InspectLiveBlueprint",
-      "description": "Read-only live graph/node/pin inspection, including a map\u0027s embedded Level Blueprint. Defaults to the current editor level. No index, loading, PIE, compilation or saving.",
+      "description": "Read-only live graph/node/pin inspection, including a map's embedded Level Blueprint. Defaults to the current editor level. No index, loading, PIE, compilation or saving.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3638,6 +3696,22 @@
             "description": "Page size, default 50, maximum 200."
           }
         }
+      }
+    },
+    {
+      "name": "InspectUserDefinedStruct",
+      "description": "Inspect, add or remove authored members of a user-defined struct using Unreal's structure editor. Inspection includes member GUIDs, authored/internal names, types and defaults. Mutations support dryRun, require confirm, compile the struct, never save dependents, and report newly dirtied packages. Referenced structs require allowReferenced=true; removal can discard stored member values. Native structs are excluded.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "User-defined struct asset path; native structs are not supported."
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
       }
     },
     {
@@ -3818,7 +3892,7 @@
     },
     {
       "name": "ListChildBlueprints",
-      "description": "Lists child Blueprints whose parent class is this Blueprint\u0027s generated class.",
+      "description": "Lists child Blueprints whose parent class is this Blueprint's generated class.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4073,7 +4147,7 @@
     },
     {
       "name": "RefreshBlueprintCallSites",
-      "description": "Finds every same-Blueprint and cross-Blueprint call site of a Blueprint function via the project index and reconstructs each call node to match the function\u0027s current signature, compiling callers without saving.",
+      "description": "Finds every same-Blueprint and cross-Blueprint call site of a Blueprint function via the project index and reconstructs each call node to match the function's current signature, compiling callers without saving.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4125,6 +4199,43 @@
       }
     },
     {
+      "name": "RemoveBlueprintFunction",
+      "description": "Removes one locally declared Blueprint member variable or function graph. Dry-run reports usage and indexed referencer packages. Refuses used members; inherited members, component variables and interface implementations are excluded. Apply requires confirm=true and acknowledgement of external referencers. Compiles with rollback on errors, saves only when requested. External callers using reflection or string names cannot be detected.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset path."
+          },
+          "functionName": {
+            "type": "string",
+            "description": "Name declared on this Blueprint."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Report only; no changes."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required to remove."
+          },
+          "save": {
+            "type": "boolean",
+            "description": "Save only after successful compilation. Default false."
+          },
+          "acknowledgeExternalReferences": {
+            "type": "boolean",
+            "description": "Acknowledge indexed external packages after reviewing dryRun. Does not bypass used-member refusal."
+          }
+        },
+        "required": [
+          "objectPath",
+          "functionName"
+        ]
+      }
+    },
+    {
       "name": "RemoveBlueprintLocalVariable",
       "description": "Removes one local variable from a Blueprint function graph. Requires confirm=true unless dryRun=true; reports how many Get/Set nodes still reference the name.",
       "inputSchema": {
@@ -4166,6 +4277,43 @@
       }
     },
     {
+      "name": "RemoveBlueprintVariable",
+      "description": "Removes one locally declared Blueprint member variable or function graph. Dry-run reports usage and indexed referencer packages. Refuses used members; inherited members, component variables and interface implementations are excluded. Apply requires confirm=true and acknowledgement of external referencers. Compiles with rollback on errors, saves only when requested. External callers using reflection or string names cannot be detected.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset path."
+          },
+          "variableName": {
+            "type": "string",
+            "description": "Name declared on this Blueprint."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Report only; no changes."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required to remove."
+          },
+          "save": {
+            "type": "boolean",
+            "description": "Save only after successful compilation. Default false."
+          },
+          "acknowledgeExternalReferences": {
+            "type": "boolean",
+            "description": "Acknowledge indexed external packages after reviewing dryRun. Does not bypass used-member refusal."
+          }
+        },
+        "required": [
+          "objectPath",
+          "variableName"
+        ]
+      }
+    },
+    {
       "name": "RemoveDataTableRow",
       "description": "Transactionally edits one DataTable row in memory; leaves the asset dirty for an explicit save.",
       "inputSchema": {
@@ -4192,7 +4340,7 @@
     },
     {
       "name": "RemoveInputMappingContextMapping",
-      "description": "Removes one exact existing Action\u002BKey mapping row from an InputMappingContext. Fails clearly rather than guessing when zero or more than one row matches.",
+      "description": "Removes one exact existing Action+Key mapping row from an InputMappingContext. Fails clearly rather than guessing when zero or more than one row matches.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4229,8 +4377,48 @@
       }
     },
     {
+      "name": "RemoveUserDefinedStructMember",
+      "description": "Inspect, add or remove authored members of a user-defined struct using Unreal's structure editor. Inspection includes member GUIDs, authored/internal names, types and defaults. Mutations support dryRun, require confirm, compile the struct, never save dependents, and report newly dirtied packages. Referenced structs require allowReferenced=true; removal can discard stored member values. Native structs are excluded.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "User-defined struct asset path; native structs are not supported."
+          },
+          "memberName": {
+            "type": "string",
+            "description": "Authored display name; remove also accepts internal name."
+          },
+          "memberGuid": {
+            "type": "string",
+            "description": "Stable GUID from InspectUserDefinedStruct; preferred for removal."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate and report only."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required to apply."
+          },
+          "allowReferenced": {
+            "type": "boolean",
+            "description": "Allow dependent assets to be reconstructed/dirtied, and potential loss of removed-member data. Default false."
+          },
+          "save": {
+            "type": "boolean",
+            "description": "Save the edited struct after compilation; never saves dependent packages. Default false."
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
       "name": "ReparentBlueprint",
-      "description": "Changes a Blueprint\u0027s parent class. Dry-run/preflight lists graph nodes using old-parent members the new parent lacks (graph, nodeGuid, member), dropped overrides, lost interfaces, and inherited defaults that are lost or change value. Apply refreshes nodes, compiles, and reports located errors; never saves a failed compile unless allowSaveWithErrors=true.",
+      "description": "Changes a Blueprint's parent class. Dry-run/preflight lists graph nodes using old-parent members the new parent lacks (graph, nodeGuid, member), dropped overrides, lost interfaces, and inherited defaults that are lost or change value. Apply refreshes nodes, compiles, and reports located errors; never saves a failed compile unless allowSaveWithErrors=true.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4328,7 +4516,7 @@
     },
     {
       "name": "RetargetBlueprintNode",
-      "description": "Retargets a cast node (including a \u0027Bad cast node\u0027 whose class was deleted) to newClassPath without needing the old class. Output links whose pins still exist survive; the old class-named result pin\u0027s links move to the new result pin. Requires confirm=true unless dryRun=true.",
+      "description": "Retargets a cast node (including a 'Bad cast node' whose class was deleted) to newClassPath without needing the old class. Output links whose pins still exist survive; the old class-named result pin's links move to the new result pin. Requires confirm=true unless dryRun=true.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -5061,7 +5249,7 @@
     },
     {
       "name": "SetInputMappingContextMappingKey",
-      "description": "Replaces the key of one exact Action\u002BKey row, preserving its position, action, inline objects and metadata. Static asset editing only; no runtime mapping rebuild.",
+      "description": "Replaces the key of one exact Action+Key row, preserving its position, action, inline objects and metadata. Static asset editing only; no runtime mapping rebuild.",
       "inputSchema": {
         "type": "object",
         "properties": {
