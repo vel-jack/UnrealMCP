@@ -35,7 +35,8 @@ public class UnrealMCP : ModuleRules
                 "Sockets",
                 "ToolMenus",
                 "UnrealEd",
-                "AssetTools"
+                "AssetTools",
+                "Kismet"
             });
     }
 }

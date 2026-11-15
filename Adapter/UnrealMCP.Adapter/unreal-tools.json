@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "capturedUtc": "2026-11-15T05:53:04.8765512Z",
+  "capturedUtc": "2026-11-15T08:13:41.4051280Z",
   "tools": [
     {
       "name": "AddBlueprintArrayOperationNode",
@@ -1333,33 +1333,33 @@
     },
     {
       "name": "AddBlueprintVariableGetNode",
-      "description": "Adds a variable Get node for an local, inherited or external Blueprint-visible member with collision-aware placement, dry-run, and optional save.",
+      "description": "Adds a variable Get node for a function local or Blueprint-visible member (local-first without ownerClassPath; explicit owner selects class members) with collision-aware placement, dry-run, and optional save.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "objectPath": {
             "type": "string",
-            "description": "Blueprint member, graph, or placement selector."
+            "description": "Blueprint/graph/placement selector. ownerClassPath explicitly selects class members; omitted owner resolves a same-function local first."
           },
           "graphName": {
             "type": "string",
-            "description": "Blueprint member, graph, or placement selector."
+            "description": "Blueprint/graph/placement selector. ownerClassPath explicitly selects class members; omitted owner resolves a same-function local first."
           },
           "graphGuid": {
             "type": "string",
-            "description": "Blueprint member, graph, or placement selector."
+            "description": "Blueprint/graph/placement selector. ownerClassPath explicitly selects class members; omitted owner resolves a same-function local first."
           },
           "variableName": {
             "type": "string",
-            "description": "Blueprint member, graph, or placement selector."
+            "description": "Blueprint/graph/placement selector. ownerClassPath explicitly selects class members; omitted owner resolves a same-function local first."
           },
           "ownerClassPath": {
             "type": "string",
-            "description": "Blueprint member, graph, or placement selector."
+            "description": "Blueprint/graph/placement selector. ownerClassPath explicitly selects class members; omitted owner resolves a same-function local first."
           },
           "relativeToNodeGuid": {
             "type": "string",
-            "description": "Blueprint member, graph, or placement selector."
+            "description": "Blueprint/graph/placement selector. ownerClassPath explicitly selects class members; omitted owner resolves a same-function local first."
           },
           "positionX": {
             "type": "integer"
@@ -1370,6 +1370,10 @@
           "dryRun": {
             "type": "boolean",
             "description": "Validate and preview."
+          },
+          "compileAfterEdit": {
+            "type": "boolean",
+            "description": "Compile after adding; defaults false. Save forces compile. Failure rolls back the addition."
           },
           "saveAfterEdit": {
             "type": "boolean",
@@ -1384,33 +1388,33 @@
     },
     {
       "name": "AddBlueprintVariableSetNode",
-      "description": "Adds a variable Set node for an local, inherited or external Blueprint-visible member with collision-aware placement, dry-run, and optional save.",
+      "description": "Adds a variable Set node for a function local or Blueprint-visible member (local-first without ownerClassPath; explicit owner selects class members) with collision-aware placement, dry-run, and optional save.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "objectPath": {
             "type": "string",
-            "description": "Blueprint member, graph, or placement selector."
+            "description": "Blueprint/graph/placement selector. ownerClassPath explicitly selects class members; omitted owner resolves a same-function local first."
           },
           "graphName": {
             "type": "string",
-            "description": "Blueprint member, graph, or placement selector."
+            "description": "Blueprint/graph/placement selector. ownerClassPath explicitly selects class members; omitted owner resolves a same-function local first."
           },
           "graphGuid": {
             "type": "string",
-            "description": "Blueprint member, graph, or placement selector."
+            "description": "Blueprint/graph/placement selector. ownerClassPath explicitly selects class members; omitted owner resolves a same-function local first."
           },
           "variableName": {
             "type": "string",
-            "description": "Blueprint member, graph, or placement selector."
+            "description": "Blueprint/graph/placement selector. ownerClassPath explicitly selects class members; omitted owner resolves a same-function local first."
           },
           "ownerClassPath": {
             "type": "string",
-            "description": "Blueprint member, graph, or placement selector."
+            "description": "Blueprint/graph/placement selector. ownerClassPath explicitly selects class members; omitted owner resolves a same-function local first."
           },
           "relativeToNodeGuid": {
             "type": "string",
-            "description": "Blueprint member, graph, or placement selector."
+            "description": "Blueprint/graph/placement selector. ownerClassPath explicitly selects class members; omitted owner resolves a same-function local first."
           },
           "positionX": {
             "type": "integer"
@@ -1421,6 +1425,10 @@
           "dryRun": {
             "type": "boolean",
             "description": "Validate and preview."
+          },
+          "compileAfterEdit": {
+            "type": "boolean",
+            "description": "Compile after adding; defaults false. Save forces compile. Failure rolls back the addition."
           },
           "saveAfterEdit": {
             "type": "boolean",
@@ -1761,7 +1769,7 @@
                 },
                 "ownerClassPath": {
                   "type": "string",
-                  "description": "Plan-local identity or node-specific selector."
+                  "description": "Explicit class owner for member variables or function calls; bypasses function locals."
                 },
                 "functionName": {
                   "type": "string",
@@ -1769,7 +1777,7 @@
                 },
                 "variableName": {
                   "type": "string",
-                  "description": "Plan-local identity or node-specific selector."
+                  "description": "Function-local variable or class property. Without ownerClassPath the selected function\u0027s locals take precedence."
                 },
                 "operator": {
                   "type": "string",
@@ -2191,6 +2199,23 @@
       "description": "Expensive manual action that builds or rebuilds the local UnrealMCP project-understanding index. Prefer user-triggered rebuilds instead of automatic agent-triggered rebuilds.",
       "inputSchema": {
         "type": "object"
+      }
+    },
+    {
+      "name": "CaptureEditorWidget",
+      "description": "Capture an explicit live editor widgetRef to PNG under this project\u0027s Saved/UnrealMCP/Captures. No implicit active window or OS screenshot. Retry frame_pending after graph framing settles.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "widgetRef": {
+            "type": "string",
+            "description": "Required session-local widget/window reference from GetEditorWidgetSnapshot or FrameBlueprintGraph."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "widgetRef"
+        ]
       }
     },
     {
@@ -3217,6 +3242,44 @@
       }
     },
     {
+      "name": "FrameBlueprintGraph",
+      "description": "Open an exact Blueprint graph and frame all nodes or explicit node GUIDs for visual review. Changes editor view/selection only; no compile/save/asset mutation. dryRun validates without changing UI. Capture returned widgetRef after framing settles.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Exact Blueprint object path."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Exact graph name; ambiguity is rejected. graphName or graphGuid is required."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Exact graph GUID. If graphName is also supplied both must match."
+          },
+          "nodeGuids": {
+            "type": "array",
+            "description": "Up to 128 exact node GUIDs belonging to the graph. Omit/empty frames the whole graph.",
+            "items": {
+              "type": "string",
+              "description": "Node GUID."
+            },
+            "maxItems": 128
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate graph and node identities without opening/focusing/selecting, default false."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
       "name": "GetActorInfo",
       "description": "Returns detailed information about one actor from the active editor world, including transform, components, and attached actors.",
       "inputSchema": {
@@ -3474,6 +3537,36 @@
             "description": "Optional max result count. Defaults to 200."
           }
         }
+      }
+    },
+    {
+      "name": "GetEditorWidgetSnapshot",
+      "description": "Read-only native Slate inspection. Without windowRef lists visible editor windows; with an explicit windowRef returns a bounded widget tree. Session-local weak references are used by CaptureEditorWidget.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "windowRef": {
+            "type": "string",
+            "description": "Explicit window reference from a previous window listing. Omit to list windows only."
+          },
+          "maxDepth": {
+            "type": "integer",
+            "description": "Tree depth 0..8, default 4.",
+            "minimum": 0,
+            "maximum": 8
+          },
+          "maxWidgets": {
+            "type": "integer",
+            "description": "Widget count 1..1000, default 500.",
+            "minimum": 1,
+            "maximum": 1000
+          },
+          "includeLabels": {
+            "type": "boolean",
+            "description": "Include bounded widget text labels, default true."
+          }
+        },
+        "additionalProperties": false
       }
     },
     {

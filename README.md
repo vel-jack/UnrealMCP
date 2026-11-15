@@ -4,7 +4,7 @@
 
 See [MCP Tool Index](docs/MCP-Tool-Index.md) for a searchable routing index across custom and official MCP tools, without full schemas. Regenerate it with `python Scripts/refresh_tool_index.py`; add `--official-url <endpoint>` to capture official discovery metadata live. Without an endpoint, the generator uses the checked-in official metadata snapshot and bundled native catalog, retaining their capture dates. Exact input schemas are fetched from the owning server when needed.
 
-`Adapter/UnrealMCP.Adapter/unreal-tools.json` contains 154 native tool definitions captured from the UGitClientSample UE 5.8 editor on November 15, 2026. The adapter copies this catalog into build output for offline discovery; a successful live attachment remains authoritative.
+`Adapter/UnrealMCP.Adapter/unreal-tools.json` contains 157 native tool definitions captured from the UGitClientSample UE 5.8 editor on November 15, 2026. The adapter copies this catalog into build output for offline discovery; a successful live attachment remains authoritative.
 
 If a registered tool is missing, call `unreal.adapter.RefreshToolManifest`, then re-list tools. In compact mode use `SearchTools`, `GetToolSchema`, and `CallTool`. If these discovery tools are themselves missing, check the running adapter version: refreshing a catalog cannot upgrade an old executable. Build the adapter, then reconnect clients to the new executable. Updating the plugin DLL alone does not update the external adapter.
 
@@ -614,3 +614,15 @@ Coverage excludes graph literals, local-variable defaults, placed level instance
 - `SetSwitchCases(objectPath, graphName|graphGuid, nodeGuid, cases, renames?, dryRun, confirm)` edits String switches. `renames` preserves case execution links; removed links are reported and Default remains. Cases are bounded to 128 unique labels. Enum switch pins follow enum metadata; arbitrary enum pin edits are rejected.
 - `GetBlueprintClassDefaults(..., declaredInOnly=classPath)` filters one exact declaring class before pagination. `ReparentBlueprint(..., onlyUsed=true)` filters defaults to target graph usage and target/descendant overrides. Its descendant scan is bounded to 256 and reports incomplete coverage; equal-to-parent values are treated as inherited.
 - `MoveAsset` redirector fixup checks the dirty-package snapshot from before rename, so the move's own dirtying does not count as pre-existing user edits. Existing dirty referencers still require explicit `allowSavingDirtyReferencers=true`.
+
+### Function locals and visual graph review
+
+`AddBlueprintVariableGetNode`, `AddBlueprintVariableSetNode`, patch `variableGet`/`variableSet`, and variable retargeting resolve locals from the selected function's entry declaration. Scoped references retain the local GUID and function name; same-named locals in other functions remain separate. With no owner specified locals take precedence; explicit `ownerClassPath` (`newOwnerClassPath` for retargeting) selects a class member instead. Results include `variableScope`, `scopeName`, and declaration identity. Fresh uncompiled locals use their declared pin types, including Actor arrays. Primitive get/set tools accept `compileAfterEdit` (default false); saving forces compile, and compile failure reports rollback evidence. Atomic graph patches preserve locals and restore target dirty/status state after rollback.
+
+For native editor review through the adapter:
+
+1. `FrameBlueprintGraph(objectPath, graphName|graphGuid, nodeGuids?, dryRun?)` opens the exact graph and frames all nodes or a bounded node selection. It changes view/selection only. A dry run validates identities without opening an editor.
+2. `CaptureEditorWidget(widgetRef)` captures the graph reference returned by framing, after layout/zoom settles. `frame_pending` means retry after the reported delay. Captures are PNG files under the current project's `Saved/UnrealMCP/Captures`; the result includes the absolute filename and dimensions.
+3. `GetEditorWidgetSnapshot()` lists visible editor windows. Pass an explicit `windowRef` from that list for a bounded widget tree (`maxDepth` 0..8, `maxWidgets` 1..1000). Individual widget references can also be captured.
+
+References are session-local weak references; stale, hidden or detached widgets are rejected. Capture requires an explicit reference, a visible interactive Slate renderer, and at most 16 million pixels. No implicit active-window capture or desktop automation is used. These tools do not depend on the official SlateInspector toolset. They cannot establish gameplay behavior or replace PIE verification of trajectory self-hits. The DSM gameplay patch is not part of this plugin implementation.

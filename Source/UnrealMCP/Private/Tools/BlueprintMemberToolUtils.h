@@ -17,12 +17,16 @@ namespace UnrealMCP::BlueprintMemberToolUtils
         FProperty* Property = nullptr;
         UClass* DeclaringClass = nullptr;
         UClass* ExternalOwner = nullptr;
-        bool IsSelfContext() const { return ExternalOwner == nullptr; }
+        FString LocalScope;
+        FString DeclarationPath;
+        bool IsLocalContext() const { return !LocalScope.IsEmpty(); }
+        bool IsSelfContext() const { return ExternalOwner == nullptr && !IsLocalContext(); }
     };
     bool IsSelfOrAncestor(UBlueprint* Blueprint, UClass* Owner);
-    bool ResolveVariable(UBlueprint* Blueprint, const FString& VariableName, const FString& OwnerPath,
+    bool ResolveVariable(UBlueprint* Blueprint, UEdGraph* Graph, const FString& VariableName, const FString& OwnerPath,
         bool bWrite, FResolvedVariable& Out, FString& Error);
     UK2Node_Variable* CreateVariableNode(UEdGraph* Graph, const FResolvedVariable& Variable, bool bSet, bool bDetached);
+    void EnsureLocalVariablePins(UK2Node_Variable* Node);
     bool ValidateStringCases(const TArray<FString>& Cases, FString& Error);
     bool ResolveParentFunction(UBlueprint* Blueprint, const FString& FunctionName, UFunction*& Out, FString& Error);
     UK2Node_CallParentFunction* CreateParentCall(UEdGraph* Graph, UFunction* Function, bool bDetached);

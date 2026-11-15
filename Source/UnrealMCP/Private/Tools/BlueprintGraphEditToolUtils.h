@@ -63,6 +63,11 @@ namespace UnrealMCP::BlueprintGraphEditToolUtils
         TArray<TSharedPtr<FJsonValue>> Pins;
         bool bAdded = false;
         bool bSaved = false;
+        bool bCompiled = false;
+        bool bCompileSucceeded = false;
+        bool bRolledBack = false;
+        TArray<TSharedPtr<FJsonValue>> Errors;
+        TArray<TSharedPtr<FJsonValue>> Warnings;
         FString SavedFilename;
         bool bIndexRefreshed = false;
         FString IndexRefreshError;
@@ -78,5 +83,6 @@ namespace UnrealMCP::BlueprintGraphEditToolUtils
         bool bDryRun,
         bool bSave,
         const FText& TransactionDescription,
-        FGraphNodeFactory CreateNode);
+        FGraphNodeFactory CreateNode,
+        bool bCompileAfterEdit = false);
 }

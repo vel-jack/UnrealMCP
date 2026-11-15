@@ -50,6 +50,7 @@
 #include "Tools/FindClassUsagesTool.h"
 #include "Tools/RetargetBlueprintNodeTool.h"
 #include "Tools/BlueprintMemberGraphTools.h"
+#include "Tools/EditorVisualTools.h"
 #include "Tools/BlueprintLocalVariableTools.h"
 #include "Tools/BlueprintClassDefaultsTools.h"
 #include "Tools/DiscardDirtyPackagesForShutdownTool.h"
@@ -350,6 +351,9 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FBlueprintMemberGraphTool>(EBlueprintMemberGraphEdit::RetargetMember));
     Registry.RegisterTool(MakeShared<FBlueprintMemberGraphTool>(EBlueprintMemberGraphEdit::SwitchCases));
     Registry.RegisterTool(MakeShared<FOverrideBlueprintFunctionTool>());
+    Registry.RegisterTool(MakeShared<FGetEditorWidgetSnapshotTool>());
+    Registry.RegisterTool(MakeShared<FCaptureEditorWidgetTool>());
+    Registry.RegisterTool(MakeShared<FFrameBlueprintGraphTool>());
     Registry.RegisterTool(MakeShared<FListBlueprintLocalVariablesTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintLocalVariableTool>());
     Registry.RegisterTool(MakeShared<FRemoveBlueprintLocalVariableTool>());

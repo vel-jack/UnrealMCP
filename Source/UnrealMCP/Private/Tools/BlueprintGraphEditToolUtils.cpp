@@ -5,6 +5,7 @@
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
+#include "Editor.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_IfThenElse.h"
 #include "K2Node_Knot.h"
@@ -16,6 +17,7 @@
 #include "ScopedTransaction.h"
 #include "Tools/BlueprintEditToolUtils.h"
 #include "Tools/BlueprintToolUtils.h"
+#include "Tools/BlueprintMemberToolUtils.h"
 
 namespace UnrealMCP::BlueprintGraphEditToolUtils
 {
@@ -364,6 +366,7 @@ namespace UnrealMCP::BlueprintGraphEditToolUtils
         Node->CreateNewGuid();
         Node->PostPlacedNewNode();
         Node->AllocateDefaultPins();
+        BlueprintMemberToolUtils::EnsureLocalVariablePins(Cast<UK2Node_Variable>(Node));
         Node->NodePosX = Placement.X;
         Node->NodePosY = Placement.Y;
     }
@@ -384,7 +387,8 @@ namespace UnrealMCP::BlueprintGraphEditToolUtils
         bool bDryRun,
         bool bSave,
         const FText& TransactionDescription,
-        FGraphNodeFactory CreateNode)
+        FGraphNodeFactory CreateNode,
+        bool bCompileAfterEdit)
     {
         FNodeAdditionResult Result;
         FString ExecutionError;
@@ -422,27 +426,64 @@ namespace UnrealMCP::BlueprintGraphEditToolUtils
                 return true;
             }
 
-            const FScopedTransaction Transaction(TransactionDescription);
-            Blueprint->Modify();
-            Graph->Modify();
-            FString FactoryError;
-            UEdGraphNode* Node = CreateNode(Blueprint, Graph, false, FactoryError);
-            if (!Node)
+            if (!GEditor || GEditor->IsTransactionActive())
             {
-                OutError = FactoryError;
+                OutError = TEXT("An idle transaction system is required.");
                 return false;
             }
+            const bool bDirtyBefore = Blueprint->GetPackage()->IsDirty();
+            const auto StatusBefore = Blueprint->Status;
+            {
+                FScopedTransaction Transaction(TransactionDescription);
+                if (!GUndo)
+                {
+                    OutError = TEXT("Undo recording is unavailable; no node added.");
+                    return false;
+                }
+                Blueprint->Modify();
+                Graph->Modify();
+                FString FactoryError;
+                UEdGraphNode* Node = CreateNode(Blueprint, Graph, false, FactoryError);
+                if (!Node)
+                {
+                    Transaction.Cancel();
+                    Blueprint->Status = StatusBefore;
+                    Blueprint->GetPackage()->SetDirtyFlag(bDirtyBefore);
+                    OutError = FactoryError;
+                    return false;
+                }
 
-            PlaceNewNode(Graph, Node, Result.Placement);
-            FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
-            Result.NodeGuid = GetNodeGuid(Node);
-            Result.Pins = SerializePins(Node);
-            Result.bAdded = true;
-            return SaveAndRefreshIfRequested(Blueprint, ObjectPath, bSave, Result.SavedFilename, Result.bIndexRefreshed, Result.IndexRefreshError, OutError);
+                PlaceNewNode(Graph, Node, Result.Placement);
+                FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+                Result.NodeGuid = GetNodeGuid(Node);
+                Result.Pins = SerializePins(Node);
+                Result.bAdded = true;
+            }
+            if (bCompileAfterEdit)
+            {
+                Result.bCompiled = true;
+                Result.bCompileSucceeded = BlueprintEditToolUtils::CompileWithLocatedMessages(Blueprint, Result.Errors, Result.Warnings);
+                if (!Result.bCompileSucceeded)
+                {
+                    Result.bRolledBack = GEditor->UndoTransaction();
+                    Result.bAdded = !Result.bRolledBack;
+                    if (Result.bRolledBack)
+                    {
+                        TArray<TSharedPtr<FJsonValue>> RestoreErrors, RestoreWarnings;
+                        BlueprintEditToolUtils::CompileWithLocatedMessages(Blueprint, RestoreErrors, RestoreWarnings);
+                        Blueprint->Status = StatusBefore;
+                        Blueprint->GetPackage()->SetDirtyFlag(bDirtyBefore);
+                    }
+                    OutError = TEXT("Compilation failed; node addition rolled back where indicated.");
+                    return false;
+                }
+            }
+            if (!SaveAndRefreshIfRequested(Blueprint, ObjectPath, bSave, Result.SavedFilename, Result.bIndexRefreshed, Result.IndexRefreshError, OutError)) return false;
+            Result.bSaved = bSave;
+            return true;
         }, ExecutionError);
 
         Result.bSucceeded = bSucceeded;
-        Result.bSaved = bSave && !bDryRun;
         if (!bSucceeded)
         {
             Result.ErrorMessage = ExecutionError;

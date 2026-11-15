@@ -260,18 +260,22 @@ namespace
         if (Spec.Kind.Equals(TEXT("existingNode"), ESearchCase::IgnoreCase)) return Node != nullptr;
         if (Spec.Kind.Equals(TEXT("functionCall"), ESearchCase::IgnoreCase)
             || Spec.Kind.Equals(TEXT("typedOperator"), ESearchCase::IgnoreCase))
-            return Cast<UK2Node_CallFunction>(Node) != nullptr
-                && CastChecked<UK2Node_CallFunction>(Node)->GetTargetFunction() == Spec.Function;
+        {
+            const auto* Call = Cast<UK2Node_CallFunction>(Node);
+            const UFunction* Target = Call ? Call->GetTargetFunction() : nullptr;
+            return Target && Spec.Function && Target->GetFName() == Spec.Function->GetFName()
+                && Target->GetOwnerClass()->GetAuthoritativeClass() == Spec.Function->GetOwnerClass()->GetAuthoritativeClass();
+        }
         if (Spec.Kind.Equals(TEXT("variableGet"), ESearchCase::IgnoreCase))
             return Cast<UK2Node_VariableGet>(Node) != nullptr
                 && CastChecked<UK2Node_VariableGet>(Node)->VariableReference.GetMemberName() == FName(*Spec.VariableName)
                 && (!Spec.VariableGuid.IsValid() || CastChecked<UK2Node_VariableGet>(Node)->VariableReference.GetMemberGuid() == Spec.VariableGuid)
-                && (Spec.VariableOwner ? CastChecked<UK2Node_VariableGet>(Node)->VariableReference.GetMemberParentClass() == Spec.VariableOwner : CastChecked<UK2Node_VariableGet>(Node)->VariableReference.IsSelfContext());
+                && (Spec.Variable.IsLocalContext() ? (CastChecked<UK2Node_VariableGet>(Node)->VariableReference.IsLocalScope() && CastChecked<UK2Node_VariableGet>(Node)->VariableReference.GetMemberScopeName() == Spec.Variable.LocalScope) : (Spec.VariableOwner ? CastChecked<UK2Node_VariableGet>(Node)->VariableReference.GetMemberParentClass() == Spec.VariableOwner : CastChecked<UK2Node_VariableGet>(Node)->VariableReference.IsSelfContext()));
         if (Spec.Kind.Equals(TEXT("variableSet"), ESearchCase::IgnoreCase))
             return Cast<UK2Node_VariableSet>(Node) != nullptr
                 && CastChecked<UK2Node_VariableSet>(Node)->VariableReference.GetMemberName() == FName(*Spec.VariableName)
                 && (!Spec.VariableGuid.IsValid() || CastChecked<UK2Node_VariableSet>(Node)->VariableReference.GetMemberGuid() == Spec.VariableGuid)
-                && (Spec.VariableOwner ? CastChecked<UK2Node_VariableSet>(Node)->VariableReference.GetMemberParentClass() == Spec.VariableOwner : CastChecked<UK2Node_VariableSet>(Node)->VariableReference.IsSelfContext());
+                && (Spec.Variable.IsLocalContext() ? (CastChecked<UK2Node_VariableSet>(Node)->VariableReference.IsLocalScope() && CastChecked<UK2Node_VariableSet>(Node)->VariableReference.GetMemberScopeName() == Spec.Variable.LocalScope) : (Spec.VariableOwner ? CastChecked<UK2Node_VariableSet>(Node)->VariableReference.GetMemberParentClass() == Spec.VariableOwner : CastChecked<UK2Node_VariableSet>(Node)->VariableReference.IsSelfContext()));
         if (Spec.Kind.Equals(TEXT("parentCall"), ESearchCase::IgnoreCase)) return Node && Node->IsA<UK2Node_CallParentFunction>() && CastChecked<UK2Node_CallParentFunction>(Node)->GetTargetFunction() == Spec.Function;
         if (Spec.Kind.Equals(TEXT("self"), ESearchCase::IgnoreCase)) return Node && Node->IsA<UK2Node_Self>();
         if (Spec.Kind.Equals(TEXT("macro"), ESearchCase::IgnoreCase)) return Node && Node->IsA<UK2Node_MacroInstance>() && CastChecked<UK2Node_MacroInstance>(Node)->GetMacroGraph() == Spec.MacroGraph;
@@ -440,11 +444,12 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
     }
 
     const bool bDryRun = BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("dryRun"), false);
-    const bool bCompile = BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("compileAfterEdit"), true);
+    const bool bCompile = BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("saveAfterEdit"), false) || BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("compileAfterEdit"), true);
     const bool bSave = BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("saveAfterEdit"), false);
     FString InitialRevision, FinalRevision, SavedFilename, IndexError, ExecutionError;
     bool bChanged = false, bCompiled = false, bCompileSucceeded = false, bSaved = false, bIndexRefreshed = false, bRolledBack = false;
     int32 CompileErrors = 0, CompileWarnings = 0;
+    TArray<TSharedPtr<FJsonValue>> LocatedErrors, LocatedWarnings;
 
     FMutationRequestTracker::Get().Update(OperationId, EMutationRequestState::Preflighting,
         TEXT("Resolving the target graph and simulating the complete patch."));
@@ -456,6 +461,16 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
             || !BlueprintGraphEditToolUtils::ResolveGraph(Blueprint, GraphName, GraphGuid, Graph, Error)) return false;
         const UEdGraphSchema_K2* Schema = Cast<UEdGraphSchema_K2>(Graph->GetSchema());
         if (Schema == nullptr) { Error = TEXT("Selected graph is not a K2 graph."); return false; }
+        const bool bDirtyBefore = Blueprint->GetPackage()->IsDirty();
+        const EBlueprintStatus StatusBefore = Blueprint->Status;
+        auto RestoreRollbackState = [&]()
+        {
+            if (bRolledBack)
+            {
+                Blueprint->GetPackage()->SetDirtyFlag(bDirtyBefore); Blueprint->Status = StatusBefore;
+                FinalRevision = BlueprintGraphEditToolUtils::ComputeGraphRevision(Graph);
+            }
+        };
         InitialRevision = BlueprintGraphEditToolUtils::ComputeGraphRevision(Graph);
         if (!ExpectedRevision.IsEmpty() && !ExpectedRevision.Equals(InitialRevision, ESearchCase::IgnoreCase))
         { Error = FString::Printf(TEXT("Graph revision mismatch. expected=%s current=%s"), *ExpectedRevision, *InitialRevision); return false; }
@@ -493,7 +508,7 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
                 else if (Spec.Kind.Equals(TEXT("variableGet"), ESearchCase::IgnoreCase)
                     || Spec.Kind.Equals(TEXT("variableSet"), ESearchCase::IgnoreCase))
                 {
-                    if (!BlueprintMemberToolUtils::ResolveVariable(Blueprint, Spec.VariableName, Spec.OwnerClassPath,
+                    if (!BlueprintMemberToolUtils::ResolveVariable(Blueprint, Graph, Spec.VariableName, Spec.OwnerClassPath,
                         Spec.Kind.Equals(TEXT("variableSet"), ESearchCase::IgnoreCase), Spec.Variable, Error)) return false;
                     Spec.VariableGuid = Spec.Variable.Guid; Spec.VariableOwner = Spec.Variable.ExternalOwner;
                 }
@@ -702,6 +717,7 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
             bRolledBack = GEditor != nullptr && GEditor->UndoTransaction();
             if (bRolledBack) FMutationRequestTracker::Get().Update(OperationId, EMutationRequestState::RolledBack,
                 TEXT("Patch application failed and the editor transaction was rolled back."));
+                RestoreRollbackState();
             if (!bRolledBack) Error += TEXT(" Immediate transaction rollback failed.");
             return false;
         }
@@ -710,12 +726,8 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
         {
             FMutationRequestTracker::Get().Update(OperationId, EMutationRequestState::Compiling,
                 TEXT("Compiling the mutated Blueprint before any save."));
-            FCompilerResultsLog Log; Log.bSilentMode = true;
-            FKismetEditorUtilities::CompileBlueprint(
-                Blueprint, EBlueprintCompileOptions::SkipSave | EBlueprintCompileOptions::SkipGarbageCollection, &Log);
-            bCompiled = true; CompileErrors = Log.NumErrors; CompileWarnings = Log.NumWarnings;
-            bCompileSucceeded = CompileErrors == 0
-                && (Blueprint->Status == BS_UpToDate || Blueprint->Status == BS_UpToDateWithWarnings);
+            bCompileSucceeded = BlueprintEditToolUtils::CompileWithLocatedMessages(Blueprint, LocatedErrors, LocatedWarnings);
+            bCompiled = true; CompileErrors = LocatedErrors.Num(); CompileWarnings = LocatedWarnings.Num();
             if (!bCompileSucceeded)
             {
                 bRolledBack = GEditor != nullptr && GEditor->UndoTransaction();
@@ -730,6 +742,7 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
                         EBlueprintCompileOptions::SkipSave | EBlueprintCompileOptions::SkipGarbageCollection,
                         &RollbackLog);
                 }
+                RestoreRollbackState();
                 Error = FString::Printf(TEXT("Blueprint compilation failed with %d errors; patch rolled back=%s."),
                     CompileErrors, bRolledBack ? TEXT("true") : TEXT("false"));
                 return false;
@@ -744,6 +757,7 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
                 bRolledBack = GEditor != nullptr && GEditor->UndoTransaction();
                 if (bRolledBack) FMutationRequestTracker::Get().Update(OperationId, EMutationRequestState::RolledBack,
                     TEXT("Asset save failed and the graph patch was rolled back."));
+                RestoreRollbackState();
                 return false;
             }
             bSaved = true;
@@ -754,7 +768,15 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
     }, ExecutionError);
 
     if (!bSucceeded)
-        return BuildError(Request, EMCPErrorCode::InvalidParams, ExecutionError);
+    {
+        auto Evidence = BuildBooleanResult(false);
+        Evidence->SetArrayField(TEXT("errors"), LocatedErrors); Evidence->SetArrayField(TEXT("warnings"), LocatedWarnings);
+        Evidence->SetBoolField(TEXT("rolledBack"), bRolledBack); Evidence->SetBoolField(TEXT("saved"), bSaved);
+        Evidence->SetBoolField(TEXT("changed"), bChanged && !bRolledBack);
+        Evidence->SetNumberField(TEXT("compileErrors"), CompileErrors); Evidence->SetNumberField(TEXT("compileWarnings"), CompileWarnings);
+        Evidence->SetStringField(TEXT("initialGraphRevision"), InitialRevision); Evidence->SetStringField(TEXT("finalGraphRevision"), FinalRevision);
+        return BuildError(Request, EMCPErrorCode::InvalidParams, ExecutionError, Evidence);
+    }
 
     FString DetailLevel = TEXT("summary");
     Request.Params->TryGetStringField(TEXT("detailLevel"), DetailLevel);
@@ -783,10 +805,13 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
             Color->SetNumberField(TEXT("g"), Comment->CommentColor.G); Color->SetNumberField(TEXT("b"), Comment->CommentColor.B);
             Item->SetObjectField(TEXT("color"), Color);
         }
-        if (Node.Variable.Property)
+        if (!Node.Variable.Name.IsNone())
         {
+            Item->SetStringField(TEXT("variableScope"), Node.Variable.IsLocalContext() ? TEXT("local") : TEXT("member"));
+            Item->SetStringField(TEXT("scopeName"), Node.Variable.LocalScope);
+            Item->SetStringField(TEXT("variableGuid"), Node.Variable.Guid.ToString(EGuidFormats::DigitsWithHyphensLower));
             Item->SetBoolField(TEXT("selfContext"), Node.Variable.IsSelfContext());
-            Item->SetStringField(TEXT("declaredIn"), Node.Variable.DeclaringClass->GetPathName());
+            Item->SetStringField(TEXT("declaredIn"), Node.Variable.DeclarationPath);
         }
         if (bIncludePins) Item->SetArrayField(TEXT("pins"), BlueprintGraphEditToolUtils::SerializePins(ResultNode));
         NodeResults.Add(MakeShared<FJsonValueObject>(Item));
@@ -822,6 +847,7 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
     int32 WildcardResolvedConnectionCount = 0;
     for (const FPatchConnection& Connection : Connections)
         if (Connection.bWildcardResolved) ++WildcardResolvedConnectionCount;
+    Result->SetArrayField(TEXT("errors"), LocatedErrors); Result->SetArrayField(TEXT("warnings"), LocatedWarnings);
     Result->SetStringField(TEXT("objectPath"), ObjectPath); Result->SetStringField(TEXT("patchId"), PatchId);
     Result->SetStringField(TEXT("initialGraphRevision"), InitialRevision); Result->SetStringField(TEXT("finalGraphRevision"), FinalRevision);
     Result->SetBoolField(TEXT("dryRun"), bDryRun); Result->SetBoolField(TEXT("changed"), bChanged);
@@ -850,6 +876,8 @@ TSharedPtr<FJsonObject> FApplyBlueprintGraphPatchTool::BuildInputSchema() const
     TSharedRef<FJsonObject> NodeProperties = MakeShared<FJsonObject>();
     for (const TCHAR* FieldName : {TEXT("id"), TEXT("kind"), TEXT("nodeGuid"), TEXT("ownerClassPath"), TEXT("functionName"), TEXT("variableName"), TEXT("operator"), TEXT("comment"), TEXT("macroPath"), TEXT("enumPath"), TEXT("targetClassPath")})
         NodeProperties->SetObjectField(FieldName, BuildStringProperty(TEXT("Plan-local identity or node-specific selector.")));
+    NodeProperties->SetObjectField(TEXT("variableName"), BuildStringProperty(TEXT("Function-local variable or class property. Without ownerClassPath the selected function's locals take precedence.")));
+    NodeProperties->SetObjectField(TEXT("ownerClassPath"), BuildStringProperty(TEXT("Explicit class owner for member variables or function calls; bypasses function locals.")));
     TSharedRef<FJsonObject> Integer = MakeShared<FJsonObject>(); Integer->SetStringField(TEXT("type"), TEXT("integer"));
     TSharedRef<FJsonObject> Number = MakeShared<FJsonObject>(); Number->SetStringField(TEXT("type"), TEXT("number"));
     NodeProperties->SetObjectField(TEXT("positionX"), Integer); NodeProperties->SetObjectField(TEXT("positionY"), Integer);

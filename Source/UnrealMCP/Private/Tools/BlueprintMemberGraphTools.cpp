@@ -90,6 +90,7 @@ namespace
         for (UEdGraphPin* P : Node->Pins) if (P) if (const FName* Renamed = Map.Find(P->PinName)) P->PinName = *Renamed;
         if (!Configure(Node, Error)) return false;
         Node->ReconstructNode();
+        Member::EnsureLocalVariablePins(Cast<UK2Node_Variable>(Node));
         TArray<UEdGraphPin*> Orphans;
         for (UEdGraphPin* P : Node->Pins) if (P && P->bOrphanedPin) Orphans.Add(P);
         for (UEdGraphPin* P : Orphans) Node->RemovePin(P);
@@ -190,10 +191,12 @@ UnrealMCP::FMCPResponse FBlueprintMemberGraphTool::Execute(const UnrealMCP::FMCP
         else if (auto* V = Cast<UK2Node_Variable>(Node))
         {
             if ((!Node->IsA<UK2Node_VariableGet>() && !Node->IsA<UK2Node_VariableSet>()) || MemberName.IsEmpty()
-                || !Member::ResolveVariable(BP, MemberName, OwnerPath, Node->IsA<UK2Node_VariableSet>(), Variable, OutError)) return false;
+                || !Member::ResolveVariable(BP, Graph, MemberName, OwnerPath, Node->IsA<UK2Node_VariableSet>(), Variable, OutError)) return false;
             if (V->VariableReference.GetMemberName() != Variable.Name && !Mapping.Contains(V->VariableReference.GetMemberName()))
                 Mapping.Add(V->VariableReference.GetMemberName(), Variable.Name);
-            Result->SetBoolField(TEXT("selfContext"), Variable.IsSelfContext()); Result->SetStringField(TEXT("declaredIn"), Variable.DeclaringClass->GetPathName());
+            Result->SetStringField(TEXT("variableScope"), Variable.IsLocalContext() ? TEXT("local") : TEXT("member"));
+            Result->SetStringField(TEXT("scopeName"), Variable.LocalScope);
+            Result->SetBoolField(TEXT("selfContext"), Variable.IsSelfContext()); Result->SetStringField(TEXT("declaredIn"), Variable.DeclarationPath);
         }
         else if (Node->IsA<UK2Node_CallFunction>() && !Node->IsA<UK2Node_CallParentFunction>())
         {
@@ -210,7 +213,8 @@ UnrealMCP::FMCPResponse FBlueprintMemberGraphTool::Execute(const UnrealMCP::FMCP
             if (auto* Switch = Cast<UK2Node_SwitchString>(Target)) { Switch->PinNames = Cases; Switch->bHasDefaultPin = true; }
             else if (auto* V = Cast<UK2Node_Variable>(Target))
             {
-                if (Variable.ExternalOwner) V->VariableReference.SetExternalMember(Variable.Name, Variable.ExternalOwner, Variable.Guid);
+                if (Variable.IsLocalContext()) V->VariableReference.SetLocalMember(Variable.Name, Variable.LocalScope, Variable.Guid);
+                else if (Variable.ExternalOwner) V->VariableReference.SetExternalMember(Variable.Name, Variable.ExternalOwner, Variable.Guid);
                 else V->VariableReference.SetSelfMember(Variable.Name, Variable.Guid);
             }
             else CastChecked<UK2Node_CallFunction>(Target)->SetFromFunction(Function);

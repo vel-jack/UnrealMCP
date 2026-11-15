@@ -8,11 +8,11 @@
 #include "Tools/BlueprintGraphEditToolUtils.h"
 
 FAddBlueprintVariableGetNodeTool::FAddBlueprintVariableGetNodeTool()
-    : FMCPToolBase(TEXT("AddBlueprintVariableGetNode"), TEXT("Adds a variable Get node for an local, inherited or external Blueprint-visible member with collision-aware placement, dry-run, and optional save.")) {}
+    : FMCPToolBase(TEXT("AddBlueprintVariableGetNode"), TEXT("Adds a variable Get node for a function local or Blueprint-visible member (local-first without ownerClassPath; explicit owner selects class members) with collision-aware placement, dry-run, and optional save.")) {}
 
 UnrealMCP::FMCPResponse FAddBlueprintVariableGetNodeTool::Execute(const UnrealMCP::FMCPRequest& Request) const
 {
-    FString O, G, GG, VariableName, OwnerClassPath, DeclaredIn;
+    FString O, G, GG, VariableName, OwnerClassPath, DeclaredIn, VariableScope, ScopeName, VariableGuid;
     bool bSelfContext = true;
     if (!Request.Params.IsValid() || !Request.Params->TryGetStringField(TEXT("objectPath"), O) || !Request.Params->TryGetStringField(TEXT("variableName"), VariableName))
     {
@@ -36,8 +36,10 @@ UnrealMCP::FMCPResponse FAddBlueprintVariableGetNodeTool::Execute(const UnrealMC
         [&](UBlueprint* Blueprint, UEdGraph* Graph, bool bDetached, FString& OutError) -> UEdGraphNode*
         {
             UnrealMCP::BlueprintMemberToolUtils::FResolvedVariable Variable;
-            if (!UnrealMCP::BlueprintMemberToolUtils::ResolveVariable(Blueprint, VariableName, OwnerClassPath, false, Variable, OutError)) return nullptr;
-            bSelfContext = Variable.IsSelfContext(); DeclaredIn = Variable.DeclaringClass->GetPathName();
+            if (!UnrealMCP::BlueprintMemberToolUtils::ResolveVariable(Blueprint, Graph, VariableName, OwnerClassPath, false, Variable, OutError)) return nullptr;
+            bSelfContext = Variable.IsSelfContext(); DeclaredIn = Variable.DeclarationPath;
+            VariableScope = Variable.IsLocalContext() ? TEXT("local") : TEXT("member"); ScopeName = Variable.LocalScope;
+            VariableGuid = Variable.Guid.ToString(EGuidFormats::DigitsWithHyphensLower);
             UEdGraphNode* Node = UnrealMCP::BlueprintMemberToolUtils::CreateVariableNode(Graph, Variable, false, bDetached);
             if (!Node)
             {
@@ -45,17 +47,21 @@ UnrealMCP::FMCPResponse FAddBlueprintVariableGetNodeTool::Execute(const UnrealMC
             }
 
             return Node;
-        });
+        }, Save || UnrealMCP::BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("compileAfterEdit"), false));
 
     if (!Result.bSucceeded)
     {
-        return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, Result.ErrorMessage);
+        auto Evidence = BuildBooleanResult(false); Evidence->SetBoolField(TEXT("added"), Result.bAdded);
+        Evidence->SetBoolField(TEXT("rolledBack"), Result.bRolledBack); Evidence->SetBoolField(TEXT("saved"), Result.bSaved);
+        Evidence->SetArrayField(TEXT("errors"), Result.Errors); Evidence->SetArrayField(TEXT("warnings"), Result.Warnings);
+        return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, Result.ErrorMessage, Evidence);
     }
 
     UnrealMCP::FMCPResponse R;
     R.Id = Request.Id;
     auto J = BuildBooleanResult(true);
     J->SetStringField(TEXT("variableName"), VariableName);
+    J->SetStringField(TEXT("variableScope"), VariableScope); J->SetStringField(TEXT("scopeName"), ScopeName); J->SetStringField(TEXT("variableGuid"), VariableGuid);
     J->SetBoolField(TEXT("selfContext"), bSelfContext); J->SetStringField(TEXT("declaredIn"), DeclaredIn);
     J->SetStringField(TEXT("nodeGuid"), Result.NodeGuid);
     J->SetStringField(TEXT("nodeType"), TEXT("variable_get"));
@@ -66,6 +72,9 @@ UnrealMCP::FMCPResponse FAddBlueprintVariableGetNodeTool::Execute(const UnrealMC
     J->SetNumberField(TEXT("positionY"), Result.Placement.Y);
     J->SetBoolField(TEXT("collisionAdjusted"), Result.Placement.bCollisionAdjusted);
     J->SetArrayField(TEXT("pins"), Result.Pins);
+    J->SetArrayField(TEXT("errors"), Result.Errors); J->SetArrayField(TEXT("warnings"), Result.Warnings);
+    J->SetBoolField(TEXT("compiled"), Result.bCompiled); J->SetBoolField(TEXT("compileSucceeded"), Result.bCompileSucceeded);
+    J->SetBoolField(TEXT("rolledBack"), Result.bRolledBack);
     J->SetBoolField(TEXT("saved"), Result.bSaved);
     J->SetBoolField(TEXT("indexRefreshed"), Result.bIndexRefreshed);
     J->SetStringField(TEXT("indexRefreshError"), Result.IndexRefreshError);
@@ -81,7 +90,7 @@ TSharedPtr<FJsonObject> FAddBlueprintVariableGetNodeTool::BuildInputSchema() con
     auto P = MakeShared<FJsonObject>();
     for (const TCHAR* N : { TEXT("objectPath"), TEXT("graphName"), TEXT("graphGuid"), TEXT("variableName"), TEXT("ownerClassPath"), TEXT("relativeToNodeGuid") })
     {
-        P->SetObjectField(N, BuildStringProperty(TEXT("Blueprint member, graph, or placement selector.")));
+        P->SetObjectField(N, BuildStringProperty(TEXT("Blueprint/graph/placement selector. ownerClassPath explicitly selects class members; omitted owner resolves a same-function local first.")));
     }
 
     auto I = MakeShared<FJsonObject>();
@@ -89,6 +98,7 @@ TSharedPtr<FJsonObject> FAddBlueprintVariableGetNodeTool::BuildInputSchema() con
     P->SetObjectField(TEXT("positionX"), I);
     P->SetObjectField(TEXT("positionY"), I);
     P->SetObjectField(TEXT("dryRun"), BuildBoolProperty(TEXT("Validate and preview.")));
+    P->SetObjectField(TEXT("compileAfterEdit"), BuildBoolProperty(TEXT("Compile after adding; defaults false. Save forces compile. Failure rolls back the addition.")));
     P->SetObjectField(TEXT("saveAfterEdit"), BuildBoolProperty(TEXT("Save and refresh.")));
     S->SetObjectField(TEXT("properties"), P);
     TArray<TSharedPtr<FJsonValue>> Q{ MakeShared<FJsonValueString>(TEXT("objectPath")), MakeShared<FJsonValueString>(TEXT("variableName")) };
