@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "capturedUtc": "2026-11-15T03:59:17.9794843Z",
+  "capturedUtc": "2026-11-15T05:53:04.8765512Z",
   "tools": [
     {
       "name": "AddBlueprintArrayOperationNode",
@@ -1006,7 +1006,7 @@
     },
     {
       "name": "AddBlueprintOverrideEventNode",
-      "description": "Adds an overrideable parent-class Blueprint event to an exact Blueprint graph with collision-aware placement, dry-run, duplicate rejection, and optional save.",
+      "description": "Adds an overrideable parent-class Blueprint event to an exact Blueprint graph with collision-aware placement, dry-run, duplicate rejection, optional wired parent call, and optional compile/save. Save implies compile; wiring/compile failures roll back the complete addition.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1034,9 +1034,17 @@
             "type": "boolean",
             "description": "Validate the event and preview placement without mutation."
           },
+          "addParentCall": {
+            "type": "boolean",
+            "description": "Add and wire Event X to Parent: X, passing matching parameters. Default false."
+          },
+          "compileAfterEdit": {
+            "type": "boolean",
+            "description": "Compile and roll back addition on compile failure. Default false; saving always compiles."
+          },
           "saveAfterEdit": {
             "type": "boolean",
-            "description": "Save and partially refresh this Blueprint after adding."
+            "description": "Compile, save and partially refresh this Blueprint after adding."
           }
         },
         "required": [
@@ -1325,7 +1333,7 @@
     },
     {
       "name": "AddBlueprintVariableGetNode",
-      "description": "Adds a variable Get node for an exact Blueprint member with collision-aware placement, dry-run, and optional save.",
+      "description": "Adds a variable Get node for an local, inherited or external Blueprint-visible member with collision-aware placement, dry-run, and optional save.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1342,6 +1350,10 @@
             "description": "Blueprint member, graph, or placement selector."
           },
           "variableName": {
+            "type": "string",
+            "description": "Blueprint member, graph, or placement selector."
+          },
+          "ownerClassPath": {
             "type": "string",
             "description": "Blueprint member, graph, or placement selector."
           },
@@ -1372,7 +1384,7 @@
     },
     {
       "name": "AddBlueprintVariableSetNode",
-      "description": "Adds a variable Set node for an exact Blueprint member with collision-aware placement, dry-run, and optional save.",
+      "description": "Adds a variable Set node for an local, inherited or external Blueprint-visible member with collision-aware placement, dry-run, and optional save.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1389,6 +1401,10 @@
             "description": "Blueprint member, graph, or placement selector."
           },
           "variableName": {
+            "type": "string",
+            "description": "Blueprint member, graph, or placement selector."
+          },
+          "ownerClassPath": {
             "type": "string",
             "description": "Blueprint member, graph, or placement selector."
           },
@@ -1498,7 +1514,7 @@
     },
     {
       "name": "AddInputMappingContextMapping",
-      "description": "Adds one key-mapping row to an existing InputMappingContext. Idempotent if the identical Action+Key row already exists.",
+      "description": "Adds one key-mapping row to an existing InputMappingContext. Idempotent if the identical Action\u002BKey row already exists.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1532,7 +1548,7 @@
     },
     {
       "name": "AddUserDefinedStructMember",
-      "description": "Inspect, add or remove authored members of a user-defined struct using Unreal's structure editor. Inspection includes member GUIDs, authored/internal names, types and defaults. Mutations support dryRun, require confirm, compile the struct, never save dependents, and report newly dirtied packages. Referenced structs require allowReferenced=true; removal can discard stored member values. Native structs are excluded.",
+      "description": "Inspect, add or remove authored members of a user-defined struct using Unreal\u0027s structure editor. Inspection includes member GUIDs, authored/internal names, types and defaults. Mutations support dryRun, require confirm, compile the struct, never save dependents, and report newly dirtied packages. Referenced structs require allowReferenced=true; removal can discard stored member values. Native structs are excluded.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1727,7 +1743,7 @@
           },
           "nodes": {
             "type": "array",
-            "description": "Required node kinds: existingNode, functionCall, variableGet, variableSet, typedOperator, branch, reroute, and comment. Nodes may include position, comment, tolerance, and inputDefaults.",
+            "description": "Required node kinds: existingNode, functionCall, variableGet, variableSet, typedOperator, branch, reroute, comment, parentCall, switchString, switchEnum, self, macro, and cast. Nodes may include position, comment, tolerance, and inputDefaults.",
             "items": {
               "type": "object",
               "properties": {
@@ -1763,6 +1779,18 @@
                   "type": "string",
                   "description": "Plan-local identity or node-specific selector."
                 },
+                "macroPath": {
+                  "type": "string",
+                  "description": "Plan-local identity or node-specific selector."
+                },
+                "enumPath": {
+                  "type": "string",
+                  "description": "Plan-local identity or node-specific selector."
+                },
+                "targetClassPath": {
+                  "type": "string",
+                  "description": "Plan-local identity or node-specific selector."
+                },
                 "positionX": {
                   "type": "integer"
                 },
@@ -1771,6 +1799,18 @@
                 },
                 "tolerance": {
                   "type": "number"
+                },
+                "pure": {
+                  "type": "boolean",
+                  "description": "Pure cast; default false."
+                },
+                "cases": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "description": "String switch case label."
+                  },
+                  "maxItems": 128
                 },
                 "width": {
                   "type": "integer"
@@ -2281,7 +2321,7 @@
     },
     {
       "name": "ConsolidateAndDeleteAsset",
-      "description": "Editor 'Replace References' equivalent: repoints every referencer of oldAssetPath to replacementAssetPath, then deletes the old asset (leaving a redirector as the editor does). Requires confirm=true unless dryRun=true; dry-run lists the referencers that would be touched. Does not save: dirtied packages are returned so they can be saved explicitly.",
+      "description": "Editor \u0027Replace References\u0027 equivalent: repoints every referencer of oldAssetPath to replacementAssetPath, then deletes the old asset (leaving a redirector as the editor does). Requires confirm=true unless dryRun=true; dry-run lists the referencers that would be touched. Does not save: dirtied packages are returned so they can be saved explicitly.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2617,7 +2657,7 @@
     },
     {
       "name": "ExplainBlueprintRole",
-      "description": "Returns a structured indexed summary that helps explain a Blueprint's likely role, neighbors, and composition inside the project.",
+      "description": "Returns a structured indexed summary that helps explain a Blueprint\u0027s likely role, neighbors, and composition inside the project.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2689,7 +2729,7 @@
     },
     {
       "name": "ExplainFeatureWorkflow",
-      "description": "Explains a feature query by ranking likely entry assets, then summarizing each candidate's role and nearby indexed flow.",
+      "description": "Explains a feature query by ranking likely entry assets, then summarizing each candidate\u0027s role and nearby indexed flow.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3146,7 +3186,7 @@
     },
     {
       "name": "FixupRedirectors",
-      "description": "Editor 'Fix Up Redirectors in Folder': finds redirectors under packagePath (recursive by default), resaves their referencers and deletes them. Dry-run lists redirectors and referencers only.",
+      "description": "Editor \u0027Fix Up Redirectors in Folder\u0027: finds redirectors under packagePath (recursive by default), resaves their referencers and deletes them. Dry-run lists redirectors and referencers only.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3257,7 +3297,7 @@
     },
     {
       "name": "GetBlueprintClassDefaults",
-      "description": "Reads paged Blueprint class default values and parent overrides without modifying the asset.",
+      "description": "Reads paged Blueprint class default values and parent overrides without modifying the asset. declaredInOnly filters to one exact authoritative declaring class before pagination.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -3277,6 +3317,10 @@
           "includeInherited": {
             "type": "boolean",
             "description": "Include parent properties; default true."
+          },
+          "declaredInOnly": {
+            "type": "string",
+            "description": "Optional exact declaring class path; compares authoritative classes and filters before pagination."
           },
           "onlyOverridden": {
             "type": "boolean",
@@ -3651,7 +3695,7 @@
     },
     {
       "name": "InspectLiveBlueprint",
-      "description": "Read-only live graph/node/pin inspection, including a map's embedded Level Blueprint. Defaults to the current editor level. No index, loading, PIE, compilation or saving.",
+      "description": "Read-only live graph/node/pin inspection, including a map\u0027s embedded Level Blueprint. Defaults to the current editor level. No index, loading, PIE, compilation or saving.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3700,7 +3744,7 @@
     },
     {
       "name": "InspectUserDefinedStruct",
-      "description": "Inspect, add or remove authored members of a user-defined struct using Unreal's structure editor. Inspection includes member GUIDs, authored/internal names, types and defaults. Mutations support dryRun, require confirm, compile the struct, never save dependents, and report newly dirtied packages. Referenced structs require allowReferenced=true; removal can discard stored member values. Native structs are excluded.",
+      "description": "Inspect, add or remove authored members of a user-defined struct using Unreal\u0027s structure editor. Inspection includes member GUIDs, authored/internal names, types and defaults. Mutations support dryRun, require confirm, compile the struct, never save dependents, and report newly dirtied packages. Referenced structs require allowReferenced=true; removal can discard stored member values. Native structs are excluded.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3892,7 +3936,7 @@
     },
     {
       "name": "ListChildBlueprints",
-      "description": "Lists child Blueprints whose parent class is this Blueprint's generated class.",
+      "description": "Lists child Blueprints whose parent class is this Blueprint\u0027s generated class.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4163,6 +4207,43 @@
       }
     },
     {
+      "name": "OverrideBlueprintFunction",
+      "description": "Creates a parent function override with its inherited signature and optional wired parent implementation. Undoable; supports dry-run, compile and explicit save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Exact Blueprint object path or inherited function name."
+          },
+          "functionName": {
+            "type": "string",
+            "description": "Exact Blueprint object path or inherited function name."
+          },
+          "addParentCall": {
+            "type": "boolean",
+            "description": "Wire a callable parent implementation; defaults true."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate without creating a graph."
+          },
+          "compileAfterEdit": {
+            "type": "boolean",
+            "description": "Compile and roll back on failure; defaults true."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Explicitly save after successful compilation."
+          }
+        },
+        "required": [
+          "objectPath",
+          "functionName"
+        ]
+      }
+    },
+    {
       "name": "PlanProjectRefactor",
       "description": "Builds a deterministic, evidence-backed, non-mutating Blueprint refactor plan from indexed architecture analyses. It never changes assets and never treats unused candidates as deletion instructions.",
       "inputSchema": {
@@ -4202,7 +4283,7 @@
     },
     {
       "name": "RefreshBlueprintCallSites",
-      "description": "Finds every same-Blueprint and cross-Blueprint call site of a Blueprint function via the project index and reconstructs each call node to match the function's current signature, compiling callers without saving.",
+      "description": "Finds every same-Blueprint and cross-Blueprint call site of a Blueprint function via the project index and reconstructs each call node to match the function\u0027s current signature, compiling callers without saving.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4395,7 +4476,7 @@
     },
     {
       "name": "RemoveInputMappingContextMapping",
-      "description": "Removes one exact existing Action+Key mapping row from an InputMappingContext. Fails clearly rather than guessing when zero or more than one row matches.",
+      "description": "Removes one exact existing Action\u002BKey mapping row from an InputMappingContext. Fails clearly rather than guessing when zero or more than one row matches.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4433,7 +4514,7 @@
     },
     {
       "name": "RemoveUserDefinedStructMember",
-      "description": "Inspect, add or remove authored members of a user-defined struct using Unreal's structure editor. Inspection includes member GUIDs, authored/internal names, types and defaults. Mutations support dryRun, require confirm, compile the struct, never save dependents, and report newly dirtied packages. Referenced structs require allowReferenced=true; removal can discard stored member values. Native structs are excluded.",
+      "description": "Inspect, add or remove authored members of a user-defined struct using Unreal\u0027s structure editor. Inspection includes member GUIDs, authored/internal names, types and defaults. Mutations support dryRun, require confirm, compile the struct, never save dependents, and report newly dirtied packages. Referenced structs require allowReferenced=true; removal can discard stored member values. Native structs are excluded.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4473,7 +4554,7 @@
     },
     {
       "name": "ReparentBlueprint",
-      "description": "Changes a Blueprint's parent class. Dry-run/preflight lists graph nodes using old-parent members the new parent lacks (graph, nodeGuid, member), dropped overrides, lost interfaces, and inherited defaults that are lost or change value. Apply refreshes nodes, compiles, and reports located errors; never saves a failed compile unless allowSaveWithErrors=true.",
+      "description": "Changes a Blueprint\u0027s parent class. Dry-run/preflight lists graph nodes using old-parent members the new parent lacks (graph, nodeGuid, member), dropped overrides, lost interfaces, and inherited defaults that are lost or change value. onlyUsed filters defaultChanges by graph usage or target/descendant overrides and reports descendant coverage. Apply refreshes nodes, compiles, and reports located errors; never saves a failed compile unless allowSaveWithErrors=true.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4500,6 +4581,10 @@
           "save": {
             "type": "boolean",
             "description": "Save after a successful compile. Default false."
+          },
+          "onlyUsed": {
+            "type": "boolean",
+            "description": "Filter defaultChanges to properties used by target get/set nodes or overridden in the target/descendants. Descendant coverage is reported and capped at 256. Default false."
           },
           "allowSaveWithErrors": {
             "type": "boolean",
@@ -4535,6 +4620,10 @@
           "includeInherited": {
             "type": "boolean",
             "description": "Include parent properties; default true."
+          },
+          "declaredInOnly": {
+            "type": "string",
+            "description": "Optional exact declaring class path; compares authoritative classes and filters before pagination."
           },
           "onlyOverridden": {
             "type": "boolean",
@@ -4598,8 +4687,73 @@
       }
     },
     {
+      "name": "RetargetBlueprintMemberNode",
+      "description": "Retargets a variable Get/Set or ordinary function-call node, even if its old member no longer resolves. Inherited members use self context. Preserves GUID, position, comment, compatible defaults and direct links; pinMap handles renamed parameters. Dry-run simulates reconstruction. Dropped links are explicit. Requires confirm to apply; compile is opt-in, save forces compile with rollback.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Exact Blueprint/graph/node identity or optional revision guard."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Exact Blueprint/graph/node identity or optional revision guard."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Exact Blueprint/graph/node identity or optional revision guard."
+          },
+          "nodeGuid": {
+            "type": "string",
+            "description": "Exact Blueprint/graph/node identity or optional revision guard."
+          },
+          "expectedGraphRevision": {
+            "type": "string",
+            "description": "Exact Blueprint/graph/node identity or optional revision guard."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Apply requires confirm. Compile defaults false; saving forces a successful compile."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Apply requires confirm. Compile defaults false; saving forces a successful compile."
+          },
+          "compileAfterEdit": {
+            "type": "boolean",
+            "description": "Apply requires confirm. Compile defaults false; saving forces a successful compile."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Apply requires confirm. Compile defaults false; saving forces a successful compile."
+          },
+          "newMemberName": {
+            "type": "string",
+            "description": "New variable or callable function name."
+          },
+          "newOwnerClassPath": {
+            "type": "string",
+            "description": "Optional owner; self/ancestor uses self context, unrelated class uses external context."
+          },
+          "pinMap": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "description": "Exact replacement pin/case name."
+            }
+          }
+        },
+        "required": [
+          "objectPath",
+          "nodeGuid",
+          "newMemberName"
+        ]
+      }
+    },
+    {
       "name": "RetargetBlueprintNode",
-      "description": "Retargets a cast node (including a 'Bad cast node' whose class was deleted) to newClassPath without needing the old class. Output links whose pins still exist survive; the old class-named result pin's links move to the new result pin. Requires confirm=true unless dryRun=true.",
+      "description": "Retargets a cast node (including a \u0027Bad cast node\u0027 whose class was deleted) to newClassPath without needing the old class. Output links whose pins still exist survive; the old class-named result pin\u0027s links move to the new result pin. Requires confirm=true unless dryRun=true.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -5332,7 +5486,7 @@
     },
     {
       "name": "SetInputMappingContextMappingKey",
-      "description": "Replaces the key of one exact Action+Key row, preserving its position, action, inline objects and metadata. Static asset editing only; no runtime mapping rebuild.",
+      "description": "Replaces the key of one exact Action\u002BKey row, preserving its position, action, inline objects and metadata. Static asset editing only; no runtime mapping rebuild.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -5370,6 +5524,71 @@
           "inputActionPath",
           "key",
           "newKey"
+        ]
+      }
+    },
+    {
+      "name": "SetSwitchCases",
+      "description": "Edits Switch on String cases; renames preserve compatible exec links, removed cases report dropped links, and Default is retained. Enum cases are defined by their enum and cannot be arbitrarily renamed here. Dry-run simulates reconstruction. Requires confirm to apply; save forces successful compile.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Exact Blueprint/graph/node identity or optional revision guard."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Exact Blueprint/graph/node identity or optional revision guard."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Exact Blueprint/graph/node identity or optional revision guard."
+          },
+          "nodeGuid": {
+            "type": "string",
+            "description": "Exact Blueprint/graph/node identity or optional revision guard."
+          },
+          "expectedGraphRevision": {
+            "type": "string",
+            "description": "Exact Blueprint/graph/node identity or optional revision guard."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Apply requires confirm. Compile defaults false; saving forces a successful compile."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Apply requires confirm. Compile defaults false; saving forces a successful compile."
+          },
+          "compileAfterEdit": {
+            "type": "boolean",
+            "description": "Apply requires confirm. Compile defaults false; saving forces a successful compile."
+          },
+          "saveAfterEdit": {
+            "type": "boolean",
+            "description": "Apply requires confirm. Compile defaults false; saving forces a successful compile."
+          },
+          "cases": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "Final string switch label."
+            },
+            "maxItems": 128
+          },
+          "renames": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "description": "Exact replacement pin/case name."
+            }
+          }
+        },
+        "required": [
+          "objectPath",
+          "nodeGuid",
+          "cases"
         ]
       }
     },

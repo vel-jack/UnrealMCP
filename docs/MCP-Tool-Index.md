@@ -2,8 +2,8 @@
 
 Generated metadata only; fetch the exact live schema before execution.
 
-Custom catalog captured: 2026-11-15T03:59:17.9794843Z. Official catalog captured: 2026-10-30T09:56:38.641Z.
-Contains 151 custom tools and 838 official tools across 53 toolsets.
+Custom catalog captured: 2026-11-15T05:53:04.8765512Z. Official catalog captured: 2026-10-30T09:56:38.641Z.
+Contains 154 custom tools and 838 official tools across 53 toolsets.
 
 Search this file with `rg -i 'interface|delete.*node|merge'`. Descriptions are shortened; a missing keyword is not proof a capability is absent.
 
@@ -33,14 +33,14 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `AddBlueprintLocalVariable` | Transactionally adds a typed local variable to one Blueprint function graph (type/containerType/valueType as in AddBlueprintVariable). Idempotent... |
 | Custom | `native registry` | `AddBlueprintMacroNode` | Adds a macro instance from a Blueprint macro library, including StandardMacros such as ForEachLoop. |
 | Custom | `native registry` | `AddBlueprintMapOperationNode` | Adds a persistent typed Blueprint Map operation node with independently resolved key and value pins. |
-| Custom | `native registry` | `AddBlueprintOverrideEventNode` | Adds an overrideable parent-class Blueprint event to an exact Blueprint graph with collision-aware placement, dry-run, duplicate rejection, and... |
+| Custom | `native registry` | `AddBlueprintOverrideEventNode` | Adds an overrideable parent-class Blueprint event to an exact Blueprint graph with collision-aware placement, dry-run, duplicate rejection,... |
 | Custom | `native registry` | `AddBlueprintRerouteNode` | Adds a wildcard Reroute node with collision-aware placement. Its pin type specializes when connected. |
 | Custom | `native registry` | `AddBlueprintSequenceNode` | Adds a collision-aware Sequence node to a stable Blueprint graph. Supports dry-run and optional save. |
 | Custom | `native registry` | `AddBlueprintSetOperationNode` | Adds a persistent typed Blueprint Set operation node with resolved element pins. |
 | Custom | `native registry` | `AddBlueprintTypedOperatorNode` | Adds an exact object, Boolean, or Vector operator node without ambiguous function lookup. |
 | Custom | `native registry` | `AddBlueprintVariable` | Transactionally adds a typed Blueprint member variable with optional default, instance-editable metadata, compile, and save. |
-| Custom | `native registry` | `AddBlueprintVariableGetNode` | Adds a variable Get node for an exact Blueprint member with collision-aware placement, dry-run, and optional save. |
-| Custom | `native registry` | `AddBlueprintVariableSetNode` | Adds a variable Set node for an exact Blueprint member with collision-aware placement, dry-run, and optional save. |
+| Custom | `native registry` | `AddBlueprintVariableGetNode` | Adds a variable Get node for an local, inherited or external Blueprint-visible member with collision-aware placement, dry-run, and optional save. |
+| Custom | `native registry` | `AddBlueprintVariableSetNode` | Adds a variable Set node for an local, inherited or external Blueprint-visible member with collision-aware placement, dry-run, and optional save. |
 | Custom | `native registry` | `AddDataTableRow` | Transactionally edits one DataTable row in memory; leaves the asset dirty for an explicit save. |
 | Custom | `native registry` | `AddEnhancedInputActionNode` | Adds an Enhanced Input Action event node for an exact InputAction asset without requiring Enhanced Input as a hard plugin dependency. |
 | Custom | `native registry` | `AddInputMappingContextMapping` | Adds one key-mapping row to an existing InputMappingContext. Idempotent if the identical Action+Key row already exists. |
@@ -87,7 +87,7 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `GetAssetInfo` | Returns detailed Asset Registry information for one asset without loading it. |
 | Custom | `native registry` | `GetAssetReferencers` | Returns indexed package referencers for one asset or package. |
 | Custom | `native registry` | `GetAssetReferences` | Returns indexed package references for one asset or package. |
-| Custom | `native registry` | `GetBlueprintClassDefaults` | Reads paged Blueprint class default values and parent overrides without modifying the asset. |
+| Custom | `native registry` | `GetBlueprintClassDefaults` | Reads paged Blueprint class default values and parent overrides without modifying the asset. declaredInOnly filters to one exact authoritative... |
 | Custom | `native registry` | `GetBlueprintComponentDefaults` | Reads safely editable defaults from one existing Blueprint component template without mutating or compiling the asset. |
 | Custom | `native registry` | `GetBlueprintComponentHierarchy` | Returns an indexed component hierarchy summary for one Blueprint asset. |
 | Custom | `native registry` | `GetBlueprintDependencies` | Returns an indexed dependency summary for one Blueprint asset. |
@@ -125,6 +125,7 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `MigrateUserDefinedStructMemberValues` | Copies a user-defined struct member to an explicitly selected existing member of exactly the same type. Covers struct defaults plus explicit /Game... |
 | Custom | `native registry` | `MoveAsset` | Moves and/or renames an asset (IAssetTools::RenameAssets), then by default fixes up the redirector so referencers are resaved at the new path and... |
 | Custom | `native registry` | `MoveBlueprintNode` | Moves a Blueprint node using explicit or relative collision-aware placement. Supports dry-run and optional save. |
+| Custom | `native registry` | `OverrideBlueprintFunction` | Creates a parent function override with its inherited signature and optional wired parent implementation. Undoable; supports dry-run, compile and... |
 | Custom | `native registry` | `PlanProjectRefactor` | Builds a deterministic, evidence-backed, non-mutating Blueprint refactor plan from indexed architecture analyses. It never changes assets and... |
 | Custom | `native registry` | `RefreshBlueprintCallSites` | Finds every same-Blueprint and cross-Blueprint call site of a Blueprint function via the project index and reconstructs each call node to match... |
 | Custom | `native registry` | `RefreshProjectIndex` | Refreshes only changed, added, deleted, or explicitly requested project assets in the existing UnrealMCP index. This is cheaper than... |
@@ -137,6 +138,7 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `ReparentBlueprint` | Changes a Blueprint's parent class. Dry-run/preflight lists graph nodes using old-parent members the new parent lacks (graph, nodeGuid, member),... |
 | Custom | `native registry` | `ResetBlueprintClassDefaults` | Resets inherited Blueprint class defaults to their parent CDO values. |
 | Custom | `native registry` | `RestoreStructMemberValueBackup` | Restores live value snapshots from a durable migration backup in the same project and unchanged struct layout. Refuses stale roots. Requires... |
+| Custom | `native registry` | `RetargetBlueprintMemberNode` | Retargets a variable Get/Set or ordinary function-call node, even if its old member no longer resolves. Inherited members use self context.... |
 | Custom | `native registry` | `RetargetBlueprintNode` | Retargets a cast node (including a 'Bad cast node' whose class was deleted) to newClassPath without needing the old class. Output links whose pins... |
 | Custom | `native registry` | `RunUnrealMCPAutomationTest` | Runs one exact synchronous UnrealMCP.* editor automation test and returns structured execution evidence. |
 | Custom | `native registry` | `RunUnrealMCPAutomationTests` | Runs a bounded explicit list of synchronous UnrealMCP editor automation tests and returns one suite result. |
@@ -157,6 +159,7 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `SetBlueprintSequenceOutputs` | Sets a Sequence node to 2-32 execution outputs. Removing outputs requires explicit confirmation, with separate confirmation for linked pins. |
 | Custom | `native registry` | `SetDataTableRowFields` | Transactionally edits one DataTable row in memory; leaves the asset dirty for an explicit save. |
 | Custom | `native registry` | `SetInputMappingContextMappingKey` | Replaces the key of one exact Action+Key row, preserving its position, action, inline objects and metadata. Static asset editing only; no runtime... |
+| Custom | `native registry` | `SetSwitchCases` | Edits Switch on String cases; renames preserve compatible exec links, removed cases report dropped links, and Default is retained. Enum cases are... |
 | Custom | `native registry` | `SpliceBlueprintExecFlow` | Atomically inserts an ordered chain of existing nodes into one exact Blueprint execution link, with revision checks, idempotent retry, rollback,... |
 | Custom | `native registry` | `SummarizeBlueprintCluster` | Summarizes the nearby indexed asset cluster around a starting Blueprint or asset. |
 | Custom | `native registry` | `TraceBlueprintFlow` | Traces Blueprint graph flow from the project index; refreshes the selected Blueprint once if start nodes are missing. |

@@ -11,6 +11,12 @@
 #include "K2Node_CallFunction.h"
 #include "K2Node_IfThenElse.h"
 #include "K2Node_Knot.h"
+#include "K2Node_CallParentFunction.h"
+#include "K2Node_Self.h"
+#include "K2Node_DynamicCast.h"
+#include "K2Node_MacroInstance.h"
+#include "K2Node_SwitchString.h"
+#include "K2Node_SwitchEnum.h"
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -19,6 +25,7 @@
 #include "Misc/SecureHash.h"
 #include "ScopedTransaction.h"
 #include "Tools/BlueprintEditToolUtils.h"
+#include "Tools/BlueprintMemberToolUtils.h"
 #include "Tools/BlueprintGraphEditToolUtils.h"
 #include "Tools/BlueprintToolUtils.h"
 #include "UObject/UObjectGlobals.h"
@@ -38,6 +45,12 @@ namespace
     struct FPatchNode
     {
         FString Id, Kind, NodeGuid, OwnerClassPath, FunctionName, VariableName, OperatorName, CanonicalOperator;
+        FString MacroPath, EnumPath, TargetClassPath;
+        TArray<FString> Cases;
+        UEdGraph* MacroGraph = nullptr;
+        UEnum* Enum = nullptr;
+        UClass* TargetClass = nullptr;
+        bool bPure = false;
         FString Comment;
         bool bHasComment = false, bHasPosition = false, bHasTolerance = false;
         double Tolerance = 0.0;
@@ -48,6 +61,7 @@ namespace
         FLinearColor CommentColor = FLinearColor(0.04f, 0.18f, 0.3f, 1.f);
         UFunction* Function = nullptr;
         UClass* VariableOwner = nullptr;
+        UnrealMCP::BlueprintMemberToolUtils::FResolvedVariable Variable;
         UEdGraphNode* Preview = nullptr;
         UEdGraphNode* Live = nullptr;
         bool bCreated = false, bReused = false, bMoved = false, bCommentChanged = false;
@@ -81,6 +95,15 @@ namespace
         Object->TryGetStringField(TEXT("functionName"), Out.FunctionName);
         Object->TryGetStringField(TEXT("variableName"), Out.VariableName);
         Object->TryGetStringField(TEXT("operator"), Out.OperatorName);
+        Object->TryGetStringField(TEXT("macroPath"), Out.MacroPath);
+        Object->TryGetStringField(TEXT("enumPath"), Out.EnumPath);
+        Object->TryGetStringField(TEXT("targetClassPath"), Out.TargetClassPath);
+        Object->TryGetBoolField(TEXT("pure"), Out.bPure);
+        const TArray<TSharedPtr<FJsonValue>>* Cases = nullptr;
+        if (Object->HasField(TEXT("cases")) && !Object->TryGetArrayField(TEXT("cases"), Cases))
+        { Error = TEXT("cases must be an array of strings."); return false; }
+        if (Object->TryGetArrayField(TEXT("cases"), Cases))
+            for (const auto& Value : *Cases) { FString Text; if (!Value || !Value->TryGetString(Text)) { Error = TEXT("cases must contain strings."); return false; } Out.Cases.Add(Text); }
         Out.bHasComment = Object->TryGetStringField(TEXT("comment"), Out.Comment);
         double X = 0.0, Y = 0.0;
         const bool bHasX = Object->TryGetNumberField(TEXT("positionX"), X);
@@ -124,6 +147,17 @@ namespace
         {
             if (Out.VariableName.IsEmpty()) { Error = TEXT("Variable nodes require variableName."); return false; }
         }
+        else if (Out.Kind.Equals(TEXT("parentCall"), ESearchCase::IgnoreCase))
+        { if (Out.FunctionName.IsEmpty()) { Error = TEXT("parentCall requires functionName."); return false; } }
+        else if (Out.Kind.Equals(TEXT("macro"), ESearchCase::IgnoreCase))
+        { if (Out.MacroPath.IsEmpty()) { Error = TEXT("macro requires macroPath."); return false; } }
+        else if (Out.Kind.Equals(TEXT("cast"), ESearchCase::IgnoreCase))
+        { if (Out.TargetClassPath.IsEmpty()) { Error = TEXT("cast requires targetClassPath."); return false; } }
+        else if (Out.Kind.Equals(TEXT("switchEnum"), ESearchCase::IgnoreCase))
+        { if (Out.EnumPath.IsEmpty()) { Error = TEXT("switchEnum requires enumPath."); return false; } }
+        else if (Out.Kind.Equals(TEXT("switchString"), ESearchCase::IgnoreCase))
+        { if (!Object->HasField(TEXT("cases"))) { Error = TEXT("switchString requires cases[]."); return false; }
+          if (!UnrealMCP::BlueprintMemberToolUtils::ValidateStringCases(Out.Cases, Error)) return false; }
         else if (Out.Kind.Equals(TEXT("typedOperator"), ESearchCase::IgnoreCase))
         {
             if (Out.OperatorName.IsEmpty()) { Error = TEXT("typedOperator requires operator."); return false; }
@@ -145,7 +179,8 @@ namespace
                 Out.CommentColor = FLinearColor(R, G, B, 1.f);
             }
         }
-        else if (!Out.Kind.Equals(TEXT("branch"), ESearchCase::IgnoreCase)
+        else if (!Out.Kind.Equals(TEXT("self"), ESearchCase::IgnoreCase)
+            && !Out.Kind.Equals(TEXT("branch"), ESearchCase::IgnoreCase)
             && !Out.Kind.Equals(TEXT("reroute"), ESearchCase::IgnoreCase))
         { Error = FString::Printf(TEXT("Unsupported patch node kind '%s'."), *Out.Kind); return false; }
         return true;
@@ -237,6 +272,18 @@ namespace
                 && CastChecked<UK2Node_VariableSet>(Node)->VariableReference.GetMemberName() == FName(*Spec.VariableName)
                 && (!Spec.VariableGuid.IsValid() || CastChecked<UK2Node_VariableSet>(Node)->VariableReference.GetMemberGuid() == Spec.VariableGuid)
                 && (Spec.VariableOwner ? CastChecked<UK2Node_VariableSet>(Node)->VariableReference.GetMemberParentClass() == Spec.VariableOwner : CastChecked<UK2Node_VariableSet>(Node)->VariableReference.IsSelfContext());
+        if (Spec.Kind.Equals(TEXT("parentCall"), ESearchCase::IgnoreCase)) return Node && Node->IsA<UK2Node_CallParentFunction>() && CastChecked<UK2Node_CallParentFunction>(Node)->GetTargetFunction() == Spec.Function;
+        if (Spec.Kind.Equals(TEXT("self"), ESearchCase::IgnoreCase)) return Node && Node->IsA<UK2Node_Self>();
+        if (Spec.Kind.Equals(TEXT("macro"), ESearchCase::IgnoreCase)) return Node && Node->IsA<UK2Node_MacroInstance>() && CastChecked<UK2Node_MacroInstance>(Node)->GetMacroGraph() == Spec.MacroGraph;
+        if (Spec.Kind.Equals(TEXT("cast"), ESearchCase::IgnoreCase)) return Node && Node->IsA<UK2Node_DynamicCast>() && CastChecked<UK2Node_DynamicCast>(Node)->TargetType == Spec.TargetClass && CastChecked<UK2Node_DynamicCast>(Node)->IsNodePure() == Spec.bPure;
+        if (Spec.Kind.Equals(TEXT("switchEnum"), ESearchCase::IgnoreCase)) return Node && Node->IsA<UK2Node_SwitchEnum>() && CastChecked<UK2Node_SwitchEnum>(Node)->Enum == Spec.Enum;
+        if (Spec.Kind.Equals(TEXT("switchString"), ESearchCase::IgnoreCase))
+        {
+            const auto* Switch = Cast<UK2Node_SwitchString>(Node);
+            if (!Switch || Switch->PinNames.Num() != Spec.Cases.Num()) return false;
+            for (int32 I = 0; I < Spec.Cases.Num(); ++I) if (Switch->PinNames[I].ToString() != Spec.Cases[I]) return false;
+            return true;
+        }
         if (Spec.Kind.Equals(TEXT("comment"), ESearchCase::IgnoreCase)) return Node && Node->IsA<UEdGraphNode_Comment>();
         if (Spec.Kind.Equals(TEXT("branch"), ESearchCase::IgnoreCase)) return Node != nullptr && Node->IsA<UK2Node_IfThenElse>();
         return Node != nullptr && Node->IsA<UK2Node_Knot>();
@@ -251,14 +298,21 @@ namespace
         if (Spec.Kind.Equals(TEXT("variableGet"), ESearchCase::IgnoreCase)
             || Spec.Kind.Equals(TEXT("variableSet"), ESearchCase::IgnoreCase))
         {
-            UK2Node_Variable* Node = Spec.Kind.Equals(TEXT("variableGet"), ESearchCase::IgnoreCase)
-                ? static_cast<UK2Node_Variable*>(CreateVariableGetNode(Graph, *Spec.VariableName, Spec.VariableGuid, false))
-                : static_cast<UK2Node_Variable*>(CreateVariableSetNode(Graph, *Spec.VariableName, Spec.VariableGuid, false));
-            if (Node && Spec.VariableOwner)
-                Node->VariableReference.SetExternalMember(*Spec.VariableName, Spec.VariableOwner, Spec.VariableGuid);
-            if (Node && bDetached) Node->AllocateDefaultPins();
-            return Node;
+            return UnrealMCP::BlueprintMemberToolUtils::CreateVariableNode(Graph, Spec.Variable,
+                Spec.Kind.Equals(TEXT("variableSet"), ESearchCase::IgnoreCase), bDetached);
         }
+        UEdGraphNode* Advanced = nullptr;
+        if (Spec.Kind.Equals(TEXT("parentCall"), ESearchCase::IgnoreCase)) return UnrealMCP::BlueprintMemberToolUtils::CreateParentCall(Graph, Spec.Function, bDetached);
+        if (Spec.Kind.Equals(TEXT("self"), ESearchCase::IgnoreCase)) Advanced = NewObject<UK2Node_Self>(Graph);
+        else if (Spec.Kind.Equals(TEXT("cast"), ESearchCase::IgnoreCase))
+        { auto* Cast = NewObject<UK2Node_DynamicCast>(Graph); Cast->TargetType = Spec.TargetClass; Cast->SetPurity(Spec.bPure); Advanced = Cast; }
+        else if (Spec.Kind.Equals(TEXT("macro"), ESearchCase::IgnoreCase))
+        { auto* Macro = NewObject<UK2Node_MacroInstance>(Graph); Macro->SetMacroGraph(Spec.MacroGraph); Advanced = Macro; }
+        else if (Spec.Kind.Equals(TEXT("switchString"), ESearchCase::IgnoreCase))
+        { auto* Switch = NewObject<UK2Node_SwitchString>(Graph); for (const auto& Case : Spec.Cases) Switch->PinNames.Add(FName(*Case)); Switch->bHasDefaultPin = true; Advanced = Switch; }
+        else if (Spec.Kind.Equals(TEXT("switchEnum"), ESearchCase::IgnoreCase))
+        { auto* Switch = NewObject<UK2Node_SwitchEnum>(Graph); Switch->SetEnum(Spec.Enum); Switch->bHasDefaultPin = true; Advanced = Switch; }
+        if (Advanced) { if (bDetached) Advanced->AllocateDefaultPins(); return Advanced; }
         if (Spec.Kind.Equals(TEXT("comment"), ESearchCase::IgnoreCase))
         {
             auto* Comment = NewObject<UEdGraphNode_Comment>(Graph);
@@ -439,19 +493,29 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
                 else if (Spec.Kind.Equals(TEXT("variableGet"), ESearchCase::IgnoreCase)
                     || Spec.Kind.Equals(TEXT("variableSet"), ESearchCase::IgnoreCase))
                 {
-                    UBlueprint* OwnerBlueprint = Blueprint;
-                    if (!Spec.OwnerClassPath.IsEmpty())
-                    {
-                        if (!BlueprintEditToolUtils::ResolveClass(Spec.OwnerClassPath, Spec.VariableOwner, Error)) return false;
-                        FProperty* Property = FindFProperty<FProperty>(Spec.VariableOwner, *Spec.VariableName);
-                        if (!Property || !Property->HasAnyPropertyFlags(CPF_BlueprintVisible)
-                            || (Spec.Kind.Equals(TEXT("variableSet"), ESearchCase::IgnoreCase) && Property->HasAnyPropertyFlags(CPF_BlueprintReadOnly)))
-                        { Error = FString::Printf(TEXT("Variable '%s' was not found on owner '%s'."), *Spec.VariableName, *Spec.OwnerClassPath); return false; }
-                        OwnerBlueprint = UBlueprint::GetBlueprintFromClass(Spec.VariableOwner);
-                    }
-                    const int32 VariableIndex = OwnerBlueprint ? FBlueprintEditorUtils::FindNewVariableIndex(OwnerBlueprint, *Spec.VariableName) : INDEX_NONE;
-                    if (VariableIndex != INDEX_NONE) Spec.VariableGuid = OwnerBlueprint->NewVariables[VariableIndex].VarGuid;
-                    else if (!Spec.VariableOwner) { Error = FString::Printf(TEXT("Variable '%s' was not found."), *Spec.VariableName); return false; }
+                    if (!BlueprintMemberToolUtils::ResolveVariable(Blueprint, Spec.VariableName, Spec.OwnerClassPath,
+                        Spec.Kind.Equals(TEXT("variableSet"), ESearchCase::IgnoreCase), Spec.Variable, Error)) return false;
+                    Spec.VariableGuid = Spec.Variable.Guid; Spec.VariableOwner = Spec.Variable.ExternalOwner;
+                }
+                else if (Spec.Kind.Equals(TEXT("parentCall"), ESearchCase::IgnoreCase))
+                {
+                    if (!BlueprintMemberToolUtils::ResolveParentFunction(Blueprint, Spec.FunctionName, Spec.Function, Error)) return false;
+                    const auto Type = Schema->GetGraphType(Graph);
+                    if ((Type != GT_Function && Type != GT_Ubergraph) || (Type == GT_Function && Graph->GetFName() != Spec.Function->GetFName()))
+                    { Error = TEXT("Parent calls belong in the matching override function or an event graph."); return false; }
+                }
+                else if (Spec.Kind.Equals(TEXT("cast"), ESearchCase::IgnoreCase))
+                { if (!BlueprintEditToolUtils::ResolveClass(Spec.TargetClassPath, Spec.TargetClass, Error)) return false; }
+                else if (Spec.Kind.Equals(TEXT("switchEnum"), ESearchCase::IgnoreCase))
+                { Spec.Enum = LoadObject<UEnum>(nullptr, *Spec.EnumPath); if (!Spec.Enum) { Error = TEXT("enumPath did not resolve to an enum."); return false; } }
+                else if (Spec.Kind.Equals(TEXT("macro"), ESearchCase::IgnoreCase))
+                {
+                    Spec.MacroGraph = LoadObject<UEdGraph>(nullptr, *Spec.MacroPath);
+                    UBlueprint* Library = Spec.MacroGraph ? Spec.MacroGraph->GetTypedOuter<UBlueprint>() : nullptr;
+                    if (!Library || (Library != Blueprint && Library->BlueprintType != BPTYPE_MacroLibrary) || !Library->MacroGraphs.Contains(Spec.MacroGraph))
+                    { Error = TEXT("macroPath must identify a macro graph in a macro library or this Blueprint."); return false; }
+                    auto* Probe = NewObject<UK2Node_MacroInstance>(Graph); Probe->SetMacroGraph(Spec.MacroGraph);
+                    if (!Probe->CanPasteHere(Graph)) { Error = TEXT("Macro is not compatible with this graph."); return false; }
                 }
                 Spec.Live = FindNodeByGuid(Graph, Spec.DeterministicGuid);
                 if (Spec.Live != nullptr && !NodeMatches(Spec, Spec.Live))
@@ -468,11 +532,17 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
 
         // Preflight on a transient duplicate so TryCreateConnection can reproduce K2 wildcard
         // specialization and connection-order effects without touching the live graph.
-        const FName SimulationName = MakeUniqueObjectName(
-            Blueprint, Graph->GetClass(), TEXT("UnrealMCP_PatchPreflight"));
-        UEdGraph* SimulationGraph = DuplicateObject<UEdGraph>(Graph, Blueprint, SimulationName);
+        UBlueprint* PreviewBlueprint = NewObject<UBlueprint>(GetTransientPackage(), NAME_None, RF_Transient);
+        PreviewBlueprint->ParentClass = Blueprint->ParentClass;
+        PreviewBlueprint->GeneratedClass = Blueprint->GeneratedClass;
+        PreviewBlueprint->SkeletonGeneratedClass = Blueprint->SkeletonGeneratedClass;
+        PreviewBlueprint->BlueprintType = Blueprint->BlueprintType;
+        PreviewBlueprint->Status = BS_BeingCreated;
+        UEdGraph* SimulationGraph = DuplicateObject<UEdGraph>(Graph, PreviewBlueprint, Graph->GetFName());
         if (SimulationGraph == nullptr) { Error = TEXT("Could not create a transient graph for patch preflight."); return false; }
         SimulationGraph->SetFlags(RF_Transient);
+        if (Blueprint->FunctionGraphs.Contains(Graph)) PreviewBlueprint->FunctionGraphs.Add(SimulationGraph);
+        else PreviewBlueprint->UbergraphPages.Add(SimulationGraph);
         for (FPatchNode& Spec : Nodes)
         {
             if (Spec.Live != nullptr)
@@ -481,7 +551,7 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
             }
             else
             {
-                UEdGraphNode* Detached = CreateNode(Graph, Spec, true);
+                UEdGraphNode* Detached = CreateNode(SimulationGraph, Spec, true);
                 Spec.Preview = Detached != nullptr
                     ? DuplicateObject<UEdGraphNode>(Detached, SimulationGraph)
                     : nullptr;
@@ -713,6 +783,11 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
             Color->SetNumberField(TEXT("g"), Comment->CommentColor.G); Color->SetNumberField(TEXT("b"), Comment->CommentColor.B);
             Item->SetObjectField(TEXT("color"), Color);
         }
+        if (Node.Variable.Property)
+        {
+            Item->SetBoolField(TEXT("selfContext"), Node.Variable.IsSelfContext());
+            Item->SetStringField(TEXT("declaredIn"), Node.Variable.DeclaringClass->GetPathName());
+        }
         if (bIncludePins) Item->SetArrayField(TEXT("pins"), BlueprintGraphEditToolUtils::SerializePins(ResultNode));
         NodeResults.Add(MakeShared<FJsonValueObject>(Item));
     }
@@ -770,15 +845,18 @@ TSharedPtr<FJsonObject> FApplyBlueprintGraphPatchTool::BuildInputSchema() const
     for (const TCHAR* FieldName : {TEXT("objectPath"), TEXT("graphName"), TEXT("graphGuid"), TEXT("patchId"), TEXT("expectedGraphRevision"), TEXT("operationId")})
         Properties->SetObjectField(FieldName, BuildStringProperty(TEXT("Blueprint, graph, deterministic patch, or revision selector.")));
     TSharedRef<FJsonObject> Nodes = MakeShared<FJsonObject>(); Nodes->SetStringField(TEXT("type"), TEXT("array"));
-    Nodes->SetStringField(TEXT("description"), TEXT("Required node kinds: existingNode, functionCall, variableGet, variableSet, typedOperator, branch, reroute, and comment. Nodes may include position, comment, tolerance, and inputDefaults."));
+    Nodes->SetStringField(TEXT("description"), TEXT("Required node kinds: existingNode, functionCall, variableGet, variableSet, typedOperator, branch, reroute, comment, parentCall, switchString, switchEnum, self, macro, and cast. Nodes may include position, comment, tolerance, and inputDefaults."));
     TSharedRef<FJsonObject> NodeItem = MakeShared<FJsonObject>(); NodeItem->SetStringField(TEXT("type"), TEXT("object"));
     TSharedRef<FJsonObject> NodeProperties = MakeShared<FJsonObject>();
-    for (const TCHAR* FieldName : {TEXT("id"), TEXT("kind"), TEXT("nodeGuid"), TEXT("ownerClassPath"), TEXT("functionName"), TEXT("variableName"), TEXT("operator"), TEXT("comment")})
+    for (const TCHAR* FieldName : {TEXT("id"), TEXT("kind"), TEXT("nodeGuid"), TEXT("ownerClassPath"), TEXT("functionName"), TEXT("variableName"), TEXT("operator"), TEXT("comment"), TEXT("macroPath"), TEXT("enumPath"), TEXT("targetClassPath")})
         NodeProperties->SetObjectField(FieldName, BuildStringProperty(TEXT("Plan-local identity or node-specific selector.")));
     TSharedRef<FJsonObject> Integer = MakeShared<FJsonObject>(); Integer->SetStringField(TEXT("type"), TEXT("integer"));
     TSharedRef<FJsonObject> Number = MakeShared<FJsonObject>(); Number->SetStringField(TEXT("type"), TEXT("number"));
     NodeProperties->SetObjectField(TEXT("positionX"), Integer); NodeProperties->SetObjectField(TEXT("positionY"), Integer);
     NodeProperties->SetObjectField(TEXT("tolerance"), Number);
+    NodeProperties->SetObjectField(TEXT("pure"), BuildBoolProperty(TEXT("Pure cast; default false.")));
+    auto CasesSchema = MakeShared<FJsonObject>(); CasesSchema->SetStringField(TEXT("type"), TEXT("array")); CasesSchema->SetObjectField(TEXT("items"), BuildStringProperty(TEXT("String switch case label."))); CasesSchema->SetNumberField(TEXT("maxItems"), 128);
+    NodeProperties->SetObjectField(TEXT("cases"), CasesSchema);
     NodeProperties->SetObjectField(TEXT("width"), Integer); NodeProperties->SetObjectField(TEXT("height"), Integer);
     NodeProperties->SetObjectField(TEXT("showBubbleWhenZoomed"), BuildBoolProperty(TEXT("Comment bubble visibility; defaults true.")));
     auto ColorSchema = MakeShared<FJsonObject>(); ColorSchema->SetStringField(TEXT("type"), TEXT("object"));

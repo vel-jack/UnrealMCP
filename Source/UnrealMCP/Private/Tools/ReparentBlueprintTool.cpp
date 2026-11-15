@@ -1,5 +1,6 @@
 #include "Tools/ReparentBlueprintTool.h"
 
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "EdGraph/EdGraph.h"
@@ -13,6 +14,7 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "ScopedTransaction.h"
+#include "UObject/UObjectHash.h"
 #include "Tools/BlueprintEditToolUtils.h"
 #include "Tools/BlueprintGraphEditToolUtils.h"
 #include "Tools/BlueprintToolUtils.h"
@@ -143,10 +145,90 @@ namespace
         return Value;
     }
 
+    FString PropertyIdentity(const FProperty* Property)
+    {
+        UClass* Owner = Property ? Property->GetOwnerClass() : nullptr;
+        return Owner ? Owner->GetAuthoritativeClass()->GetPathName() + TEXT(":") + Property->GetName() : FString();
+    }
+
+    struct FDefaultUsage
+    {
+        TSet<FString> GraphProperties;
+        TArray<UClass*> Descendants;
+        TArray<TSharedPtr<FJsonValue>> FailedDescendants;
+        bool bComplete = true;
+        bool bTruncated = false;
+    };
+
+    FDefaultUsage GatherDefaultUsage(UBlueprint* Blueprint)
+    {
+        FDefaultUsage Usage;
+        TArray<UEdGraph*> Graphs;
+        Blueprint->GetAllGraphs(Graphs);
+        for (const UEdGraph* Graph : Graphs) if (Graph) for (const UEdGraphNode* Node : Graph->Nodes)
+            if (const auto* Variable = Cast<UK2Node_Variable>(Node))
+                if (const FProperty* P = Variable->VariableReference.ResolveMember<FProperty>(Blueprint->SkeletonGeneratedClass))
+                    Usage.GraphProperties.Add(PropertyIdentity(P));
+
+        if (!Blueprint->GeneratedClass) { Usage.bComplete = false; return Usage; }
+        constexpr int32 MaxDescendants = 256;
+        TArray<UClass*> Loaded;
+        GetDerivedClasses(Blueprint->GeneratedClass, Loaded, true);
+        Loaded.Sort([](const UClass& A, const UClass& B) { return A.GetPathName() < B.GetPathName(); });
+        auto AddClass = [&](UClass* Class)
+        {
+            if (!Class || Class->HasAnyClassFlags(CLASS_NewerVersionExists)) return;
+            Class = Class->GetAuthoritativeClass();
+            if (Class == Blueprint->GeneratedClass || !Class->IsChildOf(Blueprint->GeneratedClass) || Usage.Descendants.Contains(Class)) return;
+            if (Usage.Descendants.Num() >= MaxDescendants) { Usage.bTruncated = true; Usage.bComplete = false; return; }
+            Usage.Descendants.Add(Class);
+        };
+        for (UClass* Class : Loaded) AddClass(Class);
+
+        // The registry includes unloaded descendants; suppress compile-on-load during this read-only report.
+        auto& Registry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
+        Usage.bComplete &= !Registry.IsLoadingAssets();
+        TSet<FTopLevelAssetPath> Derived;
+        Registry.GetDerivedClassNames({Blueprint->GeneratedClass->GetClassPathName()}, {}, Derived);
+        TArray<FTopLevelAssetPath> Paths = Derived.Array();
+        Paths.Sort([](const FTopLevelAssetPath& A, const FTopLevelAssetPath& B) { return A.ToString() < B.ToString(); });
+        int32 Examined = 0;
+        for (const FTopLevelAssetPath& Path : Paths)
+        {
+            if (++Examined > MaxDescendants) { Usage.bTruncated = true; Usage.bComplete = false; break; }
+            const FString ClassName = Path.GetAssetName().ToString();
+            const FString AssetPath = Path.GetPackageName().ToString() + TEXT(".") + ClassName.LeftChop(2);
+            UBlueprint* Child = ClassName.EndsWith(TEXT("_C"))
+                ? LoadObject<UBlueprint>(nullptr, *AssetPath, nullptr, LOAD_DisableCompileOnLoad) : nullptr;
+            if (!Child || !Child->GeneratedClass || !Child->GeneratedClass->IsChildOf(Blueprint->GeneratedClass))
+            {
+                Usage.bComplete = false;
+                Usage.FailedDescendants.Add(MakeShared<FJsonValueString>(Path.ToString()));
+                continue;
+            }
+            AddClass(Child->GeneratedClass);
+        }
+        return Usage;
+    }
+
+    bool HasDescendantOverride(const FProperty* Property, const FDefaultUsage& Usage)
+    {
+        const UClass* DeclaringClass = Property->GetOwnerClass()->GetAuthoritativeClass();
+        for (UClass* Class : Usage.Descendants)
+        {
+            UClass* Parent = Class->GetSuperClass();
+            if (!Parent || !Class->IsChildOf(DeclaringClass) || !Parent->IsChildOf(DeclaringClass)) continue;
+            const UObject* Defaults = Class->GetDefaultObject();
+            const UObject* ParentDefaults = Parent->GetDefaultObject();
+            if (Defaults && ParentDefaults && !Property->Identical_InContainer(Defaults, ParentDefaults)) return true;
+        }
+        return false;
+    }
+
     // Defaults the Blueprint now inherits from the old parent chain: either lost (declared on a class the new
     // parent lacks) or changing (shared declaration, but the two parents' defaults differ and the Blueprint
     // does not override it). The latter is the "ModelScale silently became 0" class of bug.
-    void ScanDefaults(UBlueprint* Blueprint, const FReparentScope& Scope, FReport& Report)
+    void ScanDefaults(UBlueprint* Blueprint, const FReparentScope& Scope, FReport& Report, const FDefaultUsage* Usage)
     {
         const UObject* ChildDefaults = Blueprint->GeneratedClass ? Blueprint->GeneratedClass->GetDefaultObject() : nullptr;
         const UObject* OldDefaults = Scope.OldParent->GetDefaultObject();
@@ -159,6 +241,9 @@ namespace
             if (!Property->HasAnyPropertyFlags(CPF_Edit | CPF_BlueprintVisible)
                 || Property->HasAnyPropertyFlags(CPF_Transient | CPF_Deprecated | CPF_InstancedReference | CPF_ContainsInstancedReference))
                 continue;
+
+            if (Usage && !Usage->GraphProperties.Contains(PropertyIdentity(Property))
+                && Property->Identical_InContainer(ChildDefaults, OldDefaults) && !HasDescendantOverride(Property, *Usage)) continue;
 
             TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
             Entry->SetStringField(TEXT("property"), Property->GetName());
@@ -183,7 +268,7 @@ namespace
 FReparentBlueprintTool::FReparentBlueprintTool()
     : FMCPToolBase(
         TEXT("ReparentBlueprint"),
-        TEXT("Changes a Blueprint's parent class. Dry-run/preflight lists graph nodes using old-parent members the new parent lacks (graph, nodeGuid, member), dropped overrides, lost interfaces, and inherited defaults that are lost or change value. Apply refreshes nodes, compiles, and reports located errors; never saves a failed compile unless allowSaveWithErrors=true."))
+        TEXT("Changes a Blueprint's parent class. Dry-run/preflight lists graph nodes using old-parent members the new parent lacks (graph, nodeGuid, member), dropped overrides, lost interfaces, and inherited defaults that are lost or change value. onlyUsed filters defaultChanges by graph usage or target/descendant overrides and reports descendant coverage. Apply refreshes nodes, compiles, and reports located errors; never saves a failed compile unless allowSaveWithErrors=true."))
 {
 }
 
@@ -201,6 +286,7 @@ UnrealMCP::FMCPResponse FReparentBlueprintTool::Execute(const UnrealMCP::FMCPReq
     const bool bConfirm = BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("confirm"), false);
     const bool bCompile = BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("compile"), true);
     const bool bSave = BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("save"), false);
+    const bool bOnlyUsed = BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("onlyUsed"), false);
     const bool bAllowSaveWithErrors = BlueprintEditToolUtils::GetOptionalBool(Request.Params, TEXT("allowSaveWithErrors"), false);
     if (!bDryRun && !bConfirm)
     {
@@ -240,6 +326,7 @@ UnrealMCP::FMCPResponse FReparentBlueprintTool::Execute(const UnrealMCP::FMCPReq
         Result->SetStringField(TEXT("oldParentClassPath"), Scope.OldParent->GetPathName());
         Result->SetStringField(TEXT("newParentClassPath"), NewParent->GetPathName());
         Result->SetBoolField(TEXT("dryRun"), bDryRun);
+        Result->SetBoolField(TEXT("onlyUsed"), bOnlyUsed);
         if (Scope.OldParent == NewParent)
         {
             Result->SetBoolField(TEXT("unchanged"), true);
@@ -248,7 +335,17 @@ UnrealMCP::FMCPResponse FReparentBlueprintTool::Execute(const UnrealMCP::FMCPReq
 
         FReport Report;
         ScanGraphs(Blueprint, Scope, Report);
-        ScanDefaults(Blueprint, Scope, Report);
+        FDefaultUsage Usage;
+        if (bOnlyUsed)
+        {
+            Usage = GatherDefaultUsage(Blueprint);
+            Result->SetStringField(TEXT("defaultUsageCoverage"), TEXT("Target variable get/set nodes, target CDO overrides, loaded descendants and Asset Registry-derived Blueprint descendants; CDO overrides are value differences from the immediate parent."));
+            Result->SetBoolField(TEXT("descendantCoverageComplete"), Usage.bComplete);
+            Result->SetBoolField(TEXT("descendantScanTruncated"), Usage.bTruncated);
+            Result->SetNumberField(TEXT("descendantsScanned"), Usage.Descendants.Num());
+            Result->SetArrayField(TEXT("descendantLoadFailures"), Usage.FailedDescendants);
+        }
+        ScanDefaults(Blueprint, Scope, Report, bOnlyUsed ? &Usage : nullptr);
         Result->SetArrayField(TEXT("breakingNodes"), Report.BreakingNodes);
         Result->SetArrayField(TEXT("droppedOverrides"), Report.DroppedOverrides);
         Result->SetArrayField(TEXT("defaultChanges"), Report.DefaultChanges);
@@ -319,6 +416,7 @@ TSharedPtr<FJsonObject> FReparentBlueprintTool::BuildInputSchema() const
     P->SetObjectField(TEXT("confirm"), BuildBoolProperty(TEXT("Required to apply.")));
     P->SetObjectField(TEXT("compile"), BuildBoolProperty(TEXT("Compile after reparenting. Default true.")));
     P->SetObjectField(TEXT("save"), BuildBoolProperty(TEXT("Save after a successful compile. Default false.")));
+    P->SetObjectField(TEXT("onlyUsed"), BuildBoolProperty(TEXT("Filter defaultChanges to properties used by target get/set nodes or overridden in the target/descendants. Descendant coverage is reported and capped at 256. Default false.")));
     P->SetObjectField(TEXT("allowSaveWithErrors"), BuildBoolProperty(TEXT("Save even when the compile fails or was skipped.")));
     Schema->SetObjectField(TEXT("properties"), P);
     Schema->SetArrayField(TEXT("required"), {MakeShared<FJsonValueString>(TEXT("objectPath")), MakeShared<FJsonValueString>(TEXT("newParentClassPath"))});

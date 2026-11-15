@@ -94,6 +94,7 @@ namespace
             Names->SetObjectField(TEXT("items"), StringType);
             Properties->SetObjectField(TEXT("propertyNames"), Names);
             Properties->SetObjectField(TEXT("includeInherited"), Edit::BuildBoolProperty(TEXT("Include parent properties; default true.")));
+            Properties->SetObjectField(TEXT("declaredInOnly"), Edit::BuildStringProperty(TEXT("Optional exact declaring class path; compares authoritative classes and filters before pagination.")));
             Properties->SetObjectField(TEXT("onlyOverridden"), Edit::BuildBoolProperty(TEXT("Return values different from the parent CDO.")));
             TSharedRef<FJsonObject> Integer = MakeShared<FJsonObject>();
             Integer->SetStringField(TEXT("type"), TEXT("integer"));
@@ -117,13 +118,17 @@ namespace
 }
 
 FGetBlueprintClassDefaultsTool::FGetBlueprintClassDefaultsTool()
-    : FMCPToolBase(TEXT("GetBlueprintClassDefaults"), TEXT("Reads paged Blueprint class default values and parent overrides without modifying the asset.")) {}
+    : FMCPToolBase(TEXT("GetBlueprintClassDefaults"), TEXT("Reads paged Blueprint class default values and parent overrides without modifying the asset. declaredInOnly filters to one exact authoritative declaring class before pagination.")) {}
 
 UnrealMCP::FMCPResponse FGetBlueprintClassDefaultsTool::Execute(const UnrealMCP::FMCPRequest& Request) const
 {
     FString ObjectPath;
     if (!Request.Params.IsValid() || !Request.Params->TryGetStringField(TEXT("objectPath"), ObjectPath) || ObjectPath.IsEmpty())
         return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, TEXT("GetBlueprintClassDefaults requires objectPath."));
+    FString DeclaredInOnly, ResolvedDeclaredInOnly;
+    if (Request.Params->HasField(TEXT("declaredInOnly"))
+        && (!Request.Params->TryGetStringField(TEXT("declaredInOnly"), DeclaredInOnly) || DeclaredInOnly.IsEmpty()))
+        return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, TEXT("declaredInOnly must be a non-empty class path."));
     const bool bInherited = Edit::GetOptionalBool(Request.Params, TEXT("includeInherited"), true);
     const bool bOnlyOverridden = Edit::GetOptionalBool(Request.Params, TEXT("onlyOverridden"), false);
     double OffsetNumber = 0, LimitNumber = 50;
@@ -151,11 +156,19 @@ UnrealMCP::FMCPResponse FGetBlueprintClassDefaultsTool::Execute(const UnrealMCP:
         if (!Edit::ResolveBlueprint(ObjectPath, Blueprint, OutError)) return false;
         UClass* Class = Blueprint->GeneratedClass;
         if (!Class) { OutError = TEXT("Blueprint has no generated class; compile it separately."); return false; }
+        UClass* DeclaringClass = nullptr;
+        if (!DeclaredInOnly.IsEmpty())
+        {
+            if (!Edit::ResolveClass(DeclaredInOnly, DeclaringClass, OutError)) return false;
+            DeclaringClass = DeclaringClass->GetAuthoritativeClass();
+            ResolvedDeclaredInOnly = DeclaringClass->GetPathName();
+        }
         UObject* CDO = Class->GetDefaultObject(false);
         if (!CDO) { OutError = TEXT("Blueprint has no class default object."); return false; }
         for (TFieldIterator<FProperty> It(Class, bInherited ? EFieldIteratorFlags::IncludeSuper : EFieldIteratorFlags::ExcludeSuper); It; ++It)
         {
             FProperty* Property = *It;
+            if (DeclaringClass && Property->GetOwnerClass()->GetAuthoritativeClass() != DeclaringClass) continue;
             if (!Requested.IsEmpty() && !Requested.ContainsByPredicate([&](const FString& RequestedName)
                 { return Property->GetName().Equals(RequestedName, ESearchCase::IgnoreCase) || PublicName(Property).Equals(RequestedName, ESearchCase::IgnoreCase); })) continue;
             TSharedRef<FJsonObject> Item = SerializeProperty(Property, Class, CDO);
@@ -173,6 +186,7 @@ UnrealMCP::FMCPResponse FGetBlueprintClassDefaultsTool::Execute(const UnrealMCP:
     Response.Id = Request.Id;
     TSharedRef<FJsonObject> Result = BuildBooleanResult(true);
     Result->SetArrayField(TEXT("properties"), Items);
+    Result->SetStringField(TEXT("declaredInOnly"), ResolvedDeclaredInOnly);
     Result->SetNumberField(TEXT("count"), Items.Num());
     Result->SetNumberField(TEXT("total"), Total);
     Result->SetNumberField(TEXT("offset"), OffsetNumber);

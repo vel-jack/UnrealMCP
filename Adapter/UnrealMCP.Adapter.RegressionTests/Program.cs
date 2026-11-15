@@ -56,7 +56,7 @@ if (args.FirstOrDefault() == "--live")
     Check(list["result"]?["tools"]?.AsArray().Any(t => t?["name"]?.GetValue<string>() == "CreateInputAction") == true,
         "Live initial catalog contains Enhanced Input tools");
     Check(HasTool(list, "SetInputMappingContextMappingKey"), "Live initial catalog discovers the new key-edit tool without prior attach");
-    foreach (var migration in new[] { "MigrateUserDefinedStructMemberValues", "RestoreStructMemberValueBackup" })
+    foreach (var migration in new[] { "MigrateUserDefinedStructMemberValues", "RestoreStructMemberValueBackup", "RetargetBlueprintMemberNode", "SetSwitchCases", "OverrideBlueprintFunction" })
     {
         if (HasTool(list, migration))
             Check(list["result"]!["tools"]!.AsArray().Single(t => t!["name"]!.GetValue<string>() == migration)!
@@ -111,6 +111,8 @@ try
         }
         foreach (var migration in new[] { "MigrateUserDefinedStructMemberValues", "RestoreStructMemberValueBackup" })
             Check(UnrealSessionManager.IsMutationTool(migration), $"{migration} is classified as a mutation");
+        foreach (var name in new[] { "RetargetBlueprintMemberNode", "SetSwitchCases", "OverrideBlueprintFunction" })
+            Check(UnrealSessionManager.IsMutationTool(name), $"{name} is classified as a mutation");
         Check(UnrealSessionManager.IsMutationTool("ResetBlueprintClassDefaults"), "Reset class defaults is classified as a mutation");
         Check(UnrealSessionManager.IsMutationTool("DiscardDirtyPackagesForShutdown"), "Discard shutdown preparation is classified as a mutation");
         Check(list["result"]!["tools"]!.AsArray().Single(t => t!["name"]!.GetValue<string>() == "unreal.adapter.RequestUnrealShutdown")!

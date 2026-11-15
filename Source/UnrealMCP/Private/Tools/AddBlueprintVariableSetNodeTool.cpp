@@ -4,19 +4,22 @@
 #include "K2Node_VariableSet.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Tools/BlueprintEditToolUtils.h"
+#include "Tools/BlueprintMemberToolUtils.h"
 #include "Tools/BlueprintGraphEditToolUtils.h"
 
 FAddBlueprintVariableSetNodeTool::FAddBlueprintVariableSetNodeTool()
-    : FMCPToolBase(TEXT("AddBlueprintVariableSetNode"), TEXT("Adds a variable Set node for an exact Blueprint member with collision-aware placement, dry-run, and optional save.")) {}
+    : FMCPToolBase(TEXT("AddBlueprintVariableSetNode"), TEXT("Adds a variable Set node for an local, inherited or external Blueprint-visible member with collision-aware placement, dry-run, and optional save.")) {}
 
 UnrealMCP::FMCPResponse FAddBlueprintVariableSetNodeTool::Execute(const UnrealMCP::FMCPRequest& Request) const
 {
-    FString O, G, GG, VariableName;
+    FString O, G, GG, VariableName, OwnerClassPath, DeclaredIn;
+    bool bSelfContext = true;
     if (!Request.Params.IsValid() || !Request.Params->TryGetStringField(TEXT("objectPath"), O) || !Request.Params->TryGetStringField(TEXT("variableName"), VariableName))
     {
         return BuildError(Request, UnrealMCP::EMCPErrorCode::InvalidParams, TEXT("AddBlueprintVariableSetNode requires objectPath, variableName, and graph selector."));
     }
 
+    Request.Params->TryGetStringField(TEXT("ownerClassPath"), OwnerClassPath);
     Request.Params->TryGetStringField(TEXT("graphName"), G);
     Request.Params->TryGetStringField(TEXT("graphGuid"), GG);
     if (G.IsEmpty() && GG.IsEmpty())
@@ -30,16 +33,12 @@ UnrealMCP::FMCPResponse FAddBlueprintVariableSetNodeTool::Execute(const UnrealMC
     auto Result = UnrealMCP::BlueprintGraphEditToolUtils::AddSimpleGraphNode(
         O, G, GG, Request.Params, Dry, Save,
         NSLOCTEXT("UnrealMCP", "AddVariableSet", "UnrealMCP Add Variable Set"),
-        [&VariableName](UBlueprint* Blueprint, UEdGraph* Graph, bool bDetached, FString& OutError) -> UEdGraphNode*
+        [&](UBlueprint* Blueprint, UEdGraph* Graph, bool bDetached, FString& OutError) -> UEdGraphNode*
         {
-            const int32 Index = FBlueprintEditorUtils::FindNewVariableIndex(Blueprint, *VariableName);
-            if (Index == INDEX_NONE)
-            {
-                OutError = TEXT("Variable was not found in the target Blueprint member variables.");
-                return nullptr;
-            }
-
-            UEdGraphNode* Node = UnrealMCP::BlueprintGraphEditToolUtils::CreateVariableSetNode(Graph, *VariableName, Blueprint->NewVariables[Index].VarGuid, bDetached);
+            UnrealMCP::BlueprintMemberToolUtils::FResolvedVariable Variable;
+            if (!UnrealMCP::BlueprintMemberToolUtils::ResolveVariable(Blueprint, VariableName, OwnerClassPath, true, Variable, OutError)) return nullptr;
+            bSelfContext = Variable.IsSelfContext(); DeclaredIn = Variable.DeclaringClass->GetPathName();
+            UEdGraphNode* Node = UnrealMCP::BlueprintMemberToolUtils::CreateVariableNode(Graph, Variable, true, bDetached);
             if (!Node)
             {
                 OutError = bDetached ? TEXT("Could not create the detached Variable Set preview.") : TEXT("Could not create the Variable Set node.");
@@ -57,6 +56,7 @@ UnrealMCP::FMCPResponse FAddBlueprintVariableSetNodeTool::Execute(const UnrealMC
     R.Id = Request.Id;
     auto J = BuildBooleanResult(true);
     J->SetStringField(TEXT("variableName"), VariableName);
+    J->SetBoolField(TEXT("selfContext"), bSelfContext); J->SetStringField(TEXT("declaredIn"), DeclaredIn);
     J->SetStringField(TEXT("nodeGuid"), Result.NodeGuid);
     J->SetStringField(TEXT("nodeType"), TEXT("variable_set"));
     J->SetBoolField(TEXT("dryRun"), Dry);
@@ -79,7 +79,7 @@ TSharedPtr<FJsonObject> FAddBlueprintVariableSetNodeTool::BuildInputSchema() con
     auto S = MakeShared<FJsonObject>();
     S->SetStringField(TEXT("type"), TEXT("object"));
     auto P = MakeShared<FJsonObject>();
-    for (const TCHAR* N : { TEXT("objectPath"), TEXT("graphName"), TEXT("graphGuid"), TEXT("variableName"), TEXT("relativeToNodeGuid") })
+    for (const TCHAR* N : { TEXT("objectPath"), TEXT("graphName"), TEXT("graphGuid"), TEXT("variableName"), TEXT("ownerClassPath"), TEXT("relativeToNodeGuid") })
     {
         P->SetObjectField(N, BuildStringProperty(TEXT("Blueprint member, graph, or placement selector.")));
     }

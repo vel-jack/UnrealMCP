@@ -44,8 +44,11 @@ namespace
     {
         TArray<UPackage*> Dirty;
         FEditorFileUtils::GetDirtyContentPackages(Dirty);
+        TArray<UPackage*> DirtyWorlds;
+        FEditorFileUtils::GetDirtyWorldPackages(DirtyWorlds);
+        Dirty.Append(DirtyWorlds);
         TArray<FName> Names;
-        for (const UPackage* Package : Dirty) if (Package) Names.Add(Package->GetFName());
+        for (const UPackage* Package : Dirty) if (Package) Names.AddUnique(Package->GetFName());
         return Names;
     }
 
@@ -99,7 +102,7 @@ namespace
 
     // Repoints every referencer of the redirectors, resaves them and deletes the redirectors (editor "Fix Up Redirectors").
     // Refuses to resave a referencer that already had unsaved edits unless explicitly allowed.
-    bool FixupAndReport(const TArray<UObjectRedirector*>& Redirectors, bool bAllowDirtyReferencers, TSharedRef<FJsonObject> Result, FString& OutError)
+    bool FixupAndReport(const TArray<UObjectRedirector*>& Redirectors, bool bAllowDirtyReferencers, TSharedRef<FJsonObject> Result, FString& OutError, const TArray<FName>* DirtyBeforeOperation = nullptr)
     {
         if (Registry().IsLoadingAssets())
         {
@@ -113,7 +116,13 @@ namespace
             RedirectorPaths.Add(Redirector->GetPathName());
             for (const FName& Name : ExternalReferencers(Redirector->GetPackage()->GetFName())) Referencers.AddUnique(Name);
         }
-        const TArray<FName> Dirty = AlreadyDirty(Referencers);
+        TArray<FName> Dirty;
+        if (DirtyBeforeOperation)
+        {
+            // Rename dirties referencers itself; only earlier edits require explicit save permission.
+            for (const FName& Package : Referencers) if (DirtyBeforeOperation->Contains(Package)) Dirty.Add(Package);
+        }
+        else Dirty = AlreadyDirty(Referencers);
         Result->SetArrayField(TEXT("redirectorReferencers"), ToJson(Referencers));
         Result->SetArrayField(TEXT("dirtyReferencers"), ToJson(Dirty));
         if (!Dirty.IsEmpty() && !bAllowDirtyReferencers)
@@ -264,7 +273,7 @@ UnrealMCP::FMCPResponse FMoveAssetTool::Execute(const UnrealMCP::FMCPRequest& Re
         Result->SetBoolField(TEXT("moved"), Moved != nullptr);
         UObjectRedirector* Redirector = FindObject<UObjectRedirector>(nullptr, *OldObjectPath);
         Result->SetBoolField(TEXT("redirectorCreated"), Redirector != nullptr);
-        if (bFixup && Redirector && !FixupAndReport({Redirector}, bAllowDirty, Result, OutError))
+        if (bFixup && Redirector && !FixupAndReport({Redirector}, bAllowDirty, Result, OutError, &DirtyBefore))
         {
             Result->SetArrayField(TEXT("newlyDirtiedPackages"), ToJson(NewlyDirty(DirtyBefore)));
             return false;
