@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "capturedUtc": "2026-11-15T03:19:15.2881133Z",
+  "capturedUtc": "2026-11-15T03:59:17.9794843Z",
   "tools": [
     {
       "name": "AddBlueprintArrayOperationNode",
@@ -4010,6 +4010,61 @@
       }
     },
     {
+      "name": "MigrateUserDefinedStructMemberValues",
+      "description": "Copies a user-defined struct member to an explicitly selected existing member of exactly the same type. Covers struct defaults plus explicit /Game DataTable rows and Blueprint class defaults, recursively through structs, arrays, sets and map keys/values. Rejects destination conflicts/key collisions on detached previews. Writes a durable backup before editing. save=true compiles, saves and reload-verifies. Source removal is opt-in and requires save/reload verification plus complete indexed scope and no struct graph pins. Graph literals and placed instances are excluded.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "/Game user-defined struct asset path."
+          },
+          "sourceMember": {
+            "type": "string",
+            "description": "Existing source field GUID (preferred), authored name or internal name."
+          },
+          "destinationMember": {
+            "type": "string",
+            "description": "Distinct existing destination field GUID/name with exactly the same type."
+          },
+          "assetPaths": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "Explicit /Game Blueprint or ordinary DataTable asset."
+            },
+            "maxItems": 256
+          },
+          "removeSource": {
+            "type": "boolean",
+            "description": "Optional verified removal after copy/save/reload. Requires save=true, complete indexed referencer scope and no graph pins using the struct. Reapplies surviving values after Unreal rebuilds the schema. Default false."
+          },
+          "overwriteDestination": {
+            "type": "boolean",
+            "description": "Explicitly overwrite conflicting non-default destination values. Default false."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Preflight only; no backup or asset writes."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required to apply."
+          },
+          "save": {
+            "type": "boolean",
+            "description": "Compile, save and reload-verify explicit packages. Refuses already dirty packages. Default false."
+          }
+        },
+        "required": [
+          "objectPath",
+          "sourceMember",
+          "destinationMember",
+          "assetPaths"
+        ]
+      }
+    },
+    {
       "name": "MoveAsset",
       "description": "Moves and/or renames an asset (IAssetTools::RenameAssets), then by default fixes up the redirector so referencers are resaved at the new path and no redirector is left. Dry-run lists referencers and changes nothing. Reports newly dirtied packages and referencers that could not be saved.",
       "inputSchema": {
@@ -4512,6 +4567,34 @@
             "description": "Allow a pre-existing dirty Blueprint."
           }
         }
+      }
+    },
+    {
+      "name": "RestoreStructMemberValueBackup",
+      "description": "Restores live value snapshots from a durable migration backup in the same project and unchanged struct layout. Refuses stale roots. Requires confirm outside dryRun; save=true compiles, saves and reload-verifies explicit assets. Never deletes a field.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "backupId": {
+            "type": "string",
+            "description": "GUID returned by migration; only the same project and unchanged struct layout are accepted."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Preflight only; no backup or asset writes."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required to apply."
+          },
+          "save": {
+            "type": "boolean",
+            "description": "Compile, save and reload-verify explicit packages. Refuses already dirty packages. Default false."
+          }
+        },
+        "required": [
+          "backupId"
+        ]
       }
     },
     {

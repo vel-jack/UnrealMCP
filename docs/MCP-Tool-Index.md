@@ -2,8 +2,8 @@
 
 Generated metadata only; fetch the exact live schema before execution.
 
-Custom catalog captured: 2026-11-15T03:19:15.2881133Z. Official catalog captured: 2026-10-30T09:56:38.641Z.
-Contains 149 custom tools and 838 official tools across 53 toolsets.
+Custom catalog captured: 2026-11-15T03:59:17.9794843Z. Official catalog captured: 2026-10-30T09:56:38.641Z.
+Contains 151 custom tools and 838 official tools across 53 toolsets.
 
 Search this file with `rg -i 'interface|delete.*node|merge'`. Descriptions are shortened; a missing keyword is not proof a capability is absent.
 
@@ -122,6 +122,7 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `ListTools` | Lists all registered Unreal MCP tools and schemas. |
 | Custom | `native registry` | `ListUnrealMCPAutomationTests` | Lists registered UnrealMCP editor automation tests available to the bounded static regression runner. |
 | Custom | `native registry` | `ListVariables` | Lists Blueprint-defined variables and their pin types. |
+| Custom | `native registry` | `MigrateUserDefinedStructMemberValues` | Copies a user-defined struct member to an explicitly selected existing member of exactly the same type. Covers struct defaults plus explicit /Game... |
 | Custom | `native registry` | `MoveAsset` | Moves and/or renames an asset (IAssetTools::RenameAssets), then by default fixes up the redirector so referencers are resaved at the new path and... |
 | Custom | `native registry` | `MoveBlueprintNode` | Moves a Blueprint node using explicit or relative collision-aware placement. Supports dry-run and optional save. |
 | Custom | `native registry` | `PlanProjectRefactor` | Builds a deterministic, evidence-backed, non-mutating Blueprint refactor plan from indexed architecture analyses. It never changes assets and... |
@@ -135,6 +136,7 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `RemoveUserDefinedStructMember` | Inspect, add or remove authored members of a user-defined struct using Unreal's structure editor. Inspection includes member GUIDs,... |
 | Custom | `native registry` | `ReparentBlueprint` | Changes a Blueprint's parent class. Dry-run/preflight lists graph nodes using old-parent members the new parent lacks (graph, nodeGuid, member),... |
 | Custom | `native registry` | `ResetBlueprintClassDefaults` | Resets inherited Blueprint class defaults to their parent CDO values. |
+| Custom | `native registry` | `RestoreStructMemberValueBackup` | Restores live value snapshots from a durable migration backup in the same project and unchanged struct layout. Refuses stale roots. Requires... |
 | Custom | `native registry` | `RetargetBlueprintNode` | Retargets a cast node (including a 'Bad cast node' whose class was deleted) to newClassPath without needing the old class. Output links whose pins... |
 | Custom | `native registry` | `RunUnrealMCPAutomationTest` | Runs one exact synchronous UnrealMCP.* editor automation test and returns structured execution evidence. |
 | Custom | `native registry` | `RunUnrealMCPAutomationTests` | Runs a bounded explicit list of synchronous UnrealMCP editor automation tests and returns one suite result. |

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Async/Async.h"
+#include "Containers/Ticker.h"
 #include "Algo/Sort.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Blueprint/BlueprintSupport.h"
@@ -42,10 +43,12 @@ namespace UnrealMCP::BlueprintToolUtils
             FPlatformProcess::ReturnSynchEventToPool(CompletionEvent);
         };
 
-        AsyncTask(ENamedThreads::GameThread, [&Run, CompletionEvent]()
+        // Do not inherit the pipe worker's empty FAppTime context onto the game thread (UE 5.8).
+        FTSTicker::GetCoreTicker().AddTicker(TEXT("UnrealMCP.GameThreadDispatch"), 0.0f, [&Run, CompletionEvent](float)
         {
             Run();
             CompletionEvent->Trigger();
+            return false;
         });
 
         CompletionEvent->Wait();
