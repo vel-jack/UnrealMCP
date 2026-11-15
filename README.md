@@ -4,9 +4,9 @@
 
 See [MCP Tool Index](docs/MCP-Tool-Index.md) for a searchable routing index across custom and official MCP tools, without full schemas. Regenerate it with `python Scripts/refresh_tool_index.py`; add `--official-url <endpoint>` to capture official discovery metadata live. Without an endpoint, the generator uses the checked-in official metadata snapshot and bundled native catalog, retaining their capture dates. Exact input schemas are fetched from the owning server when needed.
 
-`Adapter/UnrealMCP.Adapter/unreal-tools.json` contains 139 native tool definitions captured from the UGitClientSample UE 5.8 editor on November 13, 2026. The adapter copies this catalog into build output for offline discovery; a successful live attachment remains authoritative.
+`Adapter/UnrealMCP.Adapter/unreal-tools.json` contains 144 native tool definitions captured from the UGitClientSample UE 5.8 editor on November 15, 2026. The adapter copies this catalog into build output for offline discovery; a successful live attachment remains authoritative.
 
-If a registered tool is missing, call `unreal.adapter.RefreshToolManifest`, then re-list tools. In compact mode use `SearchTools`, `GetToolSchema`, and `CallTool`. If these discovery tools are themselves missing, check the running adapter version: refreshing a catalog cannot upgrade an old executable. Close clients using the adapter, run `Adapter/BuildAdapter.bat`, and reconnect them. Updating the plugin DLL alone does not update the external adapter.
+If a registered tool is missing, call `unreal.adapter.RefreshToolManifest`, then re-list tools. In compact mode use `SearchTools`, `GetToolSchema`, and `CallTool`. If these discovery tools are themselves missing, check the running adapter version: refreshing a catalog cannot upgrade an old executable. Build the adapter, then reconnect clients to the new executable. Updating the plugin DLL alone does not update the external adapter.
 
 UnrealMCP combines a native Unreal Editor execution engine with a .NET MCP adapter for project inspection, Blueprint authoring and static verification. Progressive capability discovery avoids loading every tool schema before starting work.
 
@@ -56,6 +56,11 @@ Coding agents and contributors should read [AGENTS.md](AGENTS.md) before changin
 - `CompileBlueprint`
 - `FindClassUsages`
 - `ConsolidateAndDeleteAsset`
+- `DeleteAsset`
+- `DuplicateAsset`
+- `FixupRedirectors`
+- `MoveAsset`
+- `ReparentBlueprint`
 - `RetargetBlueprintNode`
 - `ListBlueprintLocalVariables`
 - `AddBlueprintLocalVariable`
@@ -352,7 +357,7 @@ Adapter regression checks use isolated temporary catalogs and a simulated native
 dotnet run --project .\Adapter\UnrealMCP.Adapter.RegressionTests -c Release
 ```
 
-If the configured adapter executable is locked by active MCP clients, build to a separate output directory with `dotnet build ... -o <verification-directory>` and run `UnrealMCP.Adapter.RegressionTests.exe` there. This does not replace/restart connected clients. The runner's optional `--live <adapter-exe> <project.uproject> [exact-test-name]` checks a running Editor's freshly discovered catalog and can invoke one explicitly selected static test through the adapter. It never launches PIE or starts the Editor itself.
+For adapter development while MCP clients are connected, run `Adapter\BuildAdapter.bat --dev --no-pause`. Each run builds and smoke-checks a fresh ignored directory under `Adapter/.dev-builds/`, so the running executable remains untouched. The script prints the new executable path. Reconnect a client to that path to load the new version; existing processes continue running the old code until then. The runner's optional `--live <adapter-exe> <project.uproject> [exact-test-name]` checks a running Editor's freshly discovered catalog and can invoke one explicitly selected static test through the adapter. It never launches PIE or starts the Editor itself.
 
 ## Agent Integration
 
@@ -376,7 +381,7 @@ The adapter is the single MCP entry point and is responsible for:
 dotnet build .\Adapter\UnrealMCP.Adapter\UnrealMCP.Adapter.csproj -c Release
 ```
 
-On Windows, `Adapter\BuildAdapter.bat` performs the same Release build followed by the adapter `help` and `doctor --json` smoke checks. Close every AI agent or MCP client using the existing adapter executable before running it, because active adapter processes lock the Release executable. Double-click the batch file for an interactive run, or use `Adapter\BuildAdapter.bat --no-pause` from a terminal.
+On Windows, `Adapter\BuildAdapter.bat` performs the same Release build followed by the adapter `help` and `doctor --json` smoke checks. Use `--dev` to build to a fresh directory without stopping connected clients; omit it for the canonical Release path, which requires clients using that path to exit first. Add `--no-pause` for terminal or automated use. This development workflow does not change client configuration or the production adapter executable.
 
 ### Universal Setup
 
@@ -563,6 +568,10 @@ Implemented from `UnrealMCP_ToolingRequirements.md` (R2, R3, R7, R11, R12). Requ
 
 - `CompileBlueprint` now also returns `status`, `errors[{graph, nodeGuid, message}]` and `warnings[...]`; node and graph come from the compiler message's object token and are empty when the compiler did not attach a node. `messages`, `errorCount` and `warningCount` are unchanged.
 - `FindClassUsages(objectPath, classOrAssetPath, limit)` scans one Blueprint live, including collapsed/macro/function graphs, and tags each hit as `cast_target`, `function_call`, `variable_access`, `pin_type`, `pin_default`, `function_parameter`, `local_variable`, `member_variable`, `component`, `parent_class` or `interface`, with graph, node GUID and pin. Matching is by owning package, so one call covers a class, its `_C` generated class, structs and enums. `registryDependency` reports the Asset Registry edge; when it exists but nothing live uses the target, a single `stale_import_only` hit is returned. Read-only.
+- `ReparentBlueprint(objectPath, newParentClassPath, dryRun, confirm, compile, save, allowSaveWithErrors)` changes a Blueprint's parent. Its report (dry-run and apply) lists `breakingNodes` (graph, nodeGuid, member, declaredIn) that use old-parent members the new parent lacks, `droppedOverrides` (event/function overrides, parent calls, component overrides), `lostInterfaces`, and `defaultChanges`: inherited defaults that are `lost` or whose inherited value changes (`inherited_value_changes`, with `currentValue`/`newValue`). Apply refreshes nodes and compiles; `errors` carry graph, nodeGuid and pin. It never saves after a failed or skipped compile unless `allowSaveWithErrors=true`.
+- `MoveAsset(sourceObjectPath, destinationPackagePath, newName, fixupRedirectors=true, dryRun, confirm, save)` moves/renames through `IAssetTools::RenameAssets`, then fixes up the redirector so referencers are resaved and none is left (`redirectorsRemoved`, `redirectorsRemaining`, `referencersNotSaved`). `FixupRedirectors(packagePath, recursive=true, dryRun, confirm)` does the same for every redirector in a folder. Both refuse to resave a referencer that already has unsaved edits unless `allowSavingDirtyReferencers=true`.
+- `DuplicateAsset(sourceObjectPath, destinationPackagePath, newName, dryRun, save)` copies an asset and never overwrites. `DeleteAsset(objectPath, dryRun, confirm, requireNoReferencers=true, force)` is a plain delete that refuses while indexed referencers exist unless `force=true`.
+- Move, fixup, duplicate and delete report `newlyDirtiedPackages`, so every package an operation dirtied is visible.
 - `ConsolidateAndDeleteAsset(oldAssetPath, replacementAssetPath, dryRun, confirm)` wraps the editor's Replace References: it repoints all referencers, deletes the old asset and reports `referencersBefore`, `referencersAfter`, `dirtiedPackages`, failures and `oldAssetStillExists`. It never saves; save the dirtied packages explicitly. Requires `confirm=true`; dry-run lists referencers only.
 - `RetargetBlueprintNode(objectPath, graphName|graphGuid, nodeGuid, newClassPath, dryRun, confirm)` retargets a cast node, including a "Bad cast node" whose class is gone, without needing the old class. Links on the old class-named result pin move to the new result pin; `droppedLinks` lists any the schema refused. Casts only for now.
 - `ListBlueprintLocalVariables`, `AddBlueprintLocalVariable` (type arguments as in `AddBlueprintVariable`; idempotent by name) and `RemoveBlueprintLocalVariable` (requires `confirm`; reports leftover Get/Set nodes) manage function-graph locals. The DSL `(local name type)` form is not part of this pass.
@@ -574,3 +583,5 @@ The adapter classifies `Consolidate*` and `Retarget*` tools as tracked mutations
 `AddBlueprintInterface(objectPath, interfaceClassPath, dryRun=false, compileAfterEdit=true, saveAfterEdit=false)` attaches an exact interface class. It detects direct/inherited implementations, refuses pre-existing function-name collisions, and preserves existing graphs. Mutation uses an editor transaction with compile-failure rollback. Saving forces compilation and is refused if the package already has unsaved work. It reports added/alreadyExists/inherited, created graph names, compilation counts, rollback and save/index outcomes. It never stages or commits.
 
 UE 5.8 isolated-host compile/link and `UnrealMCP.Blueprint.Authoring.Interface.Attach` passed. The regression covers dry-run, attachment with signature generation, repeated calls, inherited interfaces, invalid classes, save refusal for unsaved work, and function collision refusal. Compilation-failure rollback is implemented but has no dedicated injected-failure fixture yet.
+
+Redirector fixup runs without the editor report dialog. `referencersResaved` and `packagesSaved` list successful saves; `referencersNotSaved` and `redirectorsRemaining` identify incomplete work. Incomplete fixup returns an error with `partialSuccess` and mutation evidence; an already completed move is not rolled back. Read-only or locked referencers must be made writable before retrying.

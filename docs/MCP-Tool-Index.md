@@ -2,8 +2,8 @@
 
 Generated metadata only; fetch the exact live schema before execution.
 
-Custom catalog captured: 2026-11-13T09:49:50.1183121Z. Official catalog captured: 2026-10-30T09:56:38.641Z.
-Contains 139 custom tools and 838 official tools across 53 toolsets.
+Custom catalog captured: 2026-11-15T02:34:00.9774610Z. Official catalog captured: 2026-10-30T09:56:38.641Z.
+Contains 144 custom tools and 838 official tools across 53 toolsets.
 
 Search this file with `rg -i 'interface|delete.*node|merge'`. Descriptions are shortened; a missing keyword is not proof a capability is absent.
 
@@ -60,9 +60,11 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `CreateBlueprintFunctionGraph` | Creates a uniquely named user Blueprint function graph and returns stable graph, entry, and return identities. Supports dry-run and optional save. |
 | Custom | `native registry` | `CreateInputAction` | Creates a new UInputAction asset with an explicit value type. Rejects overwrite and supports dry-run and optional saving. |
 | Custom | `native registry` | `CreateInputMappingContext` | Creates a new UInputMappingContext asset. Rejects overwrite and supports dry-run and optional saving. |
+| Custom | `native registry` | `DeleteAsset` | Plainly deletes one asset (no reference replacement; see ConsolidateAndDeleteAsset for that). Refuses while indexed referencers exist unless... |
 | Custom | `native registry` | `DeleteBlueprintNode` | Deletes one Blueprint graph node by stable GUID. Requires confirm=true, supports dry-run, and reports affected pin links. |
 | Custom | `native registry` | `DiscardDirtyPackagesForShutdown` | Clears dirty flags on explicitly discarded editor packages before shutdown, without saving them. |
 | Custom | `native registry` | `DisconnectBlueprintPins` | Disconnects one exact Blueprint pin link or all links on one pin. Requires confirmation unless dry-run and reports affected links. |
+| Custom | `native registry` | `DuplicateAsset` | Duplicates an asset to destinationPackagePath/newName (IAssetTools::DuplicateAsset), e.g. to keep the original for comparison. Refuses to overwrite. |
 | Custom | `native registry` | `ExplainBlueprintRole` | Returns a structured indexed summary that helps explain a Blueprint's likely role, neighbors, and composition inside the project. |
 | Custom | `native registry` | `ExplainBlueprintTrace` | Explains an indexed Blueprint trace in a higher-level, token-efficient summary with confidence markers and cross-Blueprint notes. |
 | Custom | `native registry` | `ExplainFeatureWorkflow` | Explains a feature query by ranking likely entry assets, then summarizing each candidate's role and nearby indexed flow. |
@@ -79,6 +81,7 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `FindDataTableReferences` | Finds Blueprint nodes with a direct DataTable pin default, scanning registry referencers or one specified Blueprint. |
 | Custom | `native registry` | `FindFeatureEntryPoints` | Finds likely starting assets for a feature by ranking indexed assets that match a query, optionally boosted by a related context asset. |
 | Custom | `native registry` | `FindUnusedBlueprintAssets` | Finds conservative project Blueprint candidates with no indexed incoming package dependencies. Results are leads for review, never proof that an... |
+| Custom | `native registry` | `FixupRedirectors` | Editor 'Fix Up Redirectors in Folder': finds redirectors under packagePath (recursive by default), resaves their referencers and deletes them.... |
 | Custom | `native registry` | `GetActorInfo` | Returns detailed information about one actor from the active editor world, including transform, components, and attached actors. |
 | Custom | `native registry` | `GetAssetInfo` | Returns detailed Asset Registry information for one asset without loading it. |
 | Custom | `native registry` | `GetAssetReferencers` | Returns indexed package referencers for one asset or package. |
@@ -117,6 +120,7 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `ListTools` | Lists all registered Unreal MCP tools and schemas. |
 | Custom | `native registry` | `ListUnrealMCPAutomationTests` | Lists registered UnrealMCP editor automation tests available to the bounded static regression runner. |
 | Custom | `native registry` | `ListVariables` | Lists Blueprint-defined variables and their pin types. |
+| Custom | `native registry` | `MoveAsset` | Moves and/or renames an asset (IAssetTools::RenameAssets), then by default fixes up the redirector so referencers are resaved at the new path and... |
 | Custom | `native registry` | `MoveBlueprintNode` | Moves a Blueprint node using explicit or relative collision-aware placement. Supports dry-run and optional save. |
 | Custom | `native registry` | `PlanProjectRefactor` | Builds a deterministic, evidence-backed, non-mutating Blueprint refactor plan from indexed architecture analyses. It never changes assets and... |
 | Custom | `native registry` | `RefreshBlueprintCallSites` | Finds every same-Blueprint and cross-Blueprint call site of a Blueprint function via the project index and reconstructs each call node to match... |
@@ -124,6 +128,7 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `RemoveBlueprintLocalVariable` | Removes one local variable from a Blueprint function graph. Requires confirm=true unless dryRun=true; reports how many Get/Set nodes still... |
 | Custom | `native registry` | `RemoveDataTableRow` | Transactionally edits one DataTable row in memory; leaves the asset dirty for an explicit save. |
 | Custom | `native registry` | `RemoveInputMappingContextMapping` | Removes one exact existing Action+Key mapping row from an InputMappingContext. Fails clearly rather than guessing when zero or more than one row... |
+| Custom | `native registry` | `ReparentBlueprint` | Changes a Blueprint's parent class. Dry-run/preflight lists graph nodes using old-parent members the new parent lacks (graph, nodeGuid, member),... |
 | Custom | `native registry` | `ResetBlueprintClassDefaults` | Resets inherited Blueprint class defaults to their parent CDO values. |
 | Custom | `native registry` | `RetargetBlueprintNode` | Retargets a cast node (including a 'Bad cast node' whose class was deleted) to newClassPath without needing the old class. Output links whose pins... |
 | Custom | `native registry` | `RunUnrealMCPAutomationTest` | Runs one exact synchronous UnrealMCP.* editor automation test and returns structured execution evidence. |

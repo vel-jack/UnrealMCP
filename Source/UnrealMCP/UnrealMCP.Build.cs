@@ -34,7 +34,8 @@ public class UnrealMCP : ModuleRules
                 "SlateCore",
                 "Sockets",
                 "ToolMenus",
-                "UnrealEd"
+                "UnrealEd",
+                "AssetTools"
             });
     }
 }

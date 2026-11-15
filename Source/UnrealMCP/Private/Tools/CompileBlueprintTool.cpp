@@ -8,6 +8,7 @@
 #include "Kismet2/CompilerResultsLog.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Logging/TokenizedMessage.h"
+#include "Tools/BlueprintEditToolUtils.h"
 #include "Tools/BlueprintToolUtils.h"
 
 namespace
@@ -28,35 +29,6 @@ namespace
         }
     }
 
-    // Walks the message's object tokens for the first graph node; compiler errors reference their source node this way.
-    TSharedRef<FJsonObject> BuildLocatedMessage(const FTokenizedMessage& Message)
-    {
-        TSharedRef<FJsonObject> Object = MakeShared<FJsonObject>();
-        FString GraphName;
-        FString NodeGuid;
-        for (const TSharedRef<IMessageToken>& Token : Message.GetMessageTokens())
-        {
-            if (Token->GetType() != EMessageToken::Object)
-            {
-                continue;
-            }
-            const UObject* Target = static_cast<const FUObjectToken&>(Token.Get()).GetObject().Get();
-            if (const UEdGraphNode* Node = Cast<UEdGraphNode>(Target))
-            {
-                NodeGuid = Node->NodeGuid.ToString(EGuidFormats::DigitsWithHyphensLower);
-                GraphName = Node->GetGraph() ? Node->GetGraph()->GetName() : FString();
-                break;
-            }
-            if (const UEdGraph* Graph = Cast<UEdGraph>(Target))
-            {
-                GraphName = Graph->GetName();
-            }
-        }
-        Object->SetStringField(TEXT("graph"), GraphName);
-        Object->SetStringField(TEXT("nodeGuid"), NodeGuid);
-        Object->SetStringField(TEXT("message"), Message.ToText().ToString());
-        return Object;
-    }
 }
 
 FCompileBlueprintTool::FCompileBlueprintTool()
@@ -121,11 +93,11 @@ UnrealMCP::FMCPResponse FCompileBlueprintTool::Execute(const UnrealMCP::FMCPRequ
 
                 if (Message->GetSeverity() == EMessageSeverity::Error)
                 {
-                    Errors.Add(MakeShared<FJsonValueObject>(BuildLocatedMessage(*Message)));
+                    Errors.Add(MakeShared<FJsonValueObject>(UnrealMCP::BlueprintEditToolUtils::BuildLocatedCompileMessage(*Message)));
                 }
                 else if (Message->GetSeverity() == EMessageSeverity::Warning || Message->GetSeverity() == EMessageSeverity::PerformanceWarning)
                 {
-                    Warnings.Add(MakeShared<FJsonValueObject>(BuildLocatedMessage(*Message)));
+                    Warnings.Add(MakeShared<FJsonValueObject>(UnrealMCP::BlueprintEditToolUtils::BuildLocatedCompileMessage(*Message)));
                 }
             }
 

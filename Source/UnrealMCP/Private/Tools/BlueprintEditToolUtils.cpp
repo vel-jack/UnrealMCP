@@ -2,6 +2,13 @@
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Dom/JsonObject.h"
+#include "EdGraph/EdGraph.h"
+#include "EdGraph/EdGraphNode.h"
+#include "EdGraphToken.h"
+#include "Kismet2/CompilerResultsLog.h"
+#include "Kismet2/KismetEditorUtilities.h"
+#include "Logging/TokenizedMessage.h"
+#include "Misc/UObjectToken.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
 #include "Index/UnrealMCPProjectIndex.h"
@@ -228,5 +235,61 @@ namespace UnrealMCP::BlueprintEditToolUtils
         Property->SetStringField(TEXT("type"), TEXT("boolean"));
         Property->SetStringField(TEXT("description"), Description);
         return Property;
+    }
+    // Walks the message's object tokens for the first graph node; compiler errors reference their source node this way.
+    TSharedRef<FJsonObject> BuildLocatedCompileMessage(const FTokenizedMessage& Message)
+    {
+        TSharedRef<FJsonObject> Object = MakeShared<FJsonObject>();
+        FString GraphName;
+        FString NodeGuid;
+        FString PinName;
+        for (const TSharedRef<IMessageToken>& Token : Message.GetMessageTokens())
+        {
+            // Object tokens carry nodes/graphs; pin-level compiler errors arrive as EdGraph tokens instead.
+            const UObject* Target = nullptr;
+            if (Token->GetType() == EMessageToken::Object)
+            {
+                Target = static_cast<const FUObjectToken&>(Token.Get()).GetObject().Get();
+            }
+            else if (Token->GetType() == EMessageToken::EdGraph)
+            {
+                const FEdGraphToken& GraphToken = static_cast<const FEdGraphToken&>(Token.Get());
+                if (const UEdGraphPin* Pin = GraphToken.GetPin())
+                {
+                    Target = Pin->GetOwningNodeUnchecked();
+                    if (PinName.IsEmpty()) PinName = Pin->PinName.ToString();
+                }
+                if (Target == nullptr) Target = GraphToken.GetGraphObject();
+            }
+            if (const UEdGraphNode* Node = Cast<UEdGraphNode>(Target))
+            {
+                NodeGuid = Node->NodeGuid.ToString(EGuidFormats::DigitsWithHyphensLower);
+                GraphName = Node->GetGraph() ? Node->GetGraph()->GetName() : FString();
+                break;
+            }
+            if (const UEdGraph* Graph = Cast<UEdGraph>(Target))
+            {
+                GraphName = Graph->GetName();
+            }
+        }
+        Object->SetStringField(TEXT("pin"), PinName);
+        Object->SetStringField(TEXT("graph"), GraphName);
+        Object->SetStringField(TEXT("nodeGuid"), NodeGuid);
+        Object->SetStringField(TEXT("message"), Message.ToText().ToString());
+        return Object;
+    }
+
+    bool CompileWithLocatedMessages(UBlueprint* Blueprint, TArray<TSharedPtr<FJsonValue>>& OutErrors, TArray<TSharedPtr<FJsonValue>>& OutWarnings)
+    {
+        FCompilerResultsLog Log;
+        Log.bSilentMode = true;
+        FKismetEditorUtilities::CompileBlueprint(Blueprint, EBlueprintCompileOptions::SkipSave | EBlueprintCompileOptions::SkipGarbageCollection, &Log);
+        for (const TSharedRef<FTokenizedMessage>& Message : Log.Messages)
+        {
+            if (Message->GetSeverity() == EMessageSeverity::Error) OutErrors.Add(MakeShared<FJsonValueObject>(BuildLocatedCompileMessage(*Message)));
+            else if (Message->GetSeverity() == EMessageSeverity::Warning || Message->GetSeverity() == EMessageSeverity::PerformanceWarning)
+                OutWarnings.Add(MakeShared<FJsonValueObject>(BuildLocatedCompileMessage(*Message)));
+        }
+        return Log.NumErrors == 0 && (Blueprint->Status == BS_UpToDate || Blueprint->Status == BS_UpToDateWithWarnings);
     }
 }

@@ -398,7 +398,6 @@ bool FUnrealMCPCompileResultTest::RunTest(const FString& Parameters)
     UnrealMCP::BlueprintGraphEditToolUtils::PlaceNewNode(Graph, BadCast, {});
     GetDefault<UEdGraphSchema_K2>()->TryCreateConnection(Event->FindPin(UEdGraphSchema_K2::PN_Then), BadCast->GetExecPin());
 
-    AddExpectedError(TEXT("cast"), EAutomationExpectedErrorFlags::Contains, 0);
     const UnrealMCP::FMCPResponse Broken = Run(FCompileBlueprintTool(), Params);
     if (!TestTrue(TEXT("Failed compile still returns a structured result"), Broken.Result.IsValid())) return false;
     const TArray<TSharedPtr<FJsonValue>> Errors = Broken.Result->GetArrayField(TEXT("errors"));

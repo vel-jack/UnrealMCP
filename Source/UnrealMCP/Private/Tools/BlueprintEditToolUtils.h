@@ -6,6 +6,7 @@
 class UBlueprint;
 class UClass;
 class UObject;
+class FTokenizedMessage;
 
 namespace UnrealMCP::BlueprintEditToolUtils
 {
@@ -30,4 +31,8 @@ namespace UnrealMCP::BlueprintEditToolUtils
     bool GetOptionalBool(const TSharedPtr<FJsonObject>& Params, const TCHAR* Name, bool DefaultValue);
     TSharedRef<FJsonObject> BuildStringProperty(const FString& Description);
     TSharedRef<FJsonObject> BuildBoolProperty(const FString& Description);
+    // {graph, nodeGuid, message} for one compiler message, located through its object tokens.
+    TSharedRef<FJsonObject> BuildLocatedCompileMessage(const FTokenizedMessage& Message);
+    // Compiles without saving; returns true when the Blueprint ends up up-to-date (warnings allowed).
+    bool CompileWithLocatedMessages(UBlueprint* Blueprint, TArray<TSharedPtr<FJsonValue>>& OutErrors, TArray<TSharedPtr<FJsonValue>>& OutWarnings);
 }

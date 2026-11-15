@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "capturedUtc": "2026-11-13T09:49:50.1183121Z",
+  "capturedUtc": "2026-11-15T02:34:00.9774610Z",
   "tools": [
     {
       "name": "AddBlueprintArrayOperationNode",
@@ -2362,6 +2362,38 @@
       }
     },
     {
+      "name": "DeleteAsset",
+      "description": "Plainly deletes one asset (no reference replacement; see ConsolidateAndDeleteAsset for that). Refuses while indexed referencers exist unless force=true. Requires confirm=true unless dryRun=true.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Asset to delete."
+          },
+          "requireNoReferencers": {
+            "type": "boolean",
+            "description": "Refuse while referencers exist. Default true."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Delete even with referencers; their references become null."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "List referencers only."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required to apply."
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
       "name": "DeleteBlueprintNode",
       "description": "Deletes one Blueprint graph node by stable GUID. Requires confirm=true, supports dry-run, and reports affected pin links.",
       "inputSchema": {
@@ -2488,6 +2520,40 @@
         "required": [
           "objectPath",
           "sourceNodeGuid"
+        ]
+      }
+    },
+    {
+      "name": "DuplicateAsset",
+      "description": "Duplicates an asset to destinationPackagePath/newName (IAssetTools::DuplicateAsset), e.g. to keep the original for comparison. Refuses to overwrite.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceObjectPath": {
+            "type": "string",
+            "description": "Asset to copy."
+          },
+          "destinationPackagePath": {
+            "type": "string",
+            "description": "Destination folder."
+          },
+          "newName": {
+            "type": "string",
+            "description": "Name of the copy."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate only."
+          },
+          "save": {
+            "type": "boolean",
+            "description": "Save the copy."
+          }
+        },
+        "required": [
+          "sourceObjectPath",
+          "destinationPackagePath",
+          "newName"
         ]
       }
     },
@@ -3018,6 +3084,38 @@
           }
         },
         "additionalProperties": false
+      }
+    },
+    {
+      "name": "FixupRedirectors",
+      "description": "Editor \u0027Fix Up Redirectors in Folder\u0027: finds redirectors under packagePath (recursive by default), resaves their referencers and deletes them. Dry-run lists redirectors and referencers only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "packagePath": {
+            "type": "string",
+            "description": "Folder to scan, e.g. /Game/MarkerBP."
+          },
+          "recursive": {
+            "type": "boolean",
+            "description": "Include subfolders. Default true."
+          },
+          "allowSavingDirtyReferencers": {
+            "type": "boolean",
+            "description": "Allow saving referencers that already had unsaved edits."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "List redirectors and referencers only."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required to apply."
+          }
+        },
+        "required": [
+          "packagePath"
+        ]
       }
     },
     {
@@ -3838,6 +3936,51 @@
       }
     },
     {
+      "name": "MoveAsset",
+      "description": "Moves and/or renames an asset (IAssetTools::RenameAssets), then by default fixes up the redirector so referencers are resaved at the new path and no redirector is left. Dry-run lists referencers and changes nothing. Reports newly dirtied packages and referencers that could not be saved.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceObjectPath": {
+            "type": "string",
+            "description": "Asset to move, e.g. /Game/A/BP_X.BP_X."
+          },
+          "destinationPackagePath": {
+            "type": "string",
+            "description": "Destination folder, e.g. /Game/B/Weapons."
+          },
+          "newName": {
+            "type": "string",
+            "description": "Optional new asset name; keeps the current name when empty."
+          },
+          "fixupRedirectors": {
+            "type": "boolean",
+            "description": "Resave referencers and delete the redirector. Default true."
+          },
+          "allowSavingDirtyReferencers": {
+            "type": "boolean",
+            "description": "Allow fixup to save referencers that already had unsaved edits."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "List referencers and validate the destination only."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required to apply."
+          },
+          "save": {
+            "type": "boolean",
+            "description": "Save the moved asset."
+          }
+        },
+        "required": [
+          "sourceObjectPath",
+          "destinationPackagePath"
+        ]
+      }
+    },
+    {
       "name": "MoveBlueprintNode",
       "description": "Moves a Blueprint node using explicit or relative collision-aware placement. Supports dry-run and optional save.",
       "inputSchema": {
@@ -4082,6 +4225,47 @@
           "objectPath",
           "inputActionPath",
           "key"
+        ]
+      }
+    },
+    {
+      "name": "ReparentBlueprint",
+      "description": "Changes a Blueprint\u0027s parent class. Dry-run/preflight lists graph nodes using old-parent members the new parent lacks (graph, nodeGuid, member), dropped overrides, lost interfaces, and inherited defaults that are lost or change value. Apply refreshes nodes, compiles, and reports located errors; never saves a failed compile unless allowSaveWithErrors=true.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint to reparent."
+          },
+          "newParentClassPath": {
+            "type": "string",
+            "description": "New parent class, e.g. /Game/BP_IconEntity.BP_IconEntity_C or /Script/Engine.Pawn."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Report only; never mutates."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required to apply."
+          },
+          "compile": {
+            "type": "boolean",
+            "description": "Compile after reparenting. Default true."
+          },
+          "save": {
+            "type": "boolean",
+            "description": "Save after a successful compile. Default false."
+          },
+          "allowSaveWithErrors": {
+            "type": "boolean",
+            "description": "Save even when the compile fails or was skipped."
+          }
+        },
+        "required": [
+          "objectPath",
+          "newParentClassPath"
         ]
       }
     },

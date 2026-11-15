@@ -62,6 +62,8 @@ The adapter does not reimplement Unreal editor tools. It mirrors and forwards th
 
 By default, client configuration points to the adapter executable in its current directory. Never copy the adapter automatically. Copying is allowed only when the user explicitly supplies `--install-dir <path>`.
 
+For adapter development, use `Adapter/BuildAdapter.bat --dev --no-pause` to build and smoke-check a fresh ignored output directory while existing MCP clients keep their current executable. Reconnect a client to the printed path to run new adapter code. The ordinary `BuildAdapter.bat` still builds the canonical Release output and may require clients using that path to exit.
+
 ## Current Priority
 
 The active roadmap is organized around capability and context efficiency (E1-E8), not historical M1-M20 order. E1 introduces progressive adapter discovery and bounded Blueprint overviews. E2 safety hardening gates additional compound mutations. Read ROADMAP.md for current implementation and acceptance status; docs/LEGACY_ROADMAP.md retains historical evidence and unfinished tasks. Map/level editing is deferred. Preserve existing level/selection context and do not use Computer Use; hand unavoidable UI actions to the user.
