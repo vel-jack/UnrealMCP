@@ -209,7 +209,7 @@ void FUnrealMCPModule::HandleRebuildProjectIndex() const
             const float Total = FMath::Max(1, TotalAssets);
             const float Current = FMath::Clamp(static_cast<float>(CurrentIndex), 0.0f, Total);
             const float TargetProgress = (Current / Total) * 100.0f;
-            const float Remaining = FMath::Max(0.0f, TargetProgress - SlowTask.CompletedWork);
+            const float Remaining = FMath::Max(0.0f, TargetProgress - (SlowTask.CompletedWork + SlowTask.CurrentFrameScope));
             if (Remaining > 0.0f)
             {
                 SlowTask.EnterProgressFrame(Remaining, FText::FromString(StatusText));
@@ -253,7 +253,7 @@ void FUnrealMCPModule::HandleRefreshProjectIndex() const
         {
             const float Total = FMath::Max(1, TotalAssets);
             const float TargetProgress = (FMath::Clamp(static_cast<float>(CurrentIndex), 0.0f, Total) / Total) * 100.0f;
-            const float Remaining = FMath::Max(0.0f, TargetProgress - SlowTask.CompletedWork);
+            const float Remaining = FMath::Max(0.0f, TargetProgress - (SlowTask.CompletedWork + SlowTask.CurrentFrameScope));
             if (Remaining > 0.0f)
             {
                 SlowTask.EnterProgressFrame(Remaining, FText::FromString(StatusText));

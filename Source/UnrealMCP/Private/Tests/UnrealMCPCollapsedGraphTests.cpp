@@ -6,6 +6,13 @@
 #include "EdGraph/EdGraph.h"
 #include "Engine/Blueprint.h"
 #include "GameFramework/Actor.h"
+#include "Index/UnrealMCPProjectIndexInternal.h"
+#include "Index/UnrealMCPProjectIndex.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "HAL/FileManager.h"
+#include "Tools/BlueprintEditToolUtils.h"
+#include "Tools/RefreshProjectIndexTool.h"
+#include "UnrealMCPModule.h"
 #include "K2Node_Composite.h"
 #include "K2Node_IfThenElse.h"
 #include "Kismet2/KismetEditorUtilities.h"
@@ -44,10 +51,22 @@ bool FUnrealMCPCollapsedGraphLiveTest::RunTest(const FString& Parameters)
     UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(
         AActor::StaticClass(), CreatePackage(*PackagePath), FName(*Name), BPTYPE_Normal,
         UBlueprint::StaticClass(), UBlueprintGeneratedClass::StaticClass(), FName(TEXT("UnrealMCPAutomation")));
+    FString FixtureFilename;
+    auto& ProjectIndex = FUnrealMCPModule::Get().GetProjectIndex();
+    const auto IndexStatus = ProjectIndex.GetStatusSnapshot();
     ON_SCOPE_EXIT
     {
         if (Blueprint != nullptr) ObjectTools::DeleteObjectsUnchecked({Blueprint});
         if (UPackage* Package = FindPackage(nullptr, *PackagePath)) Package->SetDirtyFlag(false);
+        if (!FixtureFilename.IsEmpty())
+        {
+            TestTrue(TEXT("Temporary fixture file deleted"), IFileManager::Get().Delete(*FixtureFilename, false, true));
+            FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get().ScanModifiedAssetFiles({FixtureFilename});
+            FUnrealMCPProjectIndex::FRefreshResult Cleanup;
+            FString CleanupError;
+            TestTrue(TEXT("Temporary index rows cleaned up"), ProjectIndex.RefreshProjectIndex({ObjectPath}, Cleanup, CleanupError));
+            TestEqual(TEXT("Temporary indexed asset removed"), Cleanup.RemovedAssetCount, 1);
+        }
     };
     if (!TestNotNull(TEXT("Fixture Blueprint"), Blueprint) || Blueprint->UbergraphPages.Num() == 0) return false;
 
@@ -101,6 +120,71 @@ bool FUnrealMCPCollapsedGraphLiveTest::RunTest(const FString& Parameters)
     UEdGraphNode* Gone = nullptr;
     TestFalse(TEXT("Deleted node left the collapsed graph"),
         UnrealMCP::BlueprintGraphEditToolUtils::ResolveNode(Collapsed, Guids[1], Gone, Error));
+    TSet<FString> RemovedGuids;
+    TArray<UEdGraphNode*> BulkNodes;
+    for (int32 Index = 0; Index < 200; ++Index)
+    {
+        auto* Branch = NewObject<UK2Node_IfThenElse>(Collapsed);
+        UnrealMCP::BlueprintGraphEditToolUtils::PlaceNewNode(Collapsed, Branch, {});
+        if (!BulkNodes.IsEmpty())
+            CastChecked<UK2Node_IfThenElse>(BulkNodes.Last())->GetThenPin()->MakeLinkTo(Branch->GetExecPin());
+        BulkNodes.Add(Branch);
+        RemovedGuids.Add(UnrealMCP::BlueprintGraphEditToolUtils::GetNodeGuid(Branch));
+    }
+    TArray<FIndexedBlueprintGraphRow> Graphs;
+    TArray<FIndexedBlueprintNodeRow> Nodes;
+    TArray<FIndexedBlueprintPinRow> Pins;
+    TArray<FIndexedBlueprintEdgeRow> Edges;
+    TestTrue(TEXT("Index extraction before bulk deletion"), ExtractBlueprintGraphRows(Blueprint, Graphs, Nodes, Pins, Edges));
+    TestEqual(TEXT("All 200 fixture nodes were indexed"), Nodes.FilterByPredicate([&](const FIndexedBlueprintNodeRow& Row)
+        { return RemovedGuids.Contains(Row.NodeGuid); }).Num(), 200);
+    // The extraction regression also runs without a previously built sample index.
+    const bool bVerifySqlite = IndexStatus.bHasUsableIndex;
+    auto Refresh = [&]()
+    {
+        UnrealMCP::FMCPRequest Request;
+        Request.Id = TEXT("bulk-index-refresh");
+        Request.Params = MakeShared<FJsonObject>();
+        Request.Params->SetArrayField(TEXT("objectPaths"), {MakeShared<FJsonValueString>(ObjectPath)});
+        const auto Response = FRefreshProjectIndexTool().Execute(Request);
+        if (Response.Error.IsSet()) AddError(Response.Error->Message);
+        return Response.Result.IsValid() && Response.Result->GetIntegerField(TEXT("refreshedAssetCount")) == 1;
+    };
+    auto VerifySqlite = [&]()
+    {
+        const auto CheckRows = [&](const TCHAR* Sql, int32 Expected, const TCHAR* Label)
+        {
+            FSQLitePreparedStatement Query(ProjectIndex.Database, Sql, ESQLitePreparedStatementFlags::None);
+            if (!Query.IsValid() || !Query.SetBindingValueByIndex(1, *ObjectPath)) return false;
+            int32 Count = 0;
+            const int64 Rows = Query.Execute([&](const FSQLitePreparedStatement& Row)
+            {
+                return Row.GetColumnValueByIndex(0, Count) ? ESQLitePreparedStatementExecuteRowResult::Continue : ESQLitePreparedStatementExecuteRowResult::Error;
+            });
+            return TestEqual(TEXT("SQLite count query returns one row"), Rows, int64(1)) && TestEqual(Label, Count, Expected);
+        };
+        return CheckRows(TEXT("SELECT count(*) FROM blueprint_nodes WHERE blueprint_object_path = ?1"), Nodes.Num(), TEXT("SQLite node count matches current graph"))
+            && CheckRows(TEXT("SELECT count(*) FROM blueprint_pins WHERE blueprint_object_path = ?1"), Pins.Num(), TEXT("SQLite pin count matches current graph"))
+            && CheckRows(TEXT("SELECT count(*) FROM blueprint_edges WHERE blueprint_object_path = ?1"), Edges.Num(), TEXT("SQLite edge count matches current graph"));
+    };
+    if (bVerifySqlite)
+    {
+        if (!TestTrue(TEXT("Save temporary fixture for registry discovery"), UnrealMCP::BlueprintEditToolUtils::SaveAsset(Blueprint, FixtureFilename, Error))) return false;
+        FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get().ScanModifiedAssetFiles({FixtureFilename});
+        if (!TestTrue(TEXT("Populate the SQLite index with 200 connected nodes"), Refresh()) || !VerifySqlite()) return false;
+    }
+    else AddInfo(TEXT("SQLite verification skipped because the project index has not been built."));
+    for (UEdGraphNode* Node : BulkNodes) Node->DestroyNode();
+    FKismetEditorUtilities::CompileBlueprint(Blueprint, EBlueprintCompileOptions::SkipSave | EBlueprintCompileOptions::SkipGarbageCollection);
+    Graphs.Reset(); Nodes.Reset(); Pins.Reset(); Edges.Reset();
+    TestTrue(TEXT("Index extraction after bulk deletion and compile"), ExtractBlueprintGraphRows(Blueprint, Graphs, Nodes, Pins, Edges));
+    TestFalse(TEXT("Deleted nodes leave no index rows"), Nodes.ContainsByPredicate([&](const FIndexedBlueprintNodeRow& Row)
+        { return RemovedGuids.Contains(Row.NodeGuid); }));
+    TestFalse(TEXT("Deleted nodes leave no pin rows"), Pins.ContainsByPredicate([&](const FIndexedBlueprintPinRow& Row)
+        { return RemovedGuids.Contains(Row.NodeGuid); }));
+    TestFalse(TEXT("Deleted nodes leave no edge rows"), Edges.ContainsByPredicate([&](const FIndexedBlueprintEdgeRow& Row)
+        { return RemovedGuids.Contains(Row.SourceNodeGuid) || RemovedGuids.Contains(Row.TargetNodeGuid); }));
+    if (bVerifySqlite && (!TestTrue(TEXT("Refresh the same asset after bulk deletion and compile"), Refresh()) || !VerifySqlite())) return false;
     return !HasAnyErrors();
 }
 

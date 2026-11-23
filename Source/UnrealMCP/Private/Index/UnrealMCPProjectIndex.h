@@ -65,6 +65,9 @@ public:
     const FSQLiteDatabase& GetDatabase() const;
 
 private:
+#if WITH_DEV_AUTOMATION_TESTS
+    friend class FUnrealMCPCollapsedGraphLiveTest;
+#endif
     static constexpr int32 CurrentSchemaVersion = 1;
 
     bool OpenDatabase(FString& OutError);

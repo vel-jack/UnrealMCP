@@ -1,10 +1,8 @@
 #include "Tools/RefreshProjectIndexTool.h"
 
-#include "Async/Async.h"
 #include "Dom/JsonObject.h"
-#include "HAL/PlatformProcess.h"
 #include "Index/UnrealMCPProjectIndex.h"
-#include "Misc/ScopeExit.h"
+#include "Tools/BlueprintToolUtils.h"
 #include "UnrealMCPModule.h"
 
 FRefreshProjectIndexTool::FRefreshProjectIndexTool()
@@ -36,37 +34,11 @@ UnrealMCP::FMCPResponse FRefreshProjectIndexTool::Execute(const UnrealMCP::FMCPR
 
     const FDateTime StartedAt = FDateTime::UtcNow();
     FUnrealMCPProjectIndex::FRefreshResult RefreshResult;
-    bool bSucceeded = false;
     FString Error;
-
-    auto RefreshIndex = [&]()
+    const bool bSucceeded = UnrealMCP::BlueprintToolUtils::ExecuteOnGameThreadSync([&](FString& OutError)
     {
-        bSucceeded = FUnrealMCPModule::Get().GetProjectIndex().RefreshProjectIndex(RequestedObjectPaths, RefreshResult, Error);
-    };
-
-    if (IsInGameThread())
-    {
-        RefreshIndex();
-    }
-    else
-    {
-        FEvent* CompletionEvent = FPlatformProcess::GetSynchEventFromPool(false);
-        if (CompletionEvent == nullptr)
-        {
-            return BuildError(Request, UnrealMCP::EMCPErrorCode::InternalError, TEXT("RefreshProjectIndex failed: could not create a synchronization event."));
-        }
-        ON_SCOPE_EXIT
-        {
-            FPlatformProcess::ReturnSynchEventToPool(CompletionEvent);
-        };
-
-        AsyncTask(ENamedThreads::GameThread, [&RefreshIndex, CompletionEvent]()
-        {
-            RefreshIndex();
-            CompletionEvent->Trigger();
-        });
-        CompletionEvent->Wait();
-    }
+        return FUnrealMCPModule::Get().GetProjectIndex().RefreshProjectIndex(RequestedObjectPaths, RefreshResult, OutError);
+    }, Error);
 
     if (!bSucceeded)
     {
