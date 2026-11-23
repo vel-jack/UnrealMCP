@@ -12,8 +12,8 @@
 #include "Misc/AutomationTest.h"
 #include "Misc/PackageName.h"
 #include "Misc/ScopeExit.h"
-#include "Tools/SaveBlueprintTool.h"
-#include "Tools/DiscardDirtyPackagesForShutdownTool.h"
+#include "Tools/Blueprint/Inspection/SaveBlueprintTool.h"
+#include "Tools/Editor/DiscardDirtyPackagesForShutdownTool.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FUnrealMCPSaveBlueprintTest,

@@ -10,7 +10,7 @@
 #include "Misc/PackageName.h"
 #include "Misc/ScopeExit.h"
 #include "ObjectTools.h"
-#include "Tools/AddBlueprintTypedOperatorNodeTool.h"
+#include "Tools/Blueprint/Graph/AddBlueprintTypedOperatorNodeTool.h"
 
 namespace
 {

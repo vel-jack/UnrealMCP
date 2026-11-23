@@ -17,9 +17,9 @@
 #include "ObjectTools.h"
 #include "PackageTools.h"
 #include "StructUtils/UserDefinedStruct.h"
-#include "Tools/BlueprintEditToolUtils.h"
-#include "Tools/StructMemberValueMigrationTool.h"
-#include "Tools/UserDefinedStructMemberTools.h"
+#include "Tools/Blueprint/Shared/BlueprintEditToolUtils.h"
+#include "Tools/Data/StructMemberValueMigrationTool.h"
+#include "Tools/Data/UserDefinedStructMemberTools.h"
 #include "UObject/StructOnScope.h"
 #include "UserDefinedStructure/UserDefinedStructEditorData.h"
 

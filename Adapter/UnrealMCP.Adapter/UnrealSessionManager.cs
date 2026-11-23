@@ -222,35 +222,72 @@ internal sealed partial class UnrealSessionManager
         if (_launchedProcess is not null && !_launchedProcess.HasExited)
             processes = [ _launchedProcess ];
 
-        bool discardDirty = false;
-        if (arguments is JsonObject shutdownArgs && shutdownArgs["discardDirty"] is JsonNode discardNode
-            && (discardNode is not JsonValue discardValue || !discardValue.TryGetValue(out discardDirty)))
-            return new JsonObject { ["success"] = false, ["errorCode"] = "invalid_arguments", ["message"] = "discardDirty must be a boolean." };
-        if (!discardDirty && processes.Count > 0)
+        var shutdownArgs = arguments as JsonObject;
+        if (arguments is not null && shutdownArgs is null)
+            return new JsonObject { ["success"] = false, ["errorCode"] = "invalid_arguments", ["message"] = "Shutdown arguments must be an object." };
+
+        var dirtyPolicy = "fail";
+        if (shutdownArgs?.ContainsKey("dirtyPolicy") == true)
+        {
+            if (shutdownArgs["dirtyPolicy"] is not JsonValue policyValue || !policyValue.TryGetValue<string>(out var policy)
+                || policy is not ("fail" or "discard" or "save") || shutdownArgs.ContainsKey("discardDirty"))
+                return new JsonObject { ["success"] = false, ["errorCode"] = "invalid_arguments",
+                    ["message"] = "Use dirtyPolicy=fail, discard, or save. Omit discardDirty when using dirtyPolicy." };
+            dirtyPolicy = policy;
+        }
+        else if (shutdownArgs?.ContainsKey("discardDirty") == true)
+        {
+            if (shutdownArgs["discardDirty"] is not JsonValue discardValue || !discardValue.TryGetValue<bool>(out var discard))
+                return new JsonObject { ["success"] = false, ["errorCode"] = "invalid_arguments", ["message"] = "discardDirty must be a boolean." };
+            if (discard) dirtyPolicy = "discard";
+        }
+
+        JsonArray? dirtyPackages = null;
+        JsonObject? saveResult = null;
+        if (dirtyPolicy != "discard" && processes.Count > 0)
         {
             var (dirtyState, dirtyError) = await InvokeUnrealToolAsync("SaveAllDirtyPackages", new JsonObject { ["dryRun"] = true }, cancellationToken);
-            if (dirtyError || dirtyState["dirtyPackageCount"] is not JsonValue count || !count.TryGetValue<int>(out var dirtyCount))
+            if (dirtyError || !IsSuccess(dirtyState) || !TryReadDirtyPackages(dirtyState, out dirtyPackages))
                 return new JsonObject { ["success"] = false, ["errorCode"] = "dirty_state_unavailable", ["projectPath"] = _activeProject.ProjectPath,
-                    ["message"] = "Cannot verify unsaved work; editor left open.", ["recommendedAction"] = "Reconnect and inspect dirty packages, or explicitly request discardDirty=true." };
-            if (dirtyCount > 0)
+                    ["dirtyPolicy"] = dirtyPolicy, ["message"] = "Cannot verify unsaved work; Editor left open." };
+            if (dirtyPackages!.Count > 0 && dirtyPolicy == "fail")
                 return new JsonObject { ["success"] = false, ["errorCode"] = "dirty_packages", ["projectPath"] = _activeProject.ProjectPath,
-                    ["message"] = "Unsaved packages exist; editor left open without saving.", ["dirtyPackages"] = dirtyState["dirtyPackages"]?.DeepClone(),
-                    ["recommendedAction"] = "Save the intended assets explicitly, or use discardDirty=true." };
+                    ["dirtyPolicy"] = dirtyPolicy, ["message"] = "Unsaved packages exist; Editor left open without saving.",
+                    ["dirtyPackages"] = dirtyPackages.DeepClone(), ["recommendedAction"] = "Save the intended assets, or explicitly choose dirtyPolicy=save or discard." };
+            if (dirtyPackages.Count > 0 && dirtyPolicy == "save")
+            {
+                var (saved, saveError) = await InvokeUnrealToolAsync("SaveAllDirtyPackages", new JsonObject { ["dryRun"] = false }, cancellationToken);
+                saveResult = saved;
+                if (saveError || !IsSuccess(saved) || saved["saved"] is not JsonValue savedFlag
+                    || !savedFlag.TryGetValue<bool>(out var didSave) || !didSave
+                    || saved["failedPackages"] is not JsonArray { Count: 0 } || saved["stillDirtyPackages"] is not JsonArray { Count: 0 })
+                    return new JsonObject { ["success"] = false, ["errorCode"] = "save_failed", ["projectPath"] = _activeProject.ProjectPath,
+                        ["dirtyPolicy"] = dirtyPolicy, ["message"] = "Saving was incomplete or could not be verified; Editor left open.",
+                        ["dirtyPackages"] = dirtyPackages.DeepClone(), ["saveResult"] = saved.DeepClone() };
+
+                var (afterSave, verificationError) = await InvokeUnrealToolAsync("SaveAllDirtyPackages", new JsonObject { ["dryRun"] = true }, cancellationToken);
+                if (verificationError || !IsSuccess(afterSave) || !TryReadDirtyPackages(afterSave, out var remaining) || remaining!.Count != 0)
+                    return new JsonObject { ["success"] = false, ["errorCode"] = "save_not_clean", ["projectPath"] = _activeProject.ProjectPath,
+                        ["dirtyPolicy"] = dirtyPolicy, ["message"] = "Could not verify that all packages are clean after saving; Editor left open.",
+                        ["dirtyPackages"] = dirtyPackages.DeepClone(), ["saveResult"] = saved.DeepClone(), ["verification"] = afterSave.DeepClone() };
+            }
         }
         JsonArray? discardedPackages = null;
-        if (discardDirty && processes.Count > 0)
+        if (dirtyPolicy == "discard" && processes.Count > 0)
         {
             var (discardResult, discardError) = await InvokeUnrealToolAsync(
                 "DiscardDirtyPackagesForShutdown", new JsonObject { ["confirm"] = true }, cancellationToken);
-            if (discardError)
+            if (discardError || !IsSuccess(discardResult) || discardResult["discardedPackages"] is not JsonArray discarded)
                 return new JsonObject
                 {
                     ["success"] = false,
                     ["errorCode"] = "discard_failed",
+                    ["dirtyPolicy"] = dirtyPolicy,
                     ["message"] = "Could not discard dirty packages; the Editor was left open.",
                     ["discardResult"] = discardResult.DeepClone()
                 };
-            discardedPackages = discardResult["discardedPackages"]?.DeepClone() as JsonArray;
+            discardedPackages = discarded;
+            dirtyPackages = discarded;
         }
         foreach (var process in processes)
         {
@@ -282,7 +319,10 @@ internal sealed partial class UnrealSessionManager
                     ["projectPath"] = _activeProject.ProjectPath,
                     ["sessionState"] = _sessionState,
                     ["message"] = "Requested Unreal Editor shutdown and the selected project is no longer running.",
-                    ["discardedPackages"] = discardedPackages
+                    ["dirtyPolicy"] = dirtyPolicy,
+                    ["dirtyPackages"] = dirtyPackages?.DeepClone(),
+                    ["saveResult"] = saveResult?.DeepClone(),
+                    ["discardedPackages"] = discardedPackages?.DeepClone()
                 };
             }
 
@@ -306,10 +346,23 @@ internal sealed partial class UnrealSessionManager
             ["projectPath"] = _activeProject.ProjectPath,
             ["sessionState"] = "shutdown_pending",
             ["message"] = "Requested Unreal Editor shutdown, but the process is still running.",
-            ["discardedPackages"] = discardedPackages,
+            ["dirtyPolicy"] = dirtyPolicy,
+            ["dirtyPackages"] = dirtyPackages?.DeepClone(),
+            ["saveResult"] = saveResult?.DeepClone(),
+            ["discardedPackages"] = discardedPackages?.DeepClone(),
             ["restoreResult"] = restoreResult?.DeepClone(),
             ["recommendedAction"] = "Close the Unreal Editor window manually or retry RequestUnrealShutdown."
         };
+
+        static bool IsSuccess(JsonObject result) =>
+            result["success"] is JsonValue value && value.TryGetValue<bool>(out var success) && success;
+
+        static bool TryReadDirtyPackages(JsonObject result, out JsonArray? packages)
+        {
+            packages = result["dirtyPackages"] as JsonArray;
+            return packages is not null && result["dirtyPackageCount"] is JsonValue value
+                && value.TryGetValue<int>(out var count) && count == packages.Count;
+        }
     }
 
     public async Task<(JsonObject Payload, bool IsError)> InvokeUnrealToolAsync(string toolName, JsonNode? arguments, CancellationToken cancellationToken)
@@ -450,18 +503,27 @@ internal sealed partial class UnrealSessionManager
         return mutationPrefixes.Any(prefix => toolName.StartsWith(prefix, StringComparison.Ordinal));
     }
 
-    public async Task<JsonArray> GetMirroredToolListAsync(CancellationToken cancellationToken)
+    public async Task<(JsonArray Tools, JsonObject Availability)> GetMirroredToolListAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         // EnsureAttachedAsync itself auto-selects a single unambiguous project on the first
         // call from any entry point (not just this one), then attempts to attach.
-        await EnsureAttachedAsync(false, null, cancellationToken);
+        var attach = await EnsureAttachedAsync(false, null, cancellationToken);
 
         // The cached catalog is served regardless of attach outcome by design: a failed
         // attach leaves the previous successful catalog in place rather than clearing it,
         // so tool schemas stay discoverable while Unreal is unavailable (see AGENTS.md's
         // "cached authoritative Unreal tool catalog" requirement).
-        return (JsonArray)_cachedRemoteTools.DeepClone();
+        return ((JsonArray)_cachedRemoteTools.DeepClone(), new JsonObject
+        {
+            ["ready"] = attach.Ready,
+            ["projectPath"] = _activeProject?.ProjectPath,
+            ["attachedProcessId"] = attach.Ready ? _attachedProcess?.Id : null,
+            ["sessionState"] = attach.SessionState,
+            ["errorCode"] = attach.ErrorCode,
+            ["message"] = attach.Message ?? GetDefaultMessage(attach),
+            ["recommendedAction"] = attach.RecommendedAction
+        });
     }
 }
 

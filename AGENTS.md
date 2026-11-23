@@ -14,7 +14,7 @@ Do not infer milestone status from old chat summaries when the roadmap provides 
 
 UnrealMCP lets MCP-compatible coding agents understand and safely edit Unreal Engine projects. Unreal editor logic stays inside a native editor plugin; a small external adapter provides the stable MCP stdio entry point and editor lifecycle/recovery behavior.
 
-The default target is Unreal Engine 5.4.4 on Windows. Native plugin code uses Unreal C++20. Python is optional fallback only and is not required for normal operation.
+The default target is Unreal Engine 5.4.4 on Windows. Native plugin code uses Unreal C++20. Build and validate the native tool surface without Epic's MCP or GraphXPort. Python is optional for developer utilities such as index generation.
 
 ## Architecture
 
@@ -76,7 +76,7 @@ Prioritize fewer schemas, smaller complete evidence sets, fewer round trips, and
 
 ## Tool Design
 
-Before declaring an MCP capability unavailable, search `docs/MCP-Tool-Index.md` for both custom and official routes. This generated index contains shortened descriptions, not execution schemas. Fetch the exact live schema before use. If no match is found, refresh the custom manifest and re-list/search its catalog, then list official toolsets and describe the relevant toolsets. A missing exposed tool or keyword match alone is not proof the capability is absent. Regenerate the index with `python Scripts/refresh_tool_index.py`; use `--official-url <endpoint>` to refresh official metadata or `--custom-catalog <path>` for a newer captured native catalog.
+Check the native catalog and fetch the exact tool schema before deciding whether UnrealMCP supports a capability. Refresh the adapter manifest if its catalog may be stale. The generated `docs/MCP-Tool-Index.md` includes optional Epic toolset references for comparison. Regenerate it with `python Scripts/refresh_tool_index.py`; use `--official-url <endpoint>` for optional discovery metadata or `--custom-catalog <path>` for a newer native capture.
 
 Expose high-level deterministic operations rather than raw Unreal APIs.
 
@@ -93,13 +93,13 @@ Every tool must provide:
 
 Never return plain `Done` text when structured evidence is available.
 
-Tool implementations belong in separate header/source files under `Public/Tools` and `Private/Tools`. Shared Blueprint editing behavior belongs in the `Tools/BlueprintEditToolUtils`, `Tools/BlueprintGraphEditToolUtils`, and `Tools/BlueprintToolUtils` modules rather than duplicated across tools. `Public/Blueprint`/`Private/Blueprint` hold Blueprint-specific K2Node subclass implementations, not shared editing utilities.
+Tool implementations belong in separate header and source files in matching feature directories under Public/Tools and Private/Tools. Use Blueprint/Graph, Blueprint/Members, Blueprint/Inspection, Blueprint/Shared, Assets, Data, Editor, Git, Index, Input, or System. Git conflict-resolution internals live under Git/ConflictResolution. Keep shared Blueprint editing behavior in Blueprint/Shared, and keep Blueprint-specific K2Node subclasses under Public/Blueprint and Private/Blueprint.
 
 ## Blueprint Mutation Safety
 
 ### Requested Blueprint conflict resolution
 
-Review base/current/incoming and both sides' changes through GraphXPort, then use official and custom MCP capabilities for targeted integration. Search `docs/MCP-Tool-Index.md` and both live catalogs before declaring a capability unavailable. Never take incoming or outgoing/current wholesale or replace the working asset with a side without explicit user confirmation for that asset and side. General conflict-resolution authorization does not authorize discarding either revision. Preserve unsaved work and confirmed contracts; inspect relevant variables, interfaces, components and defaults alongside graph changes. Verify edited nodes, links and layout, compile the target, save and verify clean package state before marking resolved. Stage only the reviewed asset and confirm its unmerged Git stages are gone. Report runtime verification separately and do not commit unless requested. Host-project Blueprint authorization and computer-use restrictions remain applicable.
+Review base/current/incoming and both sides' changes before targeted integration. GraphXPort is an optional way to inspect revisions. Never take incoming or outgoing/current wholesale or replace the working asset with a side without explicit user confirmation for that asset and side. General conflict-resolution authorization does not authorize discarding either revision. Preserve unsaved work and confirmed contracts; inspect relevant variables, interfaces, components and defaults alongside graph changes. Verify edited nodes, links and layout, compile the target, save and verify clean package state before marking resolved. Stage only the reviewed asset and confirm its unmerged Git stages are gone. Report runtime verification separately and do not commit unless requested. Host-project Blueprint authorization and computer-use restrictions remain applicable.
 
 - Resolve and inspect the target asset before editing.
 - Execute UObject loading and mutation on the Unreal game thread.

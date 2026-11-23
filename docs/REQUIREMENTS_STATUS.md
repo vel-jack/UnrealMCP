@@ -15,7 +15,7 @@ This is the reconciled tracker for the requirement files and earlier tool reques
 
 ## Source register
 
-Source names below identify the original files. Links now open their preserved historical text in this document; the separate superseded files have been removed.
+Source names below identify the original files. Links open their preserved text in this document. The new merge-readiness source is also retained in the sample project.
 
 | Prefix | Original source | Identifiers |
 |---|---|---|
@@ -28,6 +28,7 @@ Source names below identify the original files. Links now open their preserved h
 | INHERIT | [ToolRequest_InheritedMembersAndGraphEditing.md](#source-inherit) | Sections 1–5 and 6.1–6.3 |
 | LOCAL | [ToolRequest_BlueprintLocalVariableNodes_DSM639.md](#source-local) | `nodes`, `visual`, `functional` name its three requested areas |
 | REF | [Requirements_BlueprintRefactoring.md](#source-ref) | Q1–Q18; F1/F2/F3 denote section F reparent/retirement/save-format workflows |
+| READY | [UnrealMCP_MergeReadiness_Requirements.md](#source-ready) | M1–M7; DSM review dated November 23 |
 | EXTRA | Earlier cleanup and struct-value-preservation requests, recorded in [ROADMAP.md](../ROADMAP.md) and commits `a2be901`, `bb50171` | `cleanup`, `struct-values` |
 
 ## Status legend
@@ -49,12 +50,12 @@ Priority retains the highest relevant source priority. An implemented P1 entry i
 |---|---|---|---|---|
 | MCP-01 | P1 | Implemented | **Connection independent of tab/title/background.** Exact absolute project command-line discovery, retained attached-process handles and pre-request named-pipe owner PID validation replace title matching. Adapter regression tests cover lost-window discovery/reconnect, same-name projects, wrong-PID pipes and duplicate-launch refusal. Real sample attachment verified 2026-11-23; externally launched editor discovery requires Windows WMI inspection and fails closed when unavailable. | WEAPON:R1 GEN:R13 |
 | MCP-02 | P2 | Open | **Wait for ready/exit and released file handles.** Startup status and bounded shutdown polling exist. No named WaitForUnrealReady/WaitForUnrealExit tools or package-file-handle-release guarantee. Separate from window-title detection. | TOOL:R14 REF:Q3 |
-| MCP-03 | P1 | Partial | **Explicit dirty-work shutdown policy.** Default closure now inspects and refuses dirty packages without saving; unknown dirty state also refuses. discardDirty=true remains explicit and recovers flags on pending shutdown. Regression and real clean sample shutdown passed 2026-11-23. The proposed named dirtyPolicy=fail/discard/save API and explicit save-policy mode remain undelivered; save intended packages separately. | MERGE:G4 DEFAULT:X3 REF:Q2 |
+| MCP-03 | P1 | Implemented | **Explicit dirty-work shutdown policy.** The adapter defaults to fail and returns the dirty package list. Explicit discard drops changes and retains pending-shutdown recovery. Explicit save reports the native save receipt and requires a follow-up clean-state check before closing. Legacy discardDirty remains supported. UE 5.8 verified named fail, discard without a disk write, and save before exit using disposable sample assets. Adapter regressions verified partial-save refusal and pending recovery. | MERGE:G4 DEFAULT:X3 REF:Q2 |
 | MCP-04 | P1 | Implemented | **Crash-safe index refresh after bulk deletion.** Fixed double-counted slow-task progress and switched MCP refresh to the UE 5.8-safe game-thread dispatcher. The live UGitClientSample regression populated SQLite with 200 connected collapsed-graph nodes, deleted and compiled them, refreshed the same asset, and verified node, pin and edge counts against current extracted rows. Fixture file and index entries were removed. Passed with zero errors and warnings. The original DSM crash was not reproduced. | REF:Q1 |
 | MCP-05 | P2 | Partial | **Freshness after every edit.** GetIndexStatus, live provenance and targeted trace refresh exist. TraceBlueprintFlow retries when indexed starts are missing; matched starts can still have stale downstream edges. No universal stale-since-edit evidence. TraceLiveBlueprintFlow is the live alternative. | GEN:R14 DEFAULT:X1 |
 | MCP-06 | P2 | Partial | **Large Blueprint reads without unbounded timeouts.** Live filtering/paging exists, up to 200 nodes/page; adapter timeout is configurable. The original approximately 100-graph batch and every official/script path are not proved safe. Revision-bound pagination and stress evidence remain open. | GEN:R12 TOOL:R9 |
-| MCP-07 | P1 | Partial | **Find every class/asset usage and genuine stale import.** FindClassUsages covers recognized graphs/nodes/pins/locals/signatures/properties in one Blueprint. Recursive CDO/nested-value/macro-asset coverage is incomplete. `stale_import_only` is a registry-edge/no-recognized-hit heuristic, not binary import-table inspection. Complete coverage and paging remain required. | GEN:R2 TOOL:R7 |
-| MCP-08 | P2 | Partial | **Fast member/pin-type search.** Live query inspection and indexed/member/class tools provide building blocks. No complete direct live FindNodesByPinType/FindNodesByMember contract covers the full large-Blueprint request with exact graph/node/pin evidence. | REF:Q16 |
+| MCP-07 | P1 | Implemented | **Find class/asset usages and package imports.** FindClassUsages reports graph/node/pin references, reflected defaults, owned subobjects, component templates and object-path literals. It reads saved imports even when no linker is attached. The optional scanBlueprints mode pages /Game Blueprint assets, including loaded unsaved assets, independently of the dependency index. The fast registry-candidate route remains available. Embedded Level Blueprints, plugin content and other asset types are outside the live project scan. | GEN:R2 TOOL:R7 |
+| MCP-08 | P2 | Implemented | **Fast member/pin-type search.** FindNodesByPinType and FindNodesByMember scan live Blueprint graphs and page exact locations without serializing entire graphs or using the index. Pin hits include pin ID/name; function calls are node-level hits. The focused UE 5.8 regression passed. | REF:Q16 |
 | MCP-09 | P2 | Partial | **Complete, accurate graph reading.** Native full inspection includes reroutes and exact pin links; compact output exists. Inherited self-variable `memberOwnerClass` can still report self scope instead of declaring property class; explicit macro target/body evidence is incomplete. Official DSL reader remains separately unverified. | GEN:R4 GEN:R6 TOOL:R8 |
 | MCP-10 | P1 | Implemented | **Native collapsed/nested graph access.** GetAllGraphs and owning-Blueprint traversal support native reading/editing; collapsed-graph automation exists. This does not prove Epic DSL/script fixes or every arbitrary-depth/macro/function parity case. | GEN:R1 TOOL:R1 |
 
@@ -70,9 +71,9 @@ Priority retains the highest relevant source priority. An implemented P1 entry i
 | MCP-16 | P1 | Implemented | **Parent calls and function/event overrides.** Patch parentCall, OverrideBlueprintFunction and event addParentCall exist and are tested. A legal parent implementation is required; an interface declaration alone does not supply one. Official DSL support is not established. | GEN:R6 INHERIT:3 |
 | MCP-17 | P2 | Implemented | **Exact node variants.** Exact function owner/name, macroPath, self and cast(targetClassPath,pure) support atomic wiring. Generic function purity follows its signature; an arbitrary function isPure override is not supplied. | REF:Q7 INHERIT:5 |
 | MCP-18 | P2 | Partial | **Named switches.** String/Enum creation and String SetSwitchCases work, retaining renamed links and Default and reporting removals. Enum cases derive from enum metadata; arbitrary enum case edits are intentionally refused. Switch-on-Name editing remains absent. | REF:Q10 INHERIT:4 |
-| MCP-19 | P1 | Partial | **Targeted patches and exec splicing.** Existing-node anchors, disconnections before reconnection, exact data replacement and SpliceBlueprintExecFlow exist. Patches still reject multiple incoming exec links; no first-class spliceExec operation or official single-event DSL insert/replace mode. | REF:Q4 GEN:R7 MERGE:G5 |
+| MCP-19 | P1 | Implemented (native) | **Targeted patches and exec splicing.** ApplyBlueprintGraphPatch supports confirmed spliceExec operations, runs disconnections before reconnection, and allows multiple incoming exec links where the K2 schema permits them. Existing-node anchors and exact data replacement support targeted event/function edits. Official single-event DSL insert/replace remains tracked separately under MCP-26. | REF:Q4 GEN:R7 MERGE:G5 |
 | MCP-20 | P3 | Partial | **Defaults and array wildcards in patches.** Guarded default overwrite/data replacement and wildcard preflight exist. AddUnique requires a specialized array node/primitive; generic functionCall is not equivalent. Existing specialized nodes can participate in atomic patches. Unconditional occupied-pin overwrite is not a goal. | MERGE:G5 |
-| MCP-21 | P2 | Reported bug | **Resize/style an arbitrary existing comment.** Comment creation/deterministic reuse supports bounds/color/bubbles, but existingNode ignores these fields. Reproduce and update or explicitly reject them; preserve GUID/contained-node positions and read back actual bounds. This is not missing comment creation. | WEAPON:R2 |
+| MCP-21 | P2 | Implemented | **Resize/style existing comment boxes.** ApplyBlueprintGraphPatch accepts width, height, RGB and bubble visibility on an existing comment GUID, preserves omitted styles and reports the preview or applied values. Styles participate in graph revision checks. Non-comment targets return an error. UE 5.8 live regression passed. | WEAPON:R2 |
 | MCP-22 | P2 | Open | **Prune unreachable logic.** No PruneUnreachableNodes tool identified. A bounded dry run must preserve reachable exec branches and their data dependencies, not merely delete nodes without an incoming exec pin. | REF:Q8 |
 | MCP-23 | P2 | Open | **One-operation validity guard.** WrapWithIsValid is not delivered. Exact macros, patches and exec splicing are available components; the guarded compound helper and else-route acceptance remain open. | REF:Q9 |
 | MCP-24 | P3 | Open | **Whole-graph arrangement.** LayoutBlueprintNodes requires nonempty nodeGuids. Graph-only arrangement and arrange-after-DSL-write remain open. Separate GraphXPort beautification does not establish this adapter contract. | GEN:R11 TOOL:R6 |
@@ -82,7 +83,7 @@ Priority retains the highest relevant source priority. An implemented P1 entry i
 
 | ID | Priority | Status | Requirement, current coverage and remaining work | Sources |
 |---|---|---|---|---|
-| MCP-26 | P2 | External / unverified | **Full official DSL support.** Historical requests cover nested graphs, local declarations/round-trip, N-input MakeArray, parent/interface calls, string == syntax, struct-pin display-name aliases, safe impure expressions, exact outputs/owners, macros/reroutes and single-event edits. Native alternatives above do not fix that server. Current official behavior was not re-tested; native N-input MakeArray and generic struct-pin aliases were not identified either. | GEN:R1 GEN:R4 GEN:R5 GEN:R6 GEN:R7 TOOL:R1 TOOL:R3 TOOL:R5 TOOL:R8 |
+| MCP-26 | P2 | Open | **Native Blueprint DSL support.** Implement reader/writer tooling in UnrealMCP and reuse its native graph patch engine for targeted writes. Cover nested graphs, local declarations, MakeArray, parent/interface calls, expressions, pin aliases and round trips. Verify through the UnrealMCP adapter on UE 5.4.x and UE 5.8 without Epic's toolset. | GEN:R1 GEN:R4 GEN:R5 GEN:R6 GEN:R7 TOOL:R1 TOOL:R3 TOOL:R5 TOOL:R8 |
 | MCP-27 | P2 | Partial | **Consistent arguments and identities across servers.** Compact SearchTools/GetToolSchema/CallTool and native GUID/path results are implemented. No common argument-name normalization or universal GUID/refPath acceptance. Exact owning-server schemas remain authoritative; deployed contracts need compatibility planning before renaming. | GEN:R9 TOOL:R10 |
 
 ## Defaults and data assets
@@ -95,7 +96,7 @@ Priority retains the highest relevant source priority. An implemented P1 entry i
 | MCP-31 | P3 | Implemented | **Defaults comparison.** CompareBlueprintClassDefaults matches properties by name, reports values/types and one-side-only properties. Scope is editable/Blueprint-visible properties, not every reflected implementation field. | DEFAULT:T5 |
 | MCP-32 | P3 | Implemented | **Declaring-class filter.** GetBlueprintClassDefaults(declaredInOnly=classPath) filters exact authoritative ownership before pagination. | INHERIT:6.3 |
 | MCP-33 | P1 | Implemented | **DataTable rows.** InspectDataTableRows, SetDataTableRowFields, AddDataTableRow and RemoveDataTableRow provide authored field-name resolution and transactional edits. SaveDataTable is explicit. Earlier proposed GetDataTableRows/SetDataTableRowField names are not the shipped API. | MERGE:G1 |
-| MCP-34 | P1 | Partial | **Struct/enum schema editing and dependent safety.** Struct inspection/add/remove exist with referenced-asset guards. Existing-member rename/default editing, enum append/display-name tools, complete dependent compile/pin reports and preserved-data acceptance for those new operations remain open. Enum reordering stays refused. | REF:Q11 |
+| MCP-34 | P1 | Implemented (native) | **Struct/enum schema editing and dependent safety.** Native tools inspect, add, remove, rename and change struct defaults, and inspect, append and relabel enum entries. Referenced edits require explicit approval. Optional dependent Blueprint compilation returns before/after pin locations and compiler diagnostics; only the edited schema can be saved. UE 5.8 tests passed for stable struct GUIDs/defaults, stable enum names/values, dependent compile and pin evidence, and existing struct migration. Coverage is limited to discovered dependents; enum reordering is unavailable. | REF:Q11 |
 | MCP-35 | P1 | Implemented | **Preserve struct values before removing fields.** MigrateUserDefinedStructMemberValues and RestoreStructMemberValueBackup provide compatible mappings, durable backups, stale guards and guarded removal for DataTables/CDOs/nested containers. Graph literals/placed instances are excluded; restore requires compatible unchanged layout. | EXTRA:struct-values |
 
 ## Asset lifecycle, diagnostics and output
@@ -105,7 +106,7 @@ Priority retains the highest relevant source priority. An implemented P1 entry i
 | MCP-36 | P1 | Implemented | **Reparent preflight/apply.** ReparentBlueprint reports breaking usages, dropped overrides/interfaces/components and changed/lost defaults, with located compile errors and default failed-compile save refusal. onlyUsed filters usage/overrides; descendant scan is capped at 256 with completeness evidence. | ASSET:A1 INHERIT:6.2 |
 | MCP-37 | P1 | Implemented | **Move/rename and scoped redirector fixup.** MoveAsset/FixupRedirectors report saved/unsaved/newly-dirty packages and guard pre-existing dirty referencers. Pre-rename snapshots distinguish the move's own dirtiness. One packagePath per call, not proposed paths[] batching. Source-control lock/failure coverage is not universal. | ASSET:A2 ASSET:A3 REF:Q14 REF:Q15 INHERIT:6.1 |
 | MCP-38 | P2 | Implemented | **Duplicate assets.** DuplicateAsset supports source/destination/name, dry-run, overwrite refusal and explicit save. | ASSET:A4 |
-| MCP-39 | P1 | Partial | **Verified ordinary deletion.** DeleteAsset has dry-run/confirmation/referencer refusal and explicit force. Engine deletion result is checked, but explicit package-file disappearance/reason verification is missing. Stronger redirector-file deletion checks do not close ordinary-delete acceptance. | ASSET:A5 REF:Q13 |
+| MCP-39 | P1 | Implemented | **Verify ordinary package deletion.** DeleteAsset checks the original package file after the engine deletion attempt. It reports surviving files and read-only state and returns an error on incomplete deletion. UE 5.8 saved-asset deletion passed. Source-control lock failures were not reproduced. | ASSET:A5 REF:Q13 |
 | MCP-40 | P1 | Implemented | **Consolidate/replace references and delete.** ConsolidateAndDeleteAsset provides dry-run, referencers, confirmation, reference/type rewriting and touched-package reporting. Referencer compile/save remain explicit separate steps. Exact retired DSM-class cleanup is not newly verified. | GEN:R3 TOOL:R12 |
 | MCP-41 | P2 | Implemented | **Blueprint member/function cleanup.** RemoveBlueprintVariable and RemoveBlueprintFunction include usage/inherited/reference guards, dry-run, confirmation and compile/rollback behavior. Reference acknowledgement is not permission to discard project behavior. | EXTRA:cleanup |
 | MCP-42 | P1 | Implemented | **Located compile errors and warnings.** CompileBlueprint/shared native utilities return status and error/warning arrays with graph/node/pin locations. Patch failures also include located diagnostics. Equivalent reporting on every official compile tool is unestablished. | TOOL:R11 REF:Q17 |
@@ -118,12 +119,31 @@ Priority retains the highest relevant source priority. An implemented P1 entry i
 | ID | Priority | Status | Requirement, current coverage and remaining work | Sources |
 |---|---|---|---|---|
 | MCP-46 | P2 | Implemented | **Basic explicit native UI review.** GetEditorWidgetSnapshot, CaptureEditorWidget and FrameBlueprintGraph exist. Recorded sample handover captured BP_Door via adapter; the latest report also verifies explicit official-window captures. Native weak/session-local refs and project-local PNG output are implemented. Screenshot capability is not missing. | LOCAL:visual |
-| MCP-47 | P2 | Open | **Readable regions, connected data nodes and tiles.** Extend framing with rectangles or optional data-node expansion, padding, minimum readable zoom, actual bounds/zoom and clipping evidence, plus bounded overlapping captures when needed. These extensions are absent from the current schema. | WEAPON:R3 |
-| MCP-48 | P2 | Partial | **Deterministic background capture and frame waiting.** Explicit native capture validates renderer/geometry and rejects empty capture failures. It returns frame_pending instead of awaiting completion; framing focuses the graph. Automatic settling, no-focus background guarantees and captured project/graph/completion evidence remain unproved or absent. Preserve the working explicit-window route. | WEAPON:R4 |
-| MCP-49 | P2 | Open | **Graph preservation snapshot/diff.** Revisions, exact links/defaults and local declarations exist as inputs. No dedicated bounded before/after/refactor-normalization tool explains branch/source/literal changes, inserted locals/reroutes or evaluation-time caching. Class-default comparison is not graph comparison; structural evidence is not runtime equivalence. | WEAPON:R5 |
-| MCP-50 | P2 | Partial | **Guided binary conflict resolution.** The separate GraphXPort conflict toolset reads/diffs revisions and guards preview/apply/save/stage through native patch execution. Agents still author selected integrations; no general automatic semantic merge or guaranteed one-call replay. Review both sides; old take-theirs recipes are not current authorization. | TOOL:R15 |
-| MCP-51 | P2 | Open | **Packaged end-to-end workflows.** Tools exist, but no delivered bundled skills cover all requested reparent/member-port, retire-class, binary-merge and save-format/converter workflows. Cross-asset disk saves must remain explicitly non-atomic; project/runtime acceptance is separate. | TOOL:S1 TOOL:S2 TOOL:S3 REF:F1 REF:F2 REF:F3 |
+| MCP-47 | P2 | Implemented | **Readable regions, connected data nodes and tiles.** Native framing supports graph rectangles, upstream pure data expansion, padding and minimum zoom. Capture reports actual viewport bounds, zoom and tile/region clipping. UE 5.8 verified an unclipped selected conversion node with its data source and overlapping 1.0-zoom tiles. | WEAPON:R3 |
+| MCP-48 | P2 | Implemented | **Deterministic background capture and frame waiting.** Adapter capture waits within a configurable settling budget and reports exact project/graph/widget identity, dimensions and completion. Background framing uses an already visible graph tab without activating it. UE 5.8 verified background capture with the same foreground process before and after, plus the explicit-window capture route and dry-run regressions. | WEAPON:R4 |
+| MCP-49 | P2 | Implemented | **Graph preservation snapshot/diff.** CompareBlueprintGraphPreservation snapshots a live Blueprint and reports changed graphs and paged exact wiring, execution destinations, literals, local declarations and normalized input sources. It follows reroutes and unique-writer locals, and flags caching and ambiguous writers for review. UE 5.8 verified branch and literal changes, reroute normalization, untouched-graph exclusion and a zero-diff live BP_Door round trip. Structural evidence only. | WEAPON:R5 |
+| MCP-50 | P2 | Implemented | **Guided binary conflict resolution.** Standalone UnrealMCP discovers and compares conflicts, previews a selected side's compatible existing-node link and layout replay, applies authored checkpoints, and stages approved keep/delete resolutions for same-path, asymmetric and split-rename conflicts. Unsupported replay changes and overlaps are reported for explicit authoring. Split-rename staging supports one kept Blueprint and explicitly approved absent paths. UE 5.8 verified historical link replay preview and staging for same-path, add/add, modify/delete and split renames using an isolated index with GraphXPort and Epic MCP disabled. | TOOL:R15 |
+| MCP-51 | P2 | Implemented | **Packaged end-to-end workflows.** Four bundled skills cover reparent/member port, class retirement, binary Blueprint conflict resolution, and save-format migration. Skill frontmatter, packaging paths and native tool references were validated. Project-specific runtime and converter acceptance remains separate. | TOOL:S1 TOOL:S2 TOOL:S3 REF:F1 REF:F2 REF:F3 |
 | MCP-52 | Project work | Separate project work | **Actual DSM migration/gameplay fixes.** The local-array/AddUnique(Self) pattern is tested in the sample. DSM edits, suspected self-hit/PIE verification, registry/default/map repairs, merge staging/commit, converter/offline builds and trajectory/color tests are not implied complete. Do not reconnect the disconnected ForEach on the report's evidence. | LOCAL:functional |
+| MCP-53 | P1 | Partial | **Project-bound merge readiness.** UE 5.8 production adapter verified exact UGitClientSample attachment, live search and schema evidence, and reconnect to the same PID. Switching to the closed DSM project returned unreal_not_running with disk-cache evidence and availabilityVerified=false; reselecting the sample recovered the original editor. The official HTTP listener and GraphXPort conflict schema on port 8001 belonged to the sample PID. Live DSM native and official catalogs, live DSM reconnect and background-window acceptance remain unverified while DSM is closed. | READY:M1; MCP-01/MCP-50 |
+| MCP-54 | P1 | Implemented | **Whole-Blueprint three-way evidence.** Native CompareBlueprintMergeStructure pages changes to declarations, signatures and locals, editable settings and defaults, parent/interfaces, component trees/overrides and saved direct asset references. Optional graph rows identify nodes, pins, and links. Historical Git LFS reads verify locally cached objects by SHA-256. Standalone UE 5.8 fixtures verified exact per-side evidence, stale-page rejection, valid/missing/corrupt LFS objects, and unchanged working bytes, dirty flags and Git stages. Dependency closure, arbitrary native serialization and runtime behavior stay outside comparison coverage. | READY:M2; MCP-49/MCP-50 |
+| MCP-55 | P1 | Implemented | **Guarded non-graph resolutions.** Native Class Defaults, component defaults/overrides, interface add/remove, variable add/rename/type/remove, local function parameter type changes, compatible reparenting and local scene-component moves. Structural batches bind the preview to the three target stages, operation order, working file and reviewed dependent packages. Apply compiles the owner and reconstructs/compiles callers before an optional save, reports per-package outcomes and rolls back unsafe edits. UE 5.8 staged fixtures verified mixed apply, caller reconstruction, dirty-caller and stale-token rejection, rollback of an incompatible signature, and unchanged Git stages. Breaking edits and unsupported operations require an explicit separate repair plan. | READY:M3; MCP-19/MCP-50 |
+| MCP-56 | P2 | Implemented | **Large and asymmetric conflict review.** Native cursors bind each page to exact Git slots, paths, graph scope and evidence with legacy offset paging retained. Add/add and modify/delete report absent stages, rename review supports explicit side paths, and unreadable sides report missing direct package dependencies or other load errors without returning misleading absence rows. UE 5.8 fixtures verified full traversal beyond 200 rows, asymmetric stages, cross-path lookup, and named missing dependencies. | READY:M5; MCP-50 |
+| MCP-57 | P2 | Implemented | **Multi-graph review lifetime and transaction boundaries.** ApplyBlueprintMergePlan uses a client-held sequence of graph and structural steps and durable per-step receipts. Each checkpoint verifies the original stages, clean working state and previous saved file, then preflights and optionally applies on explicit confirmation. Checkpoints save independently. Replay returns stored success or failure and interrupted intents block reapplication. UE 5.8 fixtures verified two graph saves, dirty/disk/stage guards, later structural rollback and durable replay. | READY:M6; MCP-50/MCP-51 |
+| MCP-58 | P1 | Implemented | **Inspect historical commits for selective merge edits.** Native anchored history and exact-commit file changes work independently of working-file and index state. Exact filters retain both rename endpoints, with paged text patch output. Historical Blueprint inspection pages graphs, nodes, pins and exact linked endpoints by commit and identity, reads SHA-256-verified local LFS objects, and names missing direct dependency packages. UE 5.8 fixtures verified anchored paging, both rename paths, a historical pin link across rename, cached LFS and missing dependencies. A live adapter call verified a sample text patch. | EXTRA:commit-history |
+
+### Merge-readiness crosswalk
+
+Native merge evidence is designed for agent consumption. `CompareBlueprintMergeStructure` defaults to compact column-ordered rows, preserving exact stage values and overlap flags. Full object rows remain available on request. The 65-row UE 5.8 fixture produced 9,242 compact JSON bytes versus 12,942 full JSON bytes.
+
+| Source | Tracking | Acceptance boundary |
+|---|---|---|
+| READY:M4 | MCP-52, supported by MCP-49 and MCP-55 | Preserve separate guns/mortars arrays and types, ordinary iconEntity save/load, native migration and its ambiguity handling, APlanDataManager signatures/callers, spawn registry, networking, property panel and marker dependencies, and both military-symbol initialization refactors. Compile affected dependents and verify authorized save/load/spawn behavior separately. |
+| READY:M7 | MCP-42 and MCP-46–48, integrated under MCP-50 | Review exact post-edit nodes, pins and defaults. Require readable, unclipped background captures and explicit pending/empty evidence. Report structural, compile, visual and runtime checks separately, with distinct save, dirty and stage results. Staging requires authorization. |
+
+The source review found no unmerged paths at the time and had only cached adapter evidence. The UE 5.8 sample build subsequently verified native live search and schema discovery and reconnect on the same PID. The sample's port 8001 exposed both new GraphXPort tools, and their live calls rejected missing stages and a missing review session. Full staged acceptance and DSM acceptance remain pending. Native UnrealMCP continues to work independently of Epic's toolsets.
+
+UnrealMCP's merge-readiness acceptance requires a standalone native route through its adapter. GraphXPort's tools are optional integration evidence. The native MCP-54 comparison and MCP-55 defaults, structural-batch and caller-reconstruction fixtures passed with GraphXPort and Epic disabled on UE 5.8, using a separate Git index. The new comparison source compiled in the UE 5.4 package build, which stopped on the existing three-argument `UDataTable::AddRow` call in `DataTableRowMutationTool.cpp`. UE 5.4 live acceptance remains open.
 
 ## Acceptance fixtures and historical project follow-ups
 
@@ -152,13 +172,9 @@ Historical M1–M20 details remain in [LEGACY_ROADMAP.md](LEGACY_ROADMAP.md); E1
 
 ## Recommended next order
 
-1. **MCP-01 delivered:** retain regression coverage; **MCP-04** bulk-refresh regression passed. Default-fail dirty shutdown is delivered under MCP-03; its proposed full policy API remains partial.
-2. **MCP-03:** decide whether the remaining named shutdown policy API is needed before extending compound mutations.
-3. **MCP-21:** reproduce/fix existing-comment resize/style and read-back, a narrow source-located silent-ignore issue.
-4. **MCP-07 / MCP-08 / MCP-39:** complete bounded usage/import evidence and verified deletion for class retirement. Include MCP-34 when an actual schema migration needs enum/struct editing.
-5. **MCP-49:** bounded structural before/after evidence, exposing caching/evaluation changes.
-6. **MCP-47 / MCP-48:** readable region/data-node framing and deterministic background capture, retaining the working explicit-window route.
-7. Remaining graph helpers, wait primitives, DSL/interoperability and packaged workflows by concrete acceptance case and E2 safety gates.
+1. **MCP-53 (P1)** Verify both live catalogs, reconnect and background-window behavior in the exact DSM editor when authorized. The sample attachment, reconnect and official GraphXPort schema checks are verified.
+2. **Merge acceptance and scale.** Use MCP-52 for separately authorized DSM weapon-contract checks. Track validation receipts under MCP-42 and MCP-46–50.
+3. **Other planned work.** MCP-26 remains an open native DSL requirement. MCP-49 and MCP-47/48 are available for merge validation.
 
 Reproduce reported issues on the selected sample build before implementing them. Distinguish native and official routes; do not recreate delivered local/default/asset tools.
 
@@ -166,19 +182,19 @@ Reproduce reported issues on the selected sample build before implementing them.
 
 - Contracts: [native catalog](../Adapter/UnrealMCP.Adapter/unreal-tools.json), [registration](../Source/UnrealMCP/Private/UnrealMCPModule.cpp), [README](../README.md).
 - Identity: [ProcessDiscovery](../Adapter/UnrealMCP.Adapter/UnrealSessionManager.ProcessDiscovery.cs), [PipeAttachment](../Adapter/UnrealMCP.Adapter/UnrealSessionManager.PipeAttachment.cs), [session/shutdown manager](../Adapter/UnrealMCP.Adapter/UnrealSessionManager.cs).
-- Comments/exec/patch behavior: [ApplyBlueprintGraphPatchTool.cpp](../Source/UnrealMCP/Private/Tools/ApplyBlueprintGraphPatchTool.cpp). Reader/declaring-owner behavior: [LiveBlueprintToolUtils.cpp](../Source/UnrealMCP/Private/Tools/LiveBlueprintToolUtils.cpp).
-- Local/inherited resolution: [BlueprintMemberToolUtils.cpp](../Source/UnrealMCP/Private/Tools/BlueprintMemberToolUtils.cpp); retargeting: [BlueprintMemberGraphTools.cpp](../Source/UnrealMCP/Private/Tools/BlueprintMemberGraphTools.cpp).
-- Usage coverage: [FindClassUsagesTool.cpp](../Source/UnrealMCP/Private/Tools/FindClassUsagesTool.cpp). Move/fixup/plain deletion: [AssetManagementTools.cpp](../Source/UnrealMCP/Private/Tools/AssetManagementTools.cpp).
-- Defaults: [BlueprintClassDefaultsTools.cpp](../Source/UnrealMCP/Private/Tools/BlueprintClassDefaultsTools.cpp). [Defaults handover](BlueprintVariableDefaults_Handover.md) is historical; its 139-tool count is not the current catalog count.
-- Visual framing/settling: [EditorVisualTools.cpp](../Source/UnrealMCP/Private/Tools/EditorVisualTools.cpp), [visual tests](../Source/UnrealMCP/Private/Tests/UnrealMCPEditorVisualTests.cpp), [local-node tests](../Source/UnrealMCP/Private/Tests/UnrealMCPLocalVariableNodeTests.cpp), [inherited tests](../Source/UnrealMCP/Private/Tests/UnrealMCPInheritedGraphEditingTests.cpp).
+- Comments/exec/patch behavior: [ApplyBlueprintGraphPatchTool.cpp](../Source/UnrealMCP/Private/Tools/Blueprint/Graph/ApplyBlueprintGraphPatchTool.cpp). Reader/declaring-owner behavior: [LiveBlueprintToolUtils.cpp](../Source/UnrealMCP/Private/Tools/Blueprint/Shared/LiveBlueprintToolUtils.cpp).
+- Local/inherited resolution: [BlueprintMemberToolUtils.cpp](../Source/UnrealMCP/Private/Tools/Blueprint/Shared/BlueprintMemberToolUtils.cpp); retargeting: [BlueprintMemberGraphTools.cpp](../Source/UnrealMCP/Private/Tools/Blueprint/Members/BlueprintMemberGraphTools.cpp).
+- Usage coverage: [FindClassUsagesTool.cpp](../Source/UnrealMCP/Private/Tools/Blueprint/Inspection/FindClassUsagesTool.cpp). Move/fixup/plain deletion: [AssetManagementTools.cpp](../Source/UnrealMCP/Private/Tools/Assets/AssetManagementTools.cpp).
+- Defaults: [BlueprintClassDefaultsTools.cpp](../Source/UnrealMCP/Private/Tools/Blueprint/Members/BlueprintClassDefaultsTools.cpp). [Defaults handover](BlueprintVariableDefaults_Handover.md) is historical; its 139-tool count is not the current catalog count.
+- Visual framing/settling: [EditorVisualTools.cpp](../Source/UnrealMCP/Private/Tools/Editor/EditorVisualTools.cpp), [visual tests](../Source/UnrealMCP/Private/Tests/UnrealMCPEditorVisualTests.cpp), [local-node tests](../Source/UnrealMCP/Private/Tests/UnrealMCPLocalVariableNodeTests.cpp), [inherited tests](../Source/UnrealMCP/Private/Tests/UnrealMCPInheritedGraphEditingTests.cpp).
 - Recorded test families include ToolingP1, CollapsedGraph, GraphPatch, ClassDefaults, LocalVariables/LocalVariableNodes, Asset/RedirectorFixup, MemberRemoval, Struct/ValueMigration and Editor/Visual. Test-source presence alone is not a fresh passing run.
 - Separate GraphXPort integration: [ConflictToolset.md](../../GraphXPort/docs/ConflictToolset.md). Its conflict toolset depends on UnrealMCP; UnrealMCP does not require GraphXPort. Core export/merge and conflict-toolset integration are distinct.
 
 ## Implementation follow-up: 2026-11-23
 
 - MCP-01 is implemented and adapter-regression tested, with real UGitClientSample launch/attachment and live read-only gateway verification.
-- MCP-03 now defaults to dirty-package refusal without saving; explicit discard remains supported. The full proposed policy API is still partial.
-- **MCP-53 (P1, implemented): Zen startup popup handling.** New adapter launches default to `-unattended`; `unattended=false` or `--interactive-editor` enables dialogs. A real sample relaunch verified the flag and reached ready. This suppresses dialogs rather than repairing Zen maintenance/failure; no desktop automation or cache deletion is involved.
+- MCP-03 defaults to dirty-package refusal and supports explicit discard and save policies.
+- **MCP-53: Zen startup popup handling.** New adapter launches default to `-unattended`; `unattended=false` or `--interactive-editor` enables dialogs. A real sample relaunch verified the flag and reached ready. This suppresses dialogs rather than repairing Zen maintenance/failure; no desktop automation or cache deletion is involved.
 - Native plugin/catalog remain unchanged at 157 tools. No new native-suite run was required for this adapter-only change; the prior native evidence remains dated. No DSM, PIE or gameplay changes were made. Other open requirements remain open.
 
 ## Historical source specifications
@@ -1301,3 +1317,102 @@ Q1, Q2, Q4, Q11, Q13 → Q6, Q17, Q5, Q8, Q14, Q16 → remaining items.
 `````
 
 </details>
+
+<a id="source-ready"></a>
+
+### READY — UnrealMCP_MergeReadiness_Requirements.md
+
+# Unreal MCP: DSM dev merge readiness requirements
+
+Reviewed: 2026-11-23. Target project: `C:/Users/LTX_MSI/Documents/AXIS/work_dsm`.
+
+## Evidence and current state
+
+- `git ls-files -u` returned no conflicts. The merge has not been started by this agent; there is no actual conflict reproduction yet.
+- The worktree contains modified/deleted assets and source files plus untracked weapon assets and C++ migration files. Preserve this work before merging; do not automatically reset, stash, stage or commit it.
+- Official `unreal-mcp-8001/list_toolsets` failed to connect to `http://127.0.0.1:8001/mcp`. The adapter search returned `source: disk_cache`, `availabilityVerified: false`. Live availability and exact runtime schemas remain unverified.
+- Local evidence: `Plugins/GraphXPort/docs/ConflictToolset.md`, its `GraphXPortConflictToolset.h`, and `Plugins/UnrealMCP/docs/MCP-Tool-Index.md` in work_dsm. Source presence proves implementation/API presence, not that the editor loaded it.
+- The earlier `UnrealMCP_WeaponMigration_Requirements.md` was absent from this destination on this review. This report is a new file; no existing report was replaced.
+
+## Existing capabilities to retain and verify live
+
+GraphXPort's official Toolset Registry route already declares:
+
+- `ListConflicts`: paths and Git stage identities.
+- `InspectRevision`, `CompareRevisions`: historical graph inventory, nodes/pins and directional graph differences.
+- `CompareBlueprintDefaults`: changed CDO property paths and before/after values.
+- `OpenBlueprintMerge`, `InspectMergeNodes`: bounded review and selected-node evidence.
+- `PreviewMergeResolution`, `ApplyMergeResolution`: explicit native graph patch, revision guards, compile/rollback and separate optional save/stage.
+- `CloseBlueprintMerge`: release review evidence.
+- `StartFromRevision`: explicit wholesale current/incoming replacement. This is not an automatic conflict-resolution step and requires user confirmation for that asset and side under DSM rules.
+
+These workflow tools are intentionally exposed through the official server, not mirrored in the adapter catalog. A zero-result adapter search does not prove they are missing. Current header/docs contain more methods than the older index lists; discovery must use the live toolset schema.
+
+## Requirements and acceptance criteria
+
+### M1 — P1: reliable project-bound readiness and recovery
+
+Need: diagnose process, selected project, loaded plugin and HTTP transport separately; reconnect to the existing editor without opening another project or changing selection.
+
+Pass: both catalogs can be queried for the exact work_dsm editor; results identify live versus cached evidence. Failure reports the specific unavailable layer. Background windows and tab changes do not lose the session.
+
+### M2 — P1: whole-Blueprint three-way evidence
+
+Documented gap: graph and CDO comparisons do not cover variable declarations, component trees, class settings or arbitrary asset properties. Zero graph/default differences cannot establish whole-asset equivalence.
+
+Need: compare base/current/incoming declarations and defaults, function signatures and locals, parent class, interfaces, component hierarchy and component overrides, relevant class settings and asset references. Return stable identities, exact changed values and explicit unsupported coverage.
+
+Pass: detect a parent change, interface addition, parameter type change and component override change even when graph differences are empty. Historical reads must not mutate working packages.
+
+### M3 — P1: guarded non-graph resolutions
+
+Documented boundary: the merge workflow delegates an authored graph patch; that does not establish support for resolving every declaration, class/default or component conflict transactionally.
+
+Need: preflight and apply explicit compatible changes beyond graphs, with source-stage identities, dirty-state checks and rollback. Support dependency-ordered operations when a changed signature or parent requires caller reconstruction.
+
+Pass: preserve compatible edits from both sides; on failure restore the affected state and report any unsaved/touched packages. An unsupported operation must stop explicitly rather than silently omit part of a resolution. Do not resolve by taking an entire side unless the user approves that asset and side.
+
+### M4 — P1: preserve weapon migration contracts during dev merge
+
+Need: focused checks for the contracts below, using declarations/defaults and live graph wiring rather than serialized strings alone:
+
+- Separate top-level `guns[]` and `mortars[]`, with their separate data structs and correct object types.
+- Ordinary `iconEntity` save/load behavior remains intact.
+- Native runtime plan migration and its ambiguity/data-preservation behavior survive.
+- APlanDataManager's native parent/API and Blueprint call sites remain compatible.
+- Weapon spawn registry, networking parameter types, property panel integration and required marker dependencies retain compatible changes from dev.
+- The local-variable refactors in `InitializeMilitarySymbol` and `InitializeNewMilitarySymbol` preserve original calls, branches and input sources.
+
+Pass: reviewers can account for both sides' changes for each affected contract. Compile all affected dependencies and callers; use focused save/load/spawn runtime checks after resolution when authorized. Compilation alone is not runtime proof.
+
+### M5 — P2: large, add/delete and missing-dependency conflicts
+
+Documented limits: bounded review rejects add/delete cases and more than 200 graph/default differences per side. Historical loads may fail when dependencies are missing. Legacy paged reads exist; they are a fallback, not a missing feature.
+
+Need: resumable paged review with stable stage identities; clear support/fallback for absent stages, renames and missing historical dependencies. Never fabricate an empty asset from a failed historical load.
+
+Pass: a large Blueprint can be fully reviewed without truncation being mistaken for completeness. Add/delete conflicts explicitly identify the missing side and require a deliberate resolution. Missing dependencies are named and unresolved evidence stays marked incomplete.
+
+### M6 — P2: multi-graph review lifetime and atomicity
+
+Documented limits: at most two sessions, ten-minute idle expiry, and bounded single-graph patch plans.
+
+Need: renew or reopen a review without losing authored decisions; validate a sequence of graph/declaration changes against the same stage identities. Explicitly report the transaction boundary when multiple patches cannot be atomic.
+
+Pass: stale stages, disk edits or new unsaved changes invalidate execution. A later patch failure cannot leave earlier saved changes described as a fully rolled-back merge. Retries return accurate receipts without duplicate mutation.
+
+### M7 — P2: inspectable layout and validation receipts
+
+Need: exact nodes/pins/defaults after edits, readable explicit-window Slate captures of affected regions, structured compile diagnostics, and separate save/dirty/stage results. Captures must work in the background and distinguish pending framing from an empty capture.
+
+Pass: edited graph text is readable, no important nodes are clipped, comments/layout are inspected, and the saved asset is clean. The receipt distinguishes structural, compile, visual and runtime checks. No staging or commit occurs in this task; any later staging requires authorization.
+
+## Procedure once conflicts actually exist
+
+1. Record unmerged paths and stage blobs; inspect editor dirty state without discarding work.
+2. Discover both live routes and fetch exact schemas. Use GraphXPort to inspect base/current/incoming, including graph and default changes; supplement documented coverage gaps.
+3. Explain behavioral conflicts and obtain decisions where intent is unclear. Preserve compatible changes from both sides. Seek the required separate approval before any optional Blueprint cleanup.
+4. Preflight targeted edits, apply through MCP, verify wiring/defaults/declarations and readable graph views, compile, then save only reviewed assets.
+5. Report unresolved evidence and runtime limitations. Do not mark the Git conflict resolved merely because the Blueprint compiles; do not stage or commit without authorization.
+
+No merge, asset edit, build, PIE, staging or commit was performed for this report. Runtime schemas and actual conflict-specific gaps must be verified after the editor connection and merge are available.

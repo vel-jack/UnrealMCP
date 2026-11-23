@@ -21,10 +21,10 @@
 #include "Misc/Paths.h"
 #include "ObjectTools.h"
 #include "UObject/ObjectRedirector.h"
-#include "Tools/AssetManagementTools.h"
-#include "Tools/BlueprintEditToolUtils.h"
-#include "Tools/BlueprintGraphEditToolUtils.h"
-#include "Tools/ReparentBlueprintTool.h"
+#include "Tools/Assets/AssetManagementTools.h"
+#include "Tools/Blueprint/Shared/BlueprintEditToolUtils.h"
+#include "Tools/Blueprint/Shared/BlueprintGraphEditToolUtils.h"
+#include "Tools/Blueprint/Members/ReparentBlueprintTool.h"
 
 namespace UnrealMCPAssetMoveReparent
 {
@@ -253,6 +253,7 @@ bool FUnrealMCPMoveDuplicateDeleteTest::RunTest(const FString& Parameters)
         P.SetStringField(TEXT("sourceObjectPath"), NewPath);
         P.SetStringField(TEXT("destinationPackagePath"), Root);
         P.SetStringField(TEXT("newName"), CopyName);
+        P.SetBoolField(TEXT("save"), true);
     });
     if (Duplicated.Error.IsSet()) AddError(Duplicated.Error->Message);
     UBlueprint* Copy = FindObject<UBlueprint>(nullptr, *CopyPath);
@@ -272,6 +273,11 @@ bool FUnrealMCPMoveDuplicateDeleteTest::RunTest(const FString& Parameters)
     });
     if (Deleted.Error.IsSet()) AddError(Deleted.Error->Message);
     TestTrue(TEXT("Delete reports success"), Deleted.Result.IsValid() && Deleted.Result->GetBoolField(TEXT("deleted")));
+    if (Deleted.Result.IsValid())
+    {
+        TestTrue(TEXT("Deletion verifies an existing package file"), Deleted.Result->GetBoolField(TEXT("packageFileExisted")));
+        TestFalse(TEXT("Saved package file is gone"), Deleted.Result->GetBoolField(TEXT("packageFileRemains")));
+    }
     UBlueprint* Gone = FindObject<UBlueprint>(nullptr, *CopyPath);
     TestTrue(TEXT("Deleted asset is gone"), Gone == nullptr || !IsValid(Gone));
     return !HasAnyErrors();

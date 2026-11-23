@@ -20,7 +20,7 @@
 #include "Misc/AutomationTest.h"
 #include "Misc/ScopeExit.h"
 #include "ObjectTools.h"
-#include "Tools/WireBlueprintEventToFunctionTool.h"
+#include "Tools/Blueprint/Graph/WireBlueprintEventToFunctionTool.h"
 
 namespace
 {

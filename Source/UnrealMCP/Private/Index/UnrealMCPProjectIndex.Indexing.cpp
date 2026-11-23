@@ -7,7 +7,7 @@
 #include "Engine/SimpleConstructionScript.h"
 #include "Components/SceneComponent.h"
 #include "Index/UnrealMCPProjectIndexInternal.h"
-#include "Tools/BlueprintToolUtils.h"
+#include "Tools/Blueprint/Shared/BlueprintToolUtils.h"
 
 bool FUnrealMCPProjectIndex::UpsertAsset(const FAssetData& AssetData, FString* OutError)
 {

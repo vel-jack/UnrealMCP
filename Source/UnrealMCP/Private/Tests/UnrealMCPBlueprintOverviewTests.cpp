@@ -6,8 +6,8 @@
 #include "Engine/Blueprint.h"
 #include "Engine/LevelScriptBlueprint.h"
 #include "Misc/AutomationTest.h"
-#include "Tools/BlueprintGraphEditToolUtils.h"
-#include "Tools/GetBlueprintOverviewTool.h"
+#include "Tools/Blueprint/Shared/BlueprintGraphEditToolUtils.h"
+#include "Tools/Blueprint/Inspection/GetBlueprintOverviewTool.h"
 #include "UObject/Package.h"
 #include "UObject/StrongObjectPtr.h"
 

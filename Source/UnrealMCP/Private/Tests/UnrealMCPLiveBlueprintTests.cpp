@@ -17,9 +17,9 @@
 #include "K2Node_Tunnel.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Misc/AutomationTest.h"
-#include "Tools/BlueprintGraphEditToolUtils.h"
-#include "Tools/InspectLiveBlueprintTool.h"
-#include "Tools/TraceLiveBlueprintFlowTool.h"
+#include "Tools/Blueprint/Shared/BlueprintGraphEditToolUtils.h"
+#include "Tools/Blueprint/Inspection/InspectLiveBlueprintTool.h"
+#include "Tools/Blueprint/Inspection/TraceLiveBlueprintFlowTool.h"
 #include "UObject/Package.h"
 #include "UObject/StrongObjectPtr.h"
 

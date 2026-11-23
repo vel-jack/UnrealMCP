@@ -228,3 +228,8 @@ UE 5.8 isolated-host compile/link and `UnrealMCP.Blueprint.Authoring.Interface.A
 - 2026-11-23 adapter lifecycle follow-up: default unattended launches avoid the Zen wait modal; explicit unattended=false / --interactive-editor restores dialogs. Default shutdown now refuses dirty packages without saving, with explicit discard preserved. Isolated Release build and adapter regression suite pass; live sample graceful shutdown, unattended relaunch, exact-PID attach and read-only overview through compact/full gateways pass. Native DLL/catalog unchanged (157 tools); no DSM or PIE work.
 
 - MCP-04: UE 5.8 live bulk-delete, compile and SQLite refresh regression passed through the adapter with zero errors/warnings. Verified node, pin and edge counts before/after deleting 200 connected nodes in a collapsed graph, and cleaned up the temporary asset and its index entries.
+
+
+- MCP-07 and MCP-39: paged class usage evidence, reflected default and macro scans, saved import-table evidence, bounded project Blueprint scans, and saved-package deletion verification.
+
+- MCP-21: existing comment patch styling verified on UE 5.8 through the live adapter. Dry-run preview, in-place updates, omitted style preservation, revision changes and wrong-node rejection passed.

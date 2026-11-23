@@ -15,8 +15,8 @@
 #include "Misc/PackageName.h"
 #include "Misc/ScopeExit.h"
 #include "ObjectTools.h"
-#include "Tools/BlueprintGraphEditToolUtils.h"
-#include "Tools/SetBlueprintParameterTool.h"
+#include "Tools/Blueprint/Shared/BlueprintGraphEditToolUtils.h"
+#include "Tools/Blueprint/Members/SetBlueprintParameterTool.h"
 
 // Custom event parameter retype + rename, the change the editor's Details panel makes by hand.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

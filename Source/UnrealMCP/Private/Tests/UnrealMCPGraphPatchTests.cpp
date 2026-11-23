@@ -3,12 +3,16 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Dom/JsonObject.h"
+#include "Components/SceneComponent.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
+#include "Engine/SCS_Node.h"
+#include "Engine/SimpleConstructionScript.h"
 #include "GameFramework/Actor.h"
 #include "K2Node_CallArrayFunction.h"
 #include "K2Node_CustomEvent.h"
+#include "K2Node_IfThenElse.h"
 #include "Kismet/KismetArrayLibrary.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/CompilerResultsLog.h"
@@ -17,10 +21,11 @@
 #include "Misc/PackageName.h"
 #include "Misc/ScopeExit.h"
 #include "ObjectTools.h"
-#include "Tools/ApplyBlueprintGraphPatchTool.h"
-#include "Tools/AddBlueprintCommentNodeTool.h"
+#include "Tools/Blueprint/Graph/ApplyBlueprintGraphPatchTool.h"
+#include "Tools/Blueprint/Graph/AddBlueprintCommentNodeTool.h"
+#include "Tools/Blueprint/Members/SetBlueprintComponentDefaultsTool.h"
 #include "EdGraphNode_Comment.h"
-#include "Tools/BlueprintGraphEditToolUtils.h"
+#include "Tools/Blueprint/Shared/BlueprintGraphEditToolUtils.h"
 
 namespace
 {
@@ -389,6 +394,27 @@ bool FUnrealMCPGraphPatchCompileRollbackTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Rollback restores exact graph revision"),
         UnrealMCP::BlueprintGraphEditToolUtils::ComputeGraphRevision(Graph), InitialRevision);
     TestFalse(TEXT("Compile failure never saves the temporary asset"), FPackageName::DoesPackageExist(PackagePath));
+
+    auto* Component = Blueprint->SimpleConstructionScript->CreateNode(USceneComponent::StaticClass(), TEXT("RollbackComponent"));
+    if (!TestNotNull(TEXT("Component fixture created"), Component)) return false;
+    Blueprint->SimpleConstructionScript->AddNode(Component);
+    Blueprint->GetOutermost()->SetDirtyFlag(false);
+    const auto* Hidden = FindFProperty<FBoolProperty>(USceneComponent::StaticClass(), TEXT("bHiddenInGame"));
+    if (!TestNotNull(TEXT("Component property resolved"), Hidden)) return false;
+    const bool bHiddenBefore = Hidden->GetPropertyValue_InContainer(Component->ComponentTemplate);
+    auto Defaults = MakeShared<FJsonObject>();
+    Defaults->SetBoolField(TEXT("bHiddenInGame"), !bHiddenBefore);
+    Request.Params = MakeShared<FJsonObject>();
+    Request.Params->SetStringField(TEXT("objectPath"), ObjectPath);
+    Request.Params->SetStringField(TEXT("componentName"), TEXT("RollbackComponent"));
+    Request.Params->SetObjectField(TEXT("propertyDefaults"), Defaults);
+    const auto ComponentResult = FSetBlueprintComponentDefaultsTool().Execute(Request);
+    TestTrue(TEXT("Component compile failure rolls back"), ComponentResult.Error.IsSet()
+        && ComponentResult.Error->Message.Contains(TEXT("transaction rolled back")));
+    TestEqual(TEXT("Rollback restores the component property"),
+        Hidden->GetPropertyValue_InContainer(Component->ComponentTemplate), bHiddenBefore);
+    TestFalse(TEXT("Component rollback restores clean package"), Blueprint->GetOutermost()->IsDirty());
+    TestFalse(TEXT("Component compile failure never saves"), FPackageName::DoesPackageExist(PackagePath));
     return !HasAnyErrors();
 }
 
@@ -439,6 +465,72 @@ bool FUnrealMCPExternalVariablePatchTest::RunTest(const FString& Parameters)
     TestFalse(TEXT("External getter retry succeeds"), Retry.Error.IsSet());
     return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUnrealMCPGraphPatchExecSpliceTest, "UnrealMCP.Blueprint.Authoring.GraphPatch.ExecSplice",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FUnrealMCPGraphPatchExecSpliceTest::RunTest(const FString& Parameters)
+{
+    UBlueprint* Blueprint = CreatePatchFixture(TEXT("/Game/UnrealMCP_Automation/BP_PatchExec_") + FGuid::NewGuid().ToString(EGuidFormats::Digits));
+    if (!TestNotNull(TEXT("Blueprint fixture"), Blueprint)) return false;
+    ON_SCOPE_EXIT { ObjectTools::DeleteObjectsUnchecked({Blueprint}); };
+    UEdGraph* Graph = Blueprint->UbergraphPages[0];
+    auto AddEvent = [&](FName Name)
+    {
+        auto* Event = NewObject<UK2Node_CustomEvent>(Graph);
+        Event->CustomFunctionName = Name;
+        UnrealMCP::BlueprintGraphEditToolUtils::PlaceNewNode(Graph, Event, {});
+        return Event;
+    };
+    auto* First = AddEvent(TEXT("FirstRoute"));
+    auto* Second = AddEvent(TEXT("SecondRoute"));
+    auto* Target = NewObject<UK2Node_IfThenElse>(Graph);
+    UnrealMCP::BlueprintGraphEditToolUtils::PlaceNewNode(Graph, Target, {});
+    auto* SourcePin = First->FindPinChecked(UEdGraphSchema_K2::PN_Then);
+    auto* SecondPin = Second->FindPinChecked(UEdGraphSchema_K2::PN_Then);
+    auto* TargetPin = Target->FindPinChecked(UEdGraphSchema_K2::PN_Execute);
+    const auto* Schema = GetDefault<UEdGraphSchema_K2>();
+    if (!TestTrue(TEXT("Original exec link"), Schema->TryCreateConnection(SourcePin, TargetPin))) return false;
+
+    auto Anchor = [](const TCHAR* Id, const UEdGraphNode* Existing)
+    {
+        auto Spec = Node(Id, TEXT("existingNode"));
+        Spec->SetStringField(TEXT("nodeGuid"), Existing->NodeGuid.ToString());
+        return MakeShared<FJsonValueObject>(Spec);
+    };
+    UnrealMCP::FMCPRequest Request;
+    Request.Id = TEXT("graph-patch-splice");
+    Request.Params = MakeShared<FJsonObject>();
+    Request.Params->SetStringField(TEXT("objectPath"), Blueprint->GetPathName());
+    Request.Params->SetStringField(TEXT("graphGuid"), Graph->GraphGuid.ToString());
+    Request.Params->SetStringField(TEXT("patchId"), TEXT("splice"));
+    Request.Params->SetBoolField(TEXT("compileAfterEdit"), false);
+    Request.Params->SetArrayField(TEXT("nodes"), {
+        Anchor(TEXT("first"), First), Anchor(TEXT("second"), Second), Anchor(TEXT("target"), Target),
+        MakeShared<FJsonValueObject>(Node(TEXT("insert"), TEXT("branch")))});
+    Request.Params->SetArrayField(TEXT("connections"), {
+        MakeShared<FJsonValueObject>(Connection(TEXT("second"), TEXT("then"), TEXT("target"), TEXT("execute")))});
+    auto Splice = Connection(TEXT("first"), TEXT("then"), TEXT("target"), TEXT("execute"));
+    Splice->SetStringField(TEXT("insertNodeId"), TEXT("insert"));
+    Splice->SetStringField(TEXT("insertInputPinName"), TEXT("execute"));
+    Splice->SetStringField(TEXT("insertOutputPinName"), TEXT("then"));
+    Request.Params->SetArrayField(TEXT("spliceExec"), {MakeShared<FJsonValueObject>(Splice)});
+    const FApplyBlueprintGraphPatchTool Tool;
+    TestTrue(TEXT("Unconfirmed splice is rejected"), Tool.Execute(Request).Error.IsSet());
+    Splice->SetBoolField(TEXT("confirm"), true);
+    Request.Params->SetBoolField(TEXT("dryRun"), true);
+    const FString Before = UnrealMCP::BlueprintGraphEditToolUtils::ComputeGraphRevision(Graph);
+    if (!TestTrue(TEXT("Dry run accepts splice and second incoming route"), Tool.Execute(Request).Result.IsValid())) return false;
+    TestEqual(TEXT("Dry run preserves revision"), UnrealMCP::BlueprintGraphEditToolUtils::ComputeGraphRevision(Graph), Before);
+    Request.Params->SetBoolField(TEXT("dryRun"), false);
+    if (!TestTrue(TEXT("Apply accepts splice"), Tool.Execute(Request).Result.IsValid())) return false;
+    TestFalse(TEXT("Original direct route removed"), SourcePin->LinkedTo.Contains(TargetPin));
+    TestTrue(TEXT("Second incoming route added"), SecondPin->LinkedTo.Contains(TargetPin));
+    TestEqual(TEXT("Two incoming routes at target"), TargetPin->LinkedTo.Num(), 2);
+    const FString After = UnrealMCP::BlueprintGraphEditToolUtils::ComputeGraphRevision(Graph);
+    TestTrue(TEXT("Retry succeeds"), Tool.Execute(Request).Result.IsValid());
+    TestEqual(TEXT("Retry leaves graph unchanged"), UnrealMCP::BlueprintGraphEditToolUtils::ComputeGraphRevision(Graph), After);
+    return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUnrealMCPCommentPropertiesTest,
     "UnrealMCP.Blueprint.Authoring.Comment.AuthoredProperties", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FUnrealMCPCommentPropertiesTest::RunTest(const FString& Parameters)
@@ -461,7 +553,54 @@ bool FUnrealMCPCommentPropertiesTest::RunTest(const FString& Parameters)
             TestTrue(TEXT("Bubble visible"), Comment->bCommentBubbleVisible_InDetailsPanel && Comment->bCommentBubbleVisible);
             TestTrue(TEXT("Actual authored colour"), Comment->CommentColor.Equals(FLinearColor(0.1f, 0.2f, 0.3f, 1.f)));
         }
-    TestTrue(TEXT("Comment exists"), Found); return true;
+    if (!TestTrue(TEXT("Comment exists"), Found)) return false;
+    UEdGraph* Graph = Blueprint->UbergraphPages[0];
+    TArray<UEdGraphNode_Comment*> Comments;
+    Graph->GetNodesOfClass(Comments);
+    auto* Comment = Comments[0];
+    const FGuid Guid = Comment->NodeGuid;
+    const int32 OriginalWidth = Comment->NodeWidth;
+    const FString Revision = UnrealMCP::BlueprintGraphEditToolUtils::ComputeGraphRevision(Graph);
+    const int32 NodeCount = Graph->Nodes.Num();
+    auto Existing = Node(TEXT("box"), TEXT("existingNode"));
+    Existing->SetStringField(TEXT("nodeGuid"), Guid.ToString());
+    Existing->SetNumberField(TEXT("width"), 900);
+    Existing->SetNumberField(TEXT("height"), 450);
+    Existing->SetBoolField(TEXT("showBubbleWhenZoomed"), false);
+    Color->SetNumberField(TEXT("r"), 0.5);
+    Existing->SetObjectField(TEXT("color"), Color);
+    Request.Params->SetStringField(TEXT("patchId"), TEXT("resize-existing-comment"));
+    Request.Params->SetArrayField(TEXT("nodes"), {MakeShared<FJsonValueObject>(Existing)});
+    Request.Params->SetBoolField(TEXT("compileAfterEdit"), false);
+    Request.Params->SetBoolField(TEXT("dryRun"), true);
+    const auto Preview = FApplyBlueprintGraphPatchTool().Execute(Request);
+    if (!TestTrue(TEXT("Resize preview succeeds"), Preview.Result.IsValid())) return false;
+    TestEqual(TEXT("Preview reports predicted width"), Preview.Result->GetArrayField(TEXT("nodes"))[0]->AsObject()->GetIntegerField(TEXT("width")), 900);
+    TestEqual(TEXT("Preview preserves live width"), Comment->NodeWidth, OriginalWidth);
+    Request.Params->SetBoolField(TEXT("dryRun"), false);
+    const auto Applied = FApplyBlueprintGraphPatchTool().Execute(Request);
+    if (!TestTrue(TEXT("Resize succeeds"), Applied.Result.IsValid())) return false;
+    TestEqual(TEXT("GUID preserved"), Comment->NodeGuid, Guid);
+    TestEqual(TEXT("Node count preserved"), Graph->Nodes.Num(), NodeCount);
+    TestEqual(TEXT("Width applied"), Comment->NodeWidth, 900);
+    TestEqual(TEXT("Height applied"), Comment->NodeHeight, 450);
+    TestTrue(TEXT("Color applied"), Comment->CommentColor.Equals(FLinearColor(0.5f, 0.2f, 0.3f, 1.f)));
+    TestFalse(TEXT("Bubble disabled"), Comment->bCommentBubbleVisible_InDetailsPanel);
+    TestNotEqual(TEXT("Style changes graph revision"), UnrealMCP::BlueprintGraphEditToolUtils::ComputeGraphRevision(Graph), Revision);
+    Existing->RemoveField(TEXT("height")); Existing->RemoveField(TEXT("color")); Existing->RemoveField(TEXT("showBubbleWhenZoomed"));
+    Existing->SetNumberField(TEXT("width"), 950);
+    Request.Params->SetStringField(TEXT("patchId"), TEXT("resize-comment-width-only"));
+    TestTrue(TEXT("Width-only edit succeeds"), FApplyBlueprintGraphPatchTool().Execute(Request).Result.IsValid());
+    TestEqual(TEXT("Omitted height preserved"), Comment->NodeHeight, 450);
+    TestTrue(TEXT("Omitted color preserved"), Comment->CommentColor.Equals(FLinearColor(0.5f, 0.2f, 0.3f, 1.f)));
+    for (const UEdGraphNode* Other : Graph->Nodes)
+        if (Other && Other != Comment)
+        {
+            Existing->SetStringField(TEXT("nodeGuid"), Other->NodeGuid.ToString());
+            TestTrue(TEXT("Non-comment style rejected"), FApplyBlueprintGraphPatchTool().Execute(Request).Error.IsSet());
+            break;
+        }
+    return !HasAnyErrors();
 }
 
 #endif // WITH_DEV_AUTOMATION_TESTS

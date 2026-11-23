@@ -15,20 +15,21 @@ internal sealed partial class McpRequestDispatcher(
 
     public async Task<IReadOnlyList<McpToolDefinition>> GetToolDefinitionsAsync(CancellationToken cancellationToken)
     {
-        var all = await GetAllToolDefinitionsAsync(cancellationToken);
+        var (all, _, _) = await GetAllToolDefinitionsAsync(cancellationToken);
         return options.ToolSurface == "full" ? all : all.Where(t => t.Name.StartsWith("unreal.adapter.", StringComparison.Ordinal)).ToArray();
     }
 
-    private async Task<IReadOnlyList<McpToolDefinition>> GetAllToolDefinitionsAsync(CancellationToken cancellationToken)
+    private async Task<(IReadOnlyList<McpToolDefinition> Tools, string Source, JsonObject Availability)> GetAllToolDefinitionsAsync(CancellationToken cancellationToken)
     {
         var tools = new List<McpToolDefinition>(_localTools);
-        var remoteTools = await _sessionManager.GetMirroredToolListAsync(cancellationToken);
-        if (remoteTools.Count > 0)
+        var (remoteTools, availability) = await _sessionManager.GetMirroredToolListAsync(cancellationToken);
+        var live = availability["ready"]!.GetValue<bool>();
+        if (live && remoteTools.Count > 0)
         {
             _toolCatalog.Save(remoteTools);
         }
 
-        var catalog = remoteTools.Count > 0
+        var catalog = live || remoteTools.Count > 0
             ? remoteTools.OfType<JsonObject>().ToArray()
             : _toolCatalog.Load();
         foreach (var remoteTool in catalog)
@@ -60,7 +61,7 @@ internal sealed partial class McpRequestDispatcher(
         }
 
         tools.AddRange(BuildDiscoveryTools());
-        return tools;
+        return (tools, live ? "live_catalog" : remoteTools.Count > 0 ? "session_catalog" : "disk_cache", availability);
     }
 
     public async Task<(JsonObject Payload, bool IsError)> InvokeToolPayloadAsync(
@@ -176,9 +177,20 @@ internal sealed partial class McpRequestDispatcher(
                 CreateObjectSchema(("projectPath", "string", "Optional absolute project path to select before refreshing.", false))),
             new McpToolDefinition(
                 "unreal.adapter.RequestUnrealShutdown",
-                "Requests a graceful shutdown for the selected Unreal Editor window. discardDirty=true explicitly drops unsaved package changes without saving.",
-                CreateObjectSchema(("discardDirty", "boolean", "Discard unsaved package changes before closing the selected Editor; default false.", false)))
+                "Requests a graceful shutdown for the selected Unreal Editor. The default fail policy refuses unsaved packages. Explicitly choose discard or save to handle them.",
+                CreateShutdownSchema())
         ];
+    }
+
+    private static JsonObject CreateShutdownSchema()
+    {
+        var schema = CreateObjectSchema(
+            ("dirtyPolicy", "string", "fail refuses unsaved packages; discard drops them; save explicitly saves all dirty packages before closing.", false),
+            ("discardDirty", "boolean", "Legacy flag. Omit when supplying dirtyPolicy.", false));
+        var policy = schema["properties"]!["dirtyPolicy"]!;
+        policy["enum"] = new JsonArray("fail", "discard", "save");
+        policy["default"] = "fail";
+        return schema;
     }
 
     private static JsonObject CreateObjectSchema(params (string Name, string Type, string Description, bool Required)[] properties)

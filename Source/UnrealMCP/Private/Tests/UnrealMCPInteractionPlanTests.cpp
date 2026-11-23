@@ -23,7 +23,7 @@
 #include "Misc/AutomationTest.h"
 #include "Misc/ScopeExit.h"
 #include "ObjectTools.h"
-#include "Tools/ApplyBlueprintInteractionPlanTool.h"
+#include "Tools/Blueprint/Graph/ApplyBlueprintInteractionPlanTool.h"
 
 namespace
 {

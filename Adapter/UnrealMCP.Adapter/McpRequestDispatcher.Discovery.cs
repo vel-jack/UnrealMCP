@@ -32,12 +32,13 @@ internal sealed partial class McpRequestDispatcher
         try
         {
             if (arguments is not JsonObject args) throw new ArgumentException("Arguments must be an object.");
-            var catalog = (await GetAllToolDefinitionsAsync(cancellationToken))
+            var (definitions, source, availability) = await GetAllToolDefinitionsAsync(cancellationToken);
+            var catalog = definitions
                 .Where(t => !t.Name.StartsWith("unreal.adapter.", StringComparison.Ordinal))
                 .OrderBy(t => t.Name, StringComparer.Ordinal).ToArray();
             var serialized = JsonSerializer.Serialize(catalog.Select(t => new { name = t.Name, description = t.Description, inputSchema = t.InputSchema }));
             var revision = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(serialized))).ToLowerInvariant();
-            var source = _sessionManager.GetCachedToolCatalog().Count > 0 ? "session_catalog" : "disk_cache";
+            var verified = source == "live_catalog";
             if (toolName == DiscoveryNames[0])
             {
                 var expected = args["expectedCatalogRevision"]?.GetValue<string>();
@@ -59,7 +60,8 @@ internal sealed partial class McpRequestDispatcher
                 return (new JsonObject
                 {
                     ["success"] = true, ["source"] = source, ["catalogRevision"] = revision,
-                    ["availabilityVerified"] = false, ["scannedCount"] = catalog.Length, ["matchedCount"] = matches.Length,
+                    ["availabilityVerified"] = verified, ["availability"] = availability,
+                    ["scannedCount"] = catalog.Length, ["matchedCount"] = matches.Length,
                     ["returnedCount"] = page.Length, ["offset"] = offset, ["hasMore"] = next < matches.Length,
                     ["nextOffset"] = next < matches.Length ? JsonValue.Create(next) : null,
                     ["coverageComplete"] = catalog.Length > 0, ["coverageScope"] = "available_catalog_only",
@@ -74,11 +76,17 @@ internal sealed partial class McpRequestDispatcher
             var name = JsonArgumentReaders.ReadRequiredString(args, "name");
             var definition = catalog.FirstOrDefault(t => t.Name == name);
             if (definition is null)
-                return (DiscoveryError("tool_not_in_catalog", "SearchTools or RefreshToolManifest before calling this exact native tool."), true);
+            {
+                var error = DiscoveryError("tool_not_in_catalog", "SearchTools or RefreshToolManifest before calling this exact native tool.");
+                error["source"] = source;
+                error["availability"] = availability;
+                return (error, true);
+            }
             if (toolName == DiscoveryNames[1])
                 return (new JsonObject
                 {
                     ["success"] = true, ["source"] = source, ["catalogRevision"] = revision,
+                    ["availabilityVerified"] = verified, ["availability"] = availability,
                     ["name"] = definition.Name, ["description"] = definition.Description,
                     ["inputSchema"] = definition.InputSchema.DeepClone(),
                     ["mutationTracked"] = UnrealSessionManager.IsMutationTool(name)

@@ -1082,12 +1082,20 @@
       "name": "GraphXPortConflictToolset.GraphXPortConflictToolset",
       "tools": [
         {
+          "name": "GraphXPortConflictToolset.GraphXPortConflictToolset.StartFromRevision",
+          "description": "Explicitly replace the working asset with current or incoming as a base. Requires Confirm=true, a clean unchanged three-way session, and the GraphXPort Merge tab closed. Nothing is staged."
+        },
+        {
           "name": "GraphXPortConflictToolset.GraphXPortConflictToolset.PreviewMergeResolution",
           "description": "Preflight an exact ApplyBlueprintGraphPatch JSON plan against the session. Captures graph revision and stores the plan; returns PlanId and compact evidence. No edit/save/stage."
         },
         {
+          "name": "GraphXPortConflictToolset.GraphXPortConflictToolset.PreviewMergeClassDefaults",
+          "description": "Preview explicitly authored Blueprint class defaults for an unchanged review session. ValuesJson maps property names to Unreal export text."
+        },
+        {
           "name": "GraphXPortConflictToolset.GraphXPortConflictToolset.OpenBlueprintMerge",
-          "description": "Open a bounded merge review. Caches revision reads, records stage/disk identities and dirty state, returns outgoing/incoming graph changes. Does not edit."
+          "description": "Open a bounded merge review. Returns outgoing/incoming graph and Blueprint class-default changes, records stage/disk identities and dirty state. Does not edit."
         },
         {
           "name": "GraphXPortConflictToolset.GraphXPortConflictToolset.ListConflicts",
@@ -1104,6 +1112,14 @@
         {
           "name": "GraphXPortConflictToolset.GraphXPortConflictToolset.CompareRevisions",
           "description": "Compare graph changes from Before to After. Use base->current for outgoing and base->incoming for incoming. Revisions accept base/current/incoming/HEAD/full commit hash. Empty Graph includes all graphs. Graph overlap is not proof of semantic conflict."
+        },
+        {
+          "name": "GraphXPortConflictToolset.GraphXPortConflictToolset.CompareBlueprintStructure",
+          "description": "Compare authored Blueprint structure across base/current/incoming Git stages. Returns paged changed values and exact stage blobs. Read-only."
+        },
+        {
+          "name": "GraphXPortConflictToolset.GraphXPortConflictToolset.CompareBlueprintDefaults",
+          "description": "Compare Blueprint class-default values between revisions, with changed property paths and before/after values. Revisions accept base/current/incoming/HEAD/full commit hash."
         },
         {
           "name": "GraphXPortConflictToolset.GraphXPortConflictToolset.CloseBlueprintMerge",
@@ -3619,5 +3635,6 @@
         }
       ]
     }
-  ]
+  ],
+  "graphXPortCapturedUtc": "2026-11-23T10:16:00.262128+00:00"
 }

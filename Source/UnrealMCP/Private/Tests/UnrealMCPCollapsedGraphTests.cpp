@@ -10,8 +10,8 @@
 #include "Index/UnrealMCPProjectIndex.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "HAL/FileManager.h"
-#include "Tools/BlueprintEditToolUtils.h"
-#include "Tools/RefreshProjectIndexTool.h"
+#include "Tools/Blueprint/Shared/BlueprintEditToolUtils.h"
+#include "Tools/Index/RefreshProjectIndexTool.h"
 #include "UnrealMCPModule.h"
 #include "K2Node_Composite.h"
 #include "K2Node_IfThenElse.h"
@@ -20,10 +20,10 @@
 #include "Misc/PackageName.h"
 #include "Misc/ScopeExit.h"
 #include "ObjectTools.h"
-#include "Tools/AddBlueprintBranchNodeTool.h"
-#include "Tools/BlueprintGraphEditToolUtils.h"
-#include "Tools/ConnectBlueprintPinsTool.h"
-#include "Tools/DeleteBlueprintNodeTool.h"
+#include "Tools/Blueprint/Graph/AddBlueprintBranchNodeTool.h"
+#include "Tools/Blueprint/Shared/BlueprintGraphEditToolUtils.h"
+#include "Tools/Blueprint/Graph/ConnectBlueprintPinsTool.h"
+#include "Tools/Blueprint/Graph/DeleteBlueprintNodeTool.h"
 
 namespace
 {

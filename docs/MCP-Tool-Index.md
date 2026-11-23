@@ -2,8 +2,8 @@
 
 Generated metadata only; fetch the exact live schema before execution.
 
-Custom catalog captured: 2026-11-23T05:52:48.2182701Z. Official catalog captured: 2026-10-30T09:56:38.641Z.
-Contains 157 custom tools and 838 official tools across 53 toolsets.
+Custom catalog captured: 2026-11-23T18:03:09.7421820Z. Official catalog captured: 2026-10-30T09:56:38.641Z.
+Contains 178 custom tools and 842 official tools across 53 toolsets.
 
 Search this file with `rg -i 'interface|delete.*node|merge'`. Descriptions are shortened; a missing keyword is not proof a capability is absent.
 
@@ -44,16 +44,26 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `AddDataTableRow` | Transactionally edits one DataTable row in memory; leaves the asset dirty for an explicit save. |
 | Custom | `native registry` | `AddEnhancedInputActionNode` | Adds an Enhanced Input Action event node for an exact InputAction asset without requiring Enhanced Input as a hard plugin dependency. |
 | Custom | `native registry` | `AddInputMappingContextMapping` | Adds one key-mapping row to an existing InputMappingContext. Idempotent if the identical Action+Key row already exists. |
-| Custom | `native registry` | `AddUserDefinedStructMember` | Inspect, add or remove authored members of a user-defined struct using Unreal's structure editor. Inspection includes member GUIDs,... |
+| Custom | `native registry` | `AddUserDefinedEnumEntry` | Inspect or edit entries of a Blueprint enum by stable internal name. Supports append and display-name edits, preserving existing values and order. |
+| Custom | `native registry` | `AddUserDefinedStructMember` | Inspect or edit authored Blueprint struct members by GUID or name. Removal can discard stored member values. |
 | Custom | `native registry` | `AnalyzeBlueprintCoupling` | Ranks project Blueprint assets by indexed package dependency coupling. This is static package-reference analysis, not runtime call coupling. |
 | Custom | `native registry` | `AnalyzeFeatureBoundary` | Analyzes static indexed package dependencies crossing a required /Game feature boundary. It does not infer runtime architecture. |
 | Custom | `native registry` | `AnalyzeProjectArchitecture` | Returns a compact, fault-tolerant static architecture overview composed from the indexed cycle, coupling, broken-reference, unused-candidate, and... |
+| Custom | `native registry` | `ApplyBlueprintConflictStage` | Preview or explicitly stage a reviewed Blueprint resolution, including approved absent paths in asymmetric or rename conflicts. |
 | Custom | `native registry` | `ApplyBlueprintGraphPatch` | Atomically preflights and applies a bounded declarative Blueprint graph patch with deterministic node identities, exact data-link replacement,... |
 | Custom | `native registry` | `ApplyBlueprintInteractionPlan` | Preflights and idempotently applies Blueprint interaction nodes, exact named-pin connections, and safe Sequence splices that preserve an existing... |
+| Custom | `native registry` | `ApplyBlueprintMergeAddInterface` | Preview or attach a Blueprint interface on a clean working Blueprint with three Git conflict stages. Apply requires the preview token. Never... |
+| Custom | `native registry` | `ApplyBlueprintMergeAddVariable` | Preview or add a typed member variable to a clean Blueprint with three Git conflict stages and no known descendants. Compile and verify the... |
+| Custom | `native registry` | `ApplyBlueprintMergeClassDefaults` | Preview or apply explicit class-default edits for a clean Blueprint with all three Git conflict stages. Apply requires the preview token. Never... |
+| Custom | `native registry` | `ApplyBlueprintMergeComponentDefaults` | Preview or apply defaults on a local component or existing inherited override in a clean Blueprint with three Git conflict stages. Apply requires... |
+| Custom | `native registry` | `ApplyBlueprintMergePlan` | Preview or apply one checkpoint in a client-held sequence of graph and structural merge steps. Saves each successful step, persists replay... |
+| Custom | `native registry` | `ApplyBlueprintMergeStructure` | Preview and apply a guarded batch of Blueprint structural edits with three Git conflict stages, dependent compilation and per-package receipts. |
 | Custom | `native registry` | `AssetExists` | Checks whether an asset exists by object path without loading it. |
 | Custom | `native registry` | `BuildProjectIndex` | Expensive manual action that builds or rebuilds the local UnrealMCP project-understanding index. Prefer user-triggered rebuilds instead of... |
-| Custom | `native registry` | `CaptureEditorWidget` | Capture an explicit live editor widgetRef to PNG under this project's Saved/UnrealMCP/Captures. No implicit active window or OS screenshot. Retry... |
+| Custom | `native registry` | `CaptureEditorWidget` | Capture an explicit live editor widgetRef to PNG under this project's Saved/UnrealMCP/Captures. Waits for pending graph framing on adapter... |
 | Custom | `native registry` | `CompareBlueprintClassDefaults` | Compares two Blueprint CDOs by property name, including properties present on one side only. |
+| Custom | `native registry` | `CompareBlueprintGraphPreservation` | Capture a bounded live Blueprint wiring snapshot or compare it against an earlier snapshot. Reports exact edits, normalized input sources and... |
+| Custom | `native registry` | `CompareBlueprintMergeStructure` | Read-only three-way Blueprint comparison from exact Git conflict stages. Pages declarations, defaults, components, direct references and optional... |
 | Custom | `native registry` | `CompileAllBlueprints` | Compiles multiple Blueprint assets under a package path and returns aggregate results. |
 | Custom | `native registry` | `CompileBlueprint` | Compiles one Blueprint asset and returns structured status, errors[{graph,nodeGuid,message}] and warnings[] plus the raw message list. |
 | Custom | `native registry` | `ConnectBlueprintPins` | Validates and transactionally connects Blueprint pins, returning their resolved post-connection type model. |
@@ -78,13 +88,15 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `FindBlueprintVariableUsage` | Finds indexed Blueprint nodes that appear to read or write a variable, and summarizes their local connection counts. |
 | Custom | `native registry` | `FindBrokenBlueprintReferences` | Finds project Blueprint references that are provably unresolved in the current project index. This is static index evidence, not a live compiler... |
 | Custom | `native registry` | `FindCircularDependencies` | Finds deterministic circular dependency groups among indexed project Blueprints. Use the reported internal edges to identify dependency seams to... |
-| Custom | `native registry` | `FindClassUsages` | Finds every use of a class/struct/enum/asset inside one Blueprint, tagged by kind (cast_target, function_call, variable_access, pin_type,... |
+| Custom | `native registry` | `FindClassUsages` | Find live Blueprint references and saved package imports. Omit objectPath for registry candidates, or pass scanBlueprints to scan project... |
 | Custom | `native registry` | `FindCrossBlueprintCalls` | Finds indexed Blueprint function call nodes that target other Blueprint assets, with compact or full output modes. |
 | Custom | `native registry` | `FindDataTableReferences` | Finds Blueprint nodes with a direct DataTable pin default, scanning registry referencers or one specified Blueprint. |
 | Custom | `native registry` | `FindFeatureEntryPoints` | Finds likely starting assets for a feature by ranking indexed assets that match a query, optionally boosted by a related context asset. |
+| Custom | `native registry` | `FindNodesByMember` | Find exact function-call and variable member names in a live Blueprint. Returns paged node locations and the declaring class when available. |
+| Custom | `native registry` | `FindNodesByPinType` | Find exact reflected pin types in a live Blueprint, including map keys and values. Returns paged graph, node and pin locations. |
 | Custom | `native registry` | `FindUnusedBlueprintAssets` | Finds conservative project Blueprint candidates with no indexed incoming package dependencies. Results are leads for review, never proof that an... |
 | Custom | `native registry` | `FixupRedirectors` | Editor 'Fix Up Redirectors in Folder': finds redirectors under packagePath (recursive by default), resaves their referencers and deletes them.... |
-| Custom | `native registry` | `FrameBlueprintGraph` | Open an exact Blueprint graph and frame all nodes or explicit node GUIDs for visual review. Changes editor view/selection only; no... |
+| Custom | `native registry` | `FrameBlueprintGraph` | Frame an exact Blueprint graph, node set or graph-space region for visual review. Supports upstream data nodes, measured tiles and no-focus... |
 | Custom | `native registry` | `GetActorInfo` | Returns detailed information about one actor from the active editor world, including transform, components, and attached actors. |
 | Custom | `native registry` | `GetAssetInfo` | Returns detailed Asset Registry information for one asset without loading it. |
 | Custom | `native registry` | `GetAssetReferencers` | Returns indexed package referencers for one asset or package. |
@@ -97,6 +109,8 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `GetBlueprintOverview` | Inspect a Blueprint asset in one bounded live read: parent, compile/dirty state, graph, variable, component and interface inventory. Filter and... |
 | Custom | `native registry` | `GetDependencies` | Returns Asset Registry package dependencies for one asset or package. |
 | Custom | `native registry` | `GetEditorWidgetSnapshot` | Read-only native Slate inspection. Without windowRef lists visible editor windows; with an explicit windowRef returns a bounded widget tree.... |
+| Custom | `native registry` | `GetGitCommitChanges` | Page files changed by one exact Git commit and optionally read a bounded text patch for one file. |
+| Custom | `native registry` | `GetGitCommitHistory` | Page recent commits in the selected project, optionally filtered by file. |
 | Custom | `native registry` | `GetImplementedInterfaces` | Lists interfaces implemented by a Blueprint, with optional inherited interfaces. |
 | Custom | `native registry` | `GetIndexStatus` | Returns status information for the local UnrealMCP project index. |
 | Custom | `native registry` | `GetInputMappingContextMappings` | Reads back every key-mapping row (action, key, triggers, modifiers) in an InputMappingContext without loading it for editing. |
@@ -106,14 +120,17 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `GetReferencers` | Returns Asset Registry package referencers for one asset or package. |
 | Custom | `native registry` | `GetServerInfo` | Returns plugin, protocol, and engine version information. |
 | Custom | `native registry` | `HealthCheck` | Returns plugin health and readiness information. |
+| Custom | `native registry` | `InspectBlueprintCommit` | Read historical Blueprint graphs, nodes or pins from an exact Git commit without changing the working copy. |
 | Custom | `native registry` | `InspectBlueprintNode` | Explains one or more indexed Blueprint nodes, including immediate previous and next connected nodes plus trace hints. |
 | Custom | `native registry` | `InspectDataTableRows` | Reads paged DataTable rows as export text and reports soft references that cannot resolve, without changing the table. |
 | Custom | `native registry` | `InspectEnhancedInputActionWiring` | Finds Enhanced Input Action event nodes and reports exact Started/Triggered/Ongoing/Canceled/Completed execution routes. |
 | Custom | `native registry` | `InspectLiveBlueprint` | Read-only live graph/node/pin inspection, including a map's embedded Level Blueprint. Defaults to the current editor level. No index, loading,... |
-| Custom | `native registry` | `InspectUserDefinedStruct` | Inspect, add or remove authored members of a user-defined struct using Unreal's structure editor. Inspection includes member GUIDs,... |
+| Custom | `native registry` | `InspectUserDefinedEnum` | Inspect or edit entries of a Blueprint enum by stable internal name. Supports append and display-name edits, preserving existing values and order. |
+| Custom | `native registry` | `InspectUserDefinedStruct` | Inspect or edit authored Blueprint struct members by GUID or name. Removal can discard stored member values. |
 | Custom | `native registry` | `LayoutBlueprintNodes` | Deterministically lays out an explicit Blueprint node set by execution-flow depth with configurable spacing, collision avoidance, dry-run, and... |
 | Custom | `native registry` | `ListActors` | Lists actors from the active editor world so agents can inspect current level composition without modifying it. |
 | Custom | `native registry` | `ListAssets` | Lists assets under a package path without loading them. |
+| Custom | `native registry` | `ListBlueprintGitConflicts` | List unmerged project Content .uasset paths and their exact Git stage IDs. Includes asymmetric entries. |
 | Custom | `native registry` | `ListBlueprintGraphs` | Lists indexed graphs for one Blueprint with stable graph identity, GUID, type, entry node, and node count. |
 | Custom | `native registry` | `ListBlueprintLocalVariables` | Lists the local variables (name, GUID, type, default) of one Blueprint function graph. |
 | Custom | `native registry` | `ListBlueprintNodePins` | Lists live pins for one Blueprint node by stable graph and node GUID, including IDs, directions, types, defaults, and exact linked endpoints. |
@@ -130,6 +147,7 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `MoveBlueprintNode` | Moves a Blueprint node using explicit or relative collision-aware placement. Supports dry-run and optional save. |
 | Custom | `native registry` | `OverrideBlueprintFunction` | Creates a parent function override with its inherited signature and optional wired parent implementation. Undoable; supports dry-run, compile and... |
 | Custom | `native registry` | `PlanProjectRefactor` | Builds a deterministic, evidence-backed, non-mutating Blueprint refactor plan from indexed architecture analyses. It never changes assets and... |
+| Custom | `native registry` | `PreviewBlueprintSideReplay` | Translate one reviewed Git side's compatible existing-node link and layout changes into a dry-run graph patch. Reports overlaps and unsupported... |
 | Custom | `native registry` | `RefreshBlueprintCallSites` | Finds every same-Blueprint and cross-Blueprint call site of a Blueprint function via the project index and reconstructs each call node to match... |
 | Custom | `native registry` | `RefreshProjectIndex` | Refreshes only changed, added, deleted, or explicitly requested project assets in the existing UnrealMCP index. This is cheaper than... |
 | Custom | `native registry` | `RemoveBlueprintFunction` | Removes one locally declared Blueprint member variable or function graph. Dry-run reports usage and indexed referencer packages. Refuses used... |
@@ -137,7 +155,7 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `RemoveBlueprintVariable` | Removes one locally declared Blueprint member variable or function graph. Dry-run reports usage and indexed referencer packages. Refuses used... |
 | Custom | `native registry` | `RemoveDataTableRow` | Transactionally edits one DataTable row in memory; leaves the asset dirty for an explicit save. |
 | Custom | `native registry` | `RemoveInputMappingContextMapping` | Removes one exact existing Action+Key mapping row from an InputMappingContext. Fails clearly rather than guessing when zero or more than one row... |
-| Custom | `native registry` | `RemoveUserDefinedStructMember` | Inspect, add or remove authored members of a user-defined struct using Unreal's structure editor. Inspection includes member GUIDs,... |
+| Custom | `native registry` | `RemoveUserDefinedStructMember` | Inspect or edit authored Blueprint struct members by GUID or name. Removal can discard stored member values. |
 | Custom | `native registry` | `ReparentBlueprint` | Changes a Blueprint's parent class. Dry-run/preflight lists graph nodes using old-parent members the new parent lacks (graph, nodeGuid, member),... |
 | Custom | `native registry` | `ResetBlueprintClassDefaults` | Resets inherited Blueprint class defaults to their parent CDO values. |
 | Custom | `native registry` | `RestoreStructMemberValueBackup` | Restores live value snapshots from a durable migration backup in the same project and unchanged struct layout. Refuses stale roots. Requires... |
@@ -163,6 +181,9 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `SetDataTableRowFields` | Transactionally edits one DataTable row in memory; leaves the asset dirty for an explicit save. |
 | Custom | `native registry` | `SetInputMappingContextMappingKey` | Replaces the key of one exact Action+Key row, preserving its position, action, inline objects and metadata. Static asset editing only; no runtime... |
 | Custom | `native registry` | `SetSwitchCases` | Edits Switch on String cases; renames preserve compatible exec links, removed cases report dropped links, and Default is retained. Enum cases are... |
+| Custom | `native registry` | `SetUserDefinedEnumEntryDisplayName` | Inspect or edit entries of a Blueprint enum by stable internal name. Supports append and display-name edits, preserving existing values and order. |
+| Custom | `native registry` | `SetUserDefinedStructMemberDefault` | Inspect or edit authored Blueprint struct members by GUID or name. Removal can discard stored member values. |
+| Custom | `native registry` | `SetUserDefinedStructMemberName` | Inspect or edit authored Blueprint struct members by GUID or name. Removal can discard stored member values. |
 | Custom | `native registry` | `SpliceBlueprintExecFlow` | Atomically inserts an ordered chain of existing nodes into one exact Blueprint execution link, with revision checks, idempotent retry, rollback,... |
 | Custom | `native registry` | `SummarizeBlueprintCluster` | Summarizes the nearby indexed asset cluster around a starting Blueprint or asset. |
 | Custom | `native registry` | `TraceBlueprintFlow` | Traces Blueprint graph flow from the project index; refreshes the selected Blueprint once if start nodes are missing. |
@@ -270,12 +291,16 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Official | `GameplayTagsToolset.GameplayTagsToolset` | `RenameTag` | Renames a gameplay tag, updating all references in the project. This should ONLY be called after getting explicit direction or permission from the... |
 | Official | `GraphXPortConflictToolset.GraphXPortConflictToolset` | `ApplyMergeResolution` | Apply the stored plan with stale-state guards and native transactional compile/rollback. Save and Stage are explicit; Stage requires Save. Retry... |
 | Official | `GraphXPortConflictToolset.GraphXPortConflictToolset` | `CloseBlueprintMerge` | Release session evidence; never unload packages held by the merge UI. Sessions also expire after ten minutes. |
+| Official | `GraphXPortConflictToolset.GraphXPortConflictToolset` | `CompareBlueprintDefaults` | Compare Blueprint class-default values between revisions, with changed property paths and before/after values. Revisions accept... |
+| Official | `GraphXPortConflictToolset.GraphXPortConflictToolset` | `CompareBlueprintStructure` | Compare authored Blueprint structure across base/current/incoming Git stages. Returns paged changed values and exact stage blobs. Read-only. |
 | Official | `GraphXPortConflictToolset.GraphXPortConflictToolset` | `CompareRevisions` | Compare graph changes from Before to After. Use base->current for outgoing and base->incoming for incoming. Revisions accept... |
 | Official | `GraphXPortConflictToolset.GraphXPortConflictToolset` | `InspectMergeNodes` | Read only the requested node GUIDs, including pins and owner/member identities, from an unchanged session revision. NodeGuidsJson is a JSON string... |
 | Official | `GraphXPortConflictToolset.GraphXPortConflictToolset` | `InspectRevision` | Read graph inventory (Graph empty) or nodes/pins of a named graph. Revision accepts base/current/incoming/HEAD/full commit hash. Path is... |
 | Official | `GraphXPortConflictToolset.GraphXPortConflictToolset` | `ListConflicts` | List unmerged paths with stage 1/2/3 blob identities. Never stages or saves. |
-| Official | `GraphXPortConflictToolset.GraphXPortConflictToolset` | `OpenBlueprintMerge` | Open a bounded merge review. Caches revision reads, records stage/disk identities and dirty state, returns outgoing/incoming graph changes. Does... |
+| Official | `GraphXPortConflictToolset.GraphXPortConflictToolset` | `OpenBlueprintMerge` | Open a bounded merge review. Returns outgoing/incoming graph and Blueprint class-default changes, records stage/disk identities and dirty state.... |
+| Official | `GraphXPortConflictToolset.GraphXPortConflictToolset` | `PreviewMergeClassDefaults` | Preview explicitly authored Blueprint class defaults for an unchanged review session. ValuesJson maps property names to Unreal export text. |
 | Official | `GraphXPortConflictToolset.GraphXPortConflictToolset` | `PreviewMergeResolution` | Preflight an exact ApplyBlueprintGraphPatch JSON plan against the session. Captures graph revision and stores the plan; returns PlanId and compact... |
+| Official | `GraphXPortConflictToolset.GraphXPortConflictToolset` | `StartFromRevision` | Explicitly replace the working asset with current or incoming as a base. Requires Confirm=true, a clean unchanged three-way session, and the... |
 | Official | `NiagaraToolsets.NiagaraToolset_Assets` | `FindNiagaraScripts` | Searches for UNiagaraScript assets matching the given filters. |
 | Official | `NiagaraToolsets.NiagaraToolset_Assets` | `GetAssetDiscoveryInfo` | Returns the project's configured asset discovery groups. Each group describes a content directory's purpose and paths. |
 | Official | `NiagaraToolsets.NiagaraToolset_Assets` | `GetNiagaraScriptDigest` | Returns the decoded asset-registry tag metadata for a Niagara script asset. |

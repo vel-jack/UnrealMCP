@@ -3,7 +3,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Misc/AutomationTest.h"
-#include "Tools/TraceBlueprintFlowToolInternal.h"
+#include "Tools/Blueprint/Inspection/TraceBlueprintFlowToolInternal.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FUnrealMCPTraceNodeSemanticsTest,

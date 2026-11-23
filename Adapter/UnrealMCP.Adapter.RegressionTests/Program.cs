@@ -34,16 +34,18 @@ if (args.FirstOrDefault() == "--overview")
     return;
 }
 
-if (args.FirstOrDefault() is "--shutdown" or "--shutdown-discard")
+if (args.FirstOrDefault() is "--shutdown" or "--shutdown-discard" or "--shutdown-policy")
 {
-    await using var client = new StdioClient(args[1], ["serve", "--project", args[2]]);
+    await using var client = new StdioClient(args[1], ["serve", "--project", args[2], "--request-timeout-seconds", "30"]);
     await client.Initialize();
-    var result = await client.Call("unreal.adapter.RequestUnrealShutdown", new JsonObject
-    {
-        ["discardDirty"] = args[0] == "--shutdown-discard"
-    });
-    Console.WriteLine(result["result"]?["structuredContent"]?.ToJsonString());
-    Check(result["result"]?["structuredContent"]?["success"]?.GetValue<bool>() == true, "Explicit project shutdown completed without automatic saving");
+    var arguments = args[0] == "--shutdown-policy"
+        ? new JsonObject { ["dirtyPolicy"] = args[3] }
+        : new JsonObject { ["discardDirty"] = args[0] == "--shutdown-discard" };
+    var result = await client.Call("unreal.adapter.RequestUnrealShutdown", arguments);
+    var payload = result["result"]?["structuredContent"];
+    Console.WriteLine(payload?.ToJsonString());
+    if (args[0] != "--shutdown-policy")
+        Check(payload?["success"]?.GetValue<bool>() == true, "Explicit project shutdown completed without automatic saving");
     return;
 }
 
@@ -115,8 +117,12 @@ try
             Check(UnrealSessionManager.IsMutationTool(name), $"{name} is classified as a mutation");
         Check(UnrealSessionManager.IsMutationTool("ResetBlueprintClassDefaults"), "Reset class defaults is classified as a mutation");
         Check(UnrealSessionManager.IsMutationTool("DiscardDirtyPackagesForShutdown"), "Discard shutdown preparation is classified as a mutation");
-        Check(list["result"]!["tools"]!.AsArray().Single(t => t!["name"]!.GetValue<string>() == "unreal.adapter.RequestUnrealShutdown")!
-            ["inputSchema"]!["properties"]?["discardDirty"] is not null, "Shutdown schema advertises explicit discardDirty");
+        var shutdownProperties = list["result"]!["tools"]!.AsArray().Single(t => t!["name"]!.GetValue<string>() == "unreal.adapter.RequestUnrealShutdown")!
+            ["inputSchema"]!["properties"]!;
+        Check(shutdownProperties["discardDirty"] is not null, "Shutdown schema retains legacy discardDirty");
+        Check(shutdownProperties["dirtyPolicy"]?["default"]?.GetValue<string>() == "fail"
+            && shutdownProperties["dirtyPolicy"]?["enum"]?.AsArray().Select(p => p!.GetValue<string>()).SequenceEqual(["fail", "discard", "save"]) == true,
+            "Shutdown schema advertises the three named policies and defaults to fail");
 
         pipe.IncludeNewTool = true;
         var attach = await client.Call("unreal.adapter.AttachToUnrealProject", new JsonObject());
@@ -159,12 +165,47 @@ try
         Check(refusedPayload["errorCode"]?.GetValue<string>() == "dirty_packages"
             && refusedPayload["dirtyPackages"]?.AsArray().Count == 1 && pipe.SaveAllCalls == 0 && pipe.DiscardCalls == 0,
             "Default shutdown refuses dirty work and returns packages without saving or discarding");
+        foreach (var invalid in new[]
+        {
+            new JsonObject { ["dirtyPolicy"] = "wrong" },
+            new JsonObject { ["dirtyPolicy"] = "save", ["discardDirty"] = false }
+        })
+        {
+            var rejected = await client.Call("unreal.adapter.RequestUnrealShutdown", invalid);
+            Check(rejected["result"]?["structuredContent"]?["errorCode"]?.GetValue<string>() == "invalid_arguments"
+                && pipe.SaveAllCalls == 0 && pipe.DiscardCalls == 0, "Invalid or ambiguous shutdown policy is rejected without a mutation");
+        }
+        async Task<JsonNode> ShutdownWith(string policy) =>
+            (await client.Call("unreal.adapter.RequestUnrealShutdown", new JsonObject { ["dirtyPolicy"] = policy }))["result"]!["structuredContent"]!;
+
+        var namedFail = await ShutdownWith("fail");
+        Check(namedFail["dirtyPolicy"]?.GetValue<string>() == "fail" && namedFail["errorCode"]?.GetValue<string>() == "dirty_packages",
+            "Named fail refuses dirty work");
+        pipe.FailSave = true;
+        var failedSave = await ShutdownWith("save");
+        Check(failedSave["errorCode"]?.GetValue<string>() == "save_failed" && failedSave["saveResult"]?["failedPackages"]?.AsArray().Count == 1
+            && pipe.SaveAllCalls == 1 && pipe.DiscardCalls == 0, "Explicit save reports failures and leaves the editor open");
+        pipe.FailSave = false;
+        pipe.LeaveDirtyAfterSave = true;
+        var dirtyAfterSave = await ShutdownWith("save");
+        Check(dirtyAfterSave["errorCode"]?.GetValue<string>() == "save_not_clean" && pipe.SaveAllCalls == 2,
+            "Shutdown refuses newly dirty packages after a successful save receipt");
+        pipe.LeaveDirtyAfterSave = false;
+        var pendingSave = await ShutdownWith("save");
+        Check(pendingSave["sessionState"]?.GetValue<string>() == "shutdown_pending"
+            && pendingSave["saveResult"]?["savedPackages"]?.AsArray().Count == 1 && pipe.SaveAllCalls == 3 && pipe.DirtyPackageCount == 0,
+            "Save closes only after verifying clean state and retains the save receipt on pending shutdown");
+
         pipe.DirtyPackageCount = 0;
         var pendingShutdown = await client.Call("unreal.adapter.RequestUnrealShutdown", new JsonObject { ["discardDirty"] = true });
         var pendingPayload = pendingShutdown["result"]!["structuredContent"]!;
         Check(pendingPayload["sessionState"]?.GetValue<string>() == "shutdown_pending"
             && pendingPayload["restoreResult"]?["success"]?.GetValue<bool>() == true
             && pipe.DiscardCalls == 2, "Pending discard shutdown restores dirty flags");
+
+        var namedDiscard = await ShutdownWith("discard");
+        Check(namedDiscard["dirtyPolicy"]?.GetValue<string>() == "discard" && namedDiscard["discardedPackages"]?.AsArray().Count == 1
+            && pipe.DiscardCalls == 4 && pipe.SaveAllCalls == 3, "Named discard uses the legacy no-save path and restores flags on pending shutdown");
 
         pipe.Available = false;
         list = await client.Request("tools/list", new JsonObject());
@@ -285,6 +326,8 @@ sealed class FakeNativePipe : IAsyncDisposable
     public volatile bool StallReadTool;
     public string? LastOperationId;
     public int SaveAllCalls;
+    public volatile bool FailSave;
+    public volatile bool LeaveDirtyAfterSave;
     public int DirtyPackageCount;
     public int DiscardCalls;
 
@@ -331,7 +374,19 @@ sealed class FakeNativePipe : IAsyncDisposable
                 continue;
             }
             else if (method == "SaveAllDirtyPackages")
-                response["result"] = new JsonObject { ["success"] = true, ["dirtyPackageCount"] = DirtyPackageCount, ["dirtyPackages"] = DirtyPackageCount > 0 ? new JsonArray("/Game/Fixture") : new JsonArray() };
+            {
+                if (request["params"]?["dryRun"]?.GetValue<bool>() == true)
+                    response["result"] = new JsonObject { ["success"] = true, ["dirtyPackageCount"] = DirtyPackageCount,
+                        ["dirtyPackages"] = DirtyPackageCount > 0 ? new JsonArray("/Game/Fixture") : new JsonArray() };
+                else
+                {
+                    if (!FailSave && !LeaveDirtyAfterSave) DirtyPackageCount = 0;
+                    response["result"] = new JsonObject { ["success"] = !FailSave, ["saved"] = !FailSave,
+                        ["savedPackages"] = FailSave ? new JsonArray() : new JsonArray("/Game/Fixture"),
+                        ["failedPackages"] = FailSave ? new JsonArray(new JsonObject { ["packageName"] = "/Game/Fixture" }) : new JsonArray(),
+                        ["stillDirtyPackages"] = new JsonArray() };
+                }
+            }
             else if (method == "DiscardDirtyPackagesForShutdown")
             {
                 Interlocked.Increment(ref DiscardCalls);

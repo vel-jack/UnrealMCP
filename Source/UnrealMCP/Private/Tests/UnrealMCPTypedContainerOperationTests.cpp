@@ -15,8 +15,8 @@
 #include "Misc/PackageName.h"
 #include "Misc/ScopeExit.h"
 #include "ObjectTools.h"
-#include "Tools/AddBlueprintMapOperationNodeTool.h"
-#include "Tools/AddBlueprintSetOperationNodeTool.h"
+#include "Tools/Blueprint/Graph/AddBlueprintMapOperationNodeTool.h"
+#include "Tools/Blueprint/Graph/AddBlueprintSetOperationNodeTool.h"
 
 namespace
 {

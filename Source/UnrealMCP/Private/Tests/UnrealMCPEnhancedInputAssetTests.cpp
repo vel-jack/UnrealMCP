@@ -9,13 +9,13 @@
 #include "Misc/AutomationTest.h"
 #include "Misc/PackageName.h"
 #include "Misc/ScopeExit.h"
-#include "Tools/AddInputMappingContextMappingTool.h"
-#include "Tools/CreateInputActionTool.h"
-#include "Tools/CreateInputMappingContextTool.h"
-#include "Tools/GetInputMappingContextMappingsTool.h"
-#include "Tools/InputAssetToolUtils.h"
-#include "Tools/RemoveInputMappingContextMappingTool.h"
-#include "Tools/SetInputMappingContextMappingKeyTool.h"
+#include "Tools/Input/AddInputMappingContextMappingTool.h"
+#include "Tools/Input/CreateInputActionTool.h"
+#include "Tools/Input/CreateInputMappingContextTool.h"
+#include "Tools/Input/GetInputMappingContextMappingsTool.h"
+#include "Tools/Input/InputAssetToolUtils.h"
+#include "Tools/Input/RemoveInputMappingContextMappingTool.h"
+#include "Tools/Input/SetInputMappingContextMappingKeyTool.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FUnrealMCPEnhancedInputAssetsLiveTest,

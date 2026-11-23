@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "capturedUtc": "2026-11-23T05:52:48.2182701Z",
+  "capturedUtc": "2026-11-23T18:03:09.7421820Z",
   "tools": [
     {
       "name": "AddBlueprintArrayOperationNode",
@@ -1555,18 +1555,59 @@
       }
     },
     {
-      "name": "AddUserDefinedStructMember",
-      "description": "Inspect, add or remove authored members of a user-defined struct using Unreal\u0027s structure editor. Inspection includes member GUIDs, authored/internal names, types and defaults. Mutations support dryRun, require confirm, compile the struct, never save dependents, and report newly dirtied packages. Referenced structs require allowReferenced=true; removal can discard stored member values. Native structs are excluded.",
+      "name": "AddUserDefinedEnumEntry",
+      "description": "Inspect or edit entries of a Blueprint enum by stable internal name. Supports append and display-name edits, preserving existing values and order.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "objectPath": {
             "type": "string",
-            "description": "User-defined struct asset path; native structs are not supported."
+            "description": "User-defined struct or enum asset path for this tool."
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Unique authored display name."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate and report only."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required to apply."
+          },
+          "allowReferenced": {
+            "type": "boolean",
+            "description": "Allow dependent assets to be reconstructed/dirtied, and potential loss of removed-member data. Default false."
+          },
+          "compileDependents": {
+            "type": "boolean",
+            "description": "Compile discovered dependent Blueprints and return pin and compiler evidence. No dependent packages are saved."
+          },
+          "save": {
+            "type": "boolean",
+            "description": "Save only the edited schema asset. Default false."
+          }
+        },
+        "required": [
+          "objectPath",
+          "displayName"
+        ]
+      }
+    },
+    {
+      "name": "AddUserDefinedStructMember",
+      "description": "Inspect or edit authored Blueprint struct members by GUID or name. Removal can discard stored member values.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "User-defined struct or enum asset path for this tool."
           },
           "memberName": {
             "type": "string",
-            "description": "Authored display name; remove also accepts internal name."
+            "description": "Authored member name or existing internal name."
           },
           "type": {
             "type": "string",
@@ -1600,9 +1641,13 @@
             "type": "boolean",
             "description": "Allow dependent assets to be reconstructed/dirtied, and potential loss of removed-member data. Default false."
           },
+          "compileDependents": {
+            "type": "boolean",
+            "description": "Compile discovered dependent Blueprints and return pin and compiler evidence. No dependent packages are saved."
+          },
           "save": {
             "type": "boolean",
-            "description": "Save the edited struct after compilation; never saves dependent packages. Default false."
+            "description": "Save only the edited schema asset. Default false."
           }
         },
         "required": [
@@ -1720,6 +1765,54 @@
       }
     },
     {
+      "name": "ApplyBlueprintConflictStage",
+      "description": "Preview or explicitly stage a reviewed Blueprint resolution, including approved absent paths in asymmetric or rename conflicts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Exact project-relative Content .uasset path."
+          },
+          "stageRevision": {
+            "type": "string",
+            "description": "Exact stageRevision from CompareBlueprintMergeStructure."
+          },
+          "resolution": {
+            "type": "string",
+            "description": "keep (default) or delete. A deleted asset must already be absent on disk."
+          },
+          "stagePaths": {
+            "type": "object",
+            "description": "Same optional base/current/incoming path overrides used in comparison."
+          },
+          "removedPaths": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "Secondary review path already absent from disk."
+            }
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Defaults true. Preview without changing the Git index."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Explicitly authorize Git staging of the exact resolved asset."
+          },
+          "previewToken": {
+            "type": "string",
+            "description": "Required when applying. Binds staging to reviewed stages and saved file bytes."
+          }
+        },
+        "required": [
+          "path",
+          "stageRevision"
+        ]
+      }
+    },
+    {
       "name": "ApplyBlueprintGraphPatch",
       "description": "Atomically preflights and applies a bounded declarative Blueprint graph patch with deterministic node identities, exact data-link replacement, rollback, and compile-before-save.",
       "inputSchema": {
@@ -1751,7 +1844,7 @@
           },
           "nodes": {
             "type": "array",
-            "description": "Required node kinds: existingNode, functionCall, variableGet, variableSet, typedOperator, branch, reroute, comment, parentCall, switchString, switchEnum, self, macro, and cast. Nodes may include position, comment, tolerance, and inputDefaults.",
+            "description": "Required node kinds: existingNode, functionCall, variableGet, variableSet, typedOperator, branch, reroute, comment, parentCall, switchString, switchEnum, self, macro, and cast. Nodes may include position, comment, tolerance, and inputDefaults. Comment nodes can be resized and styled by existingNode GUID; omitted styles are preserved.",
             "items": {
               "type": "object",
               "properties": {
@@ -1828,7 +1921,7 @@
                 },
                 "showBubbleWhenZoomed": {
                   "type": "boolean",
-                  "description": "Comment bubble visibility; defaults true."
+                  "description": "Comment bubble visibility. Defaults true for comment creation; omitted on existingNode preserves its setting."
                 },
                 "color": {
                   "type": "object",
@@ -1953,6 +2046,58 @@
                 "sourcePinName",
                 "targetNodeId",
                 "targetPinName"
+              ]
+            }
+          },
+          "spliceExec": {
+            "type": "array",
+            "description": "Insert a node on an exact existing execution link. Requires confirm=true and preserves other incoming routes.",
+            "maxItems": 64,
+            "items": {
+              "type": "object",
+              "properties": {
+                "sourceNodeId": {
+                  "type": "string",
+                  "description": "Plan node id or exact execution pin name."
+                },
+                "sourcePinName": {
+                  "type": "string",
+                  "description": "Plan node id or exact execution pin name."
+                },
+                "targetNodeId": {
+                  "type": "string",
+                  "description": "Plan node id or exact execution pin name."
+                },
+                "targetPinName": {
+                  "type": "string",
+                  "description": "Plan node id or exact execution pin name."
+                },
+                "insertNodeId": {
+                  "type": "string",
+                  "description": "Plan node id or exact execution pin name."
+                },
+                "insertInputPinName": {
+                  "type": "string",
+                  "description": "Plan node id or exact execution pin name."
+                },
+                "insertOutputPinName": {
+                  "type": "string",
+                  "description": "Plan node id or exact execution pin name."
+                },
+                "confirm": {
+                  "type": "boolean",
+                  "description": "Confirm removing the exact original execution link."
+                }
+              },
+              "required": [
+                "sourceNodeId",
+                "sourcePinName",
+                "targetNodeId",
+                "targetPinName",
+                "insertNodeId",
+                "insertInputPinName",
+                "insertOutputPinName",
+                "confirm"
               ]
             }
           },
@@ -2179,6 +2324,333 @@
       }
     },
     {
+      "name": "ApplyBlueprintMergeAddInterface",
+      "description": "Preview or attach a Blueprint interface on a clean working Blueprint with three Git conflict stages. Apply requires the preview token. Never stages files.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Project-relative working Blueprint path under Content."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Defaults true. Returns compact changed values and a token without editing."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required for dryRun=false."
+          },
+          "save": {
+            "type": "boolean",
+            "description": "Defaults false. Use the same value for preview and apply. Saves only the reviewed Blueprint."
+          },
+          "previewToken": {
+            "type": "string",
+            "description": "Required on apply. Pass the exact token from preview with unchanged values and save intent."
+          },
+          "interfaceClassPath": {
+            "type": "string",
+            "description": "Exact interface class path, including _C for Blueprint interfaces."
+          }
+        },
+        "required": [
+          "path",
+          "interfaceClassPath"
+        ]
+      }
+    },
+    {
+      "name": "ApplyBlueprintMergeAddVariable",
+      "description": "Preview or add a typed member variable to a clean Blueprint with three Git conflict stages and no known descendants. Compile and verify the declaration before optional save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Project-relative working Blueprint path under Content."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Defaults true. Returns compact changed values and a token without editing."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required for dryRun=false."
+          },
+          "save": {
+            "type": "boolean",
+            "description": "Defaults false. Use the same value for preview and apply. Saves only the reviewed Blueprint."
+          },
+          "previewToken": {
+            "type": "string",
+            "description": "Required on apply. Pass the exact token from preview with unchanged values and save intent."
+          },
+          "declaration": {
+            "type": "object",
+            "properties": {
+              "variableName": {
+                "type": "string",
+                "description": "Unique member variable name."
+              },
+              "type": {
+                "type": "string",
+                "description": "Scalar type, or Map key type."
+              },
+              "typeObjectPath": {
+                "type": "string",
+                "description": "Required class path for object/class types."
+              },
+              "containerType": {
+                "type": "string",
+                "description": "none, array, set, or map."
+              },
+              "valueType": {
+                "type": "string",
+                "description": "Required Map value type."
+              },
+              "valueTypeObjectPath": {
+                "type": "string",
+                "description": "Class path for object/class Map values."
+              },
+              "defaultValue": {
+                "type": "string",
+                "description": "Optional Unreal-exported default literal."
+              },
+              "category": {
+                "type": "string",
+                "description": "Optional variable category."
+              },
+              "isArray": {
+                "type": "boolean",
+                "description": "Backward-compatible alias for containerType=array."
+              },
+              "instanceEditable": {
+                "type": "boolean",
+                "description": "Allow editing on Blueprint instances."
+              }
+            },
+            "required": [
+              "variableName",
+              "type"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "path",
+          "declaration"
+        ]
+      }
+    },
+    {
+      "name": "ApplyBlueprintMergeClassDefaults",
+      "description": "Preview or apply explicit class-default edits for a clean Blueprint with all three Git conflict stages. Apply requires the preview token. Never stages files.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "values": {
+            "type": "object",
+            "description": "1..64 editable class-default property names mapped to Unreal export text.",
+            "additionalProperties": {
+              "type": "string",
+              "description": "Unreal export text."
+            }
+          },
+          "path": {
+            "type": "string",
+            "description": "Project-relative working Blueprint path under Content."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Defaults true. Returns compact changed values and a token without editing."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required for dryRun=false."
+          },
+          "save": {
+            "type": "boolean",
+            "description": "Defaults false. Use the same value for preview and apply. Saves only the reviewed Blueprint."
+          },
+          "previewToken": {
+            "type": "string",
+            "description": "Required on apply. Pass the exact token from preview with unchanged values and save intent."
+          }
+        },
+        "required": [
+          "path",
+          "values"
+        ]
+      }
+    },
+    {
+      "name": "ApplyBlueprintMergeComponentDefaults",
+      "description": "Preview or apply defaults on a local component or existing inherited override in a clean Blueprint with three Git conflict stages. Apply requires the preview token. Never stages files.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "values": {
+            "type": "object",
+            "description": "1..64 editable class-default property names mapped to Unreal export text.",
+            "additionalProperties": {
+              "type": "string",
+              "description": "Unreal export text."
+            }
+          },
+          "path": {
+            "type": "string",
+            "description": "Project-relative working Blueprint path under Content."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Defaults true. Returns compact changed values and a token without editing."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required for dryRun=false."
+          },
+          "save": {
+            "type": "boolean",
+            "description": "Defaults false. Use the same value for preview and apply. Saves only the reviewed Blueprint."
+          },
+          "previewToken": {
+            "type": "string",
+            "description": "Required on apply. Pass the exact token from preview with unchanged values and save intent."
+          },
+          "componentName": {
+            "type": "string",
+            "description": "Exact SCS component variable name."
+          },
+          "inheritedOverrideGuid": {
+            "type": "string",
+            "description": "Exact inherited SCS GUID from the comparison; requires matching componentName."
+          },
+          "createInheritedOverride": {
+            "type": "boolean",
+            "description": "Explicitly create a missing child override when values differ from inherited defaults. Defaults false."
+          }
+        },
+        "required": [
+          "path",
+          "values",
+          "componentName"
+        ]
+      }
+    },
+    {
+      "name": "ApplyBlueprintMergePlan",
+      "description": "Preview or apply one checkpoint in a client-held sequence of graph and structural merge steps. Saves each successful step, persists replay receipts, and never stages files.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Project-relative Blueprint asset file under Content."
+          },
+          "stageRevision": {
+            "type": "string",
+            "description": "Exact stageRevision from a same-path review with all three Git stages."
+          },
+          "planId": {
+            "type": "string",
+            "description": "Client-generated UUID. Preserve it and the same ordered steps to resume or replay a checkpoint."
+          },
+          "stepIndex": {
+            "type": "integer",
+            "description": "Zero-based checkpoint to preview, apply, or replay."
+          },
+          "steps": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 16,
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "description": "graphPatch, classDefaults, componentDefaults, addInterface, addVariable or structure."
+                },
+                "arguments": {
+                  "type": "object",
+                  "description": "Native tool arguments. Omit target, confirmation, save, dry-run, preview and operation ID fields; the plan supplies them."
+                }
+              },
+              "required": [
+                "kind",
+                "arguments"
+              ]
+            }
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Defaults true. Review the next checkpoint before applying it."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required to apply. Each successful checkpoint attempts a save; no Git staging."
+          },
+          "previewToken": {
+            "type": "string",
+            "description": "Exact token returned by this checkpoint preview, also required for receipt replay."
+          }
+        },
+        "required": [
+          "path",
+          "stageRevision",
+          "planId",
+          "steps",
+          "stepIndex"
+        ]
+      }
+    },
+    {
+      "name": "ApplyBlueprintMergeStructure",
+      "description": "Preview and apply a guarded batch of Blueprint structural edits with three Git conflict stages, dependent compilation and per-package receipts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Project-relative working Blueprint path under Content."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Defaults true. Returns compact changed values and a token without editing."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required for dryRun=false."
+          },
+          "save": {
+            "type": "boolean",
+            "description": "Defaults false. Use the same value for preview and apply. Saves changed reviewed packages after all successfully compile."
+          },
+          "previewToken": {
+            "type": "string",
+            "description": "Required on apply. Pass the exact token from preview with unchanged values and save intent."
+          },
+          "operations": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 16,
+            "items": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string",
+                "description": "Operation field."
+              }
+            },
+            "description": "Ordered operations: renameVariable(variableName,newName), removeVariable(variableName), setVariableType(variableName,type,defaultValue[,typeObjectPath,containerType,valueType,valueTypeObjectPath]), setParameterType(nodeGuid,parameterName,type[,type fields]), removeInterface(interfaceClassPath), reparent(newParentClassPath), moveComponent(componentName,parentComponentName)."
+          }
+        },
+        "required": [
+          "path",
+          "operations"
+        ]
+      }
+    },
+    {
       "name": "AssetExists",
       "description": "Checks whether an asset exists by object path without loading it.",
       "inputSchema": {
@@ -2203,13 +2675,17 @@
     },
     {
       "name": "CaptureEditorWidget",
-      "description": "Capture an explicit live editor widgetRef to PNG under this project\u0027s Saved/UnrealMCP/Captures. No implicit active window or OS screenshot. Retry frame_pending after graph framing settles.",
+      "description": "Capture an explicit live editor widgetRef to PNG under this project\u0027s Saved/UnrealMCP/Captures. Waits for pending graph framing on adapter requests. Returns exact widget and framing evidence.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "widgetRef": {
             "type": "string",
             "description": "Required session-local widget/window reference from GetEditorWidgetSnapshot or FrameBlueprintGraph."
+          },
+          "waitForFrameMs": {
+            "type": "integer",
+            "description": "Maximum wait on adapter requests, 0..5000 ms, default 1500. 0 is a single observation."
           }
         },
         "additionalProperties": false,
@@ -2246,6 +2722,94 @@
         "required": [
           "objectPathA",
           "objectPathB"
+        ]
+      }
+    },
+    {
+      "name": "CompareBlueprintGraphPreservation",
+      "description": "Capture a bounded live Blueprint wiring snapshot or compare it against an earlier snapshot. Reports exact edits, normalized input sources and cache timing to review.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Exact live Blueprint object path."
+          },
+          "baseline": {
+            "type": "object",
+            "description": "Omit to capture a snapshot. Otherwise pass the returned snapshot object."
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "CompareBlueprintMergeStructure",
+      "description": "Read-only three-way Blueprint comparison from exact Git conflict stages. Pages declarations, defaults, components, direct references and optional graph details.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Project-relative Blueprint file path under Content, using forward slashes."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pass nextCursor with the same path, stagePaths and graph scope. Replaces offset and verifies unchanged comparison evidence."
+          },
+          "stagePaths": {
+            "type": "object",
+            "properties": {
+              "base": {
+                "type": "string",
+                "description": "Exact project-relative path of this unmerged Git stage."
+              },
+              "current": {
+                "type": "string",
+                "description": "Exact project-relative path of this unmerged Git stage."
+              },
+              "incoming": {
+                "type": "string",
+                "description": "Exact project-relative path of this unmerged Git stage."
+              }
+            },
+            "additionalProperties": false
+          },
+          "expectedStageRevision": {
+            "type": "string",
+            "description": "Stage revision returned on the first page; required when offset is nonzero."
+          },
+          "includeGraphBodies": {
+            "type": "boolean",
+            "description": "Defaults false. Include graph nodes, pins, links, editable fields and common K2 references. Keep this setting unchanged between pages."
+          },
+          "outputMode": {
+            "type": "string",
+            "description": "compact (default): rows are arrays in columns order, with null for absent values. full: each row is an object.",
+            "enum": [
+              "compact",
+              "full"
+            ]
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Zero-based offset; default 0."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Page size 1..200; default 50."
+          }
+        },
+        "required": [
+          "path"
         ]
       }
     },
@@ -3065,13 +3629,17 @@
     },
     {
       "name": "FindClassUsages",
-      "description": "Finds every use of a class/struct/enum/asset inside one Blueprint, tagged by kind (cast_target, function_call, variable_access, pin_type, pin_default, function_parameter, local_variable, member_variable, component, parent_class, interface) with graph/node GUID/pin, including collapsed graphs. Reports registryDependency and a stale_import_only hit when the package still depends on the target but no live use exists.",
+      "description": "Find live Blueprint references and saved package imports. Omit objectPath for registry candidates, or pass scanBlueprints to scan project Blueprints in bounded pages.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "objectPath": {
             "type": "string",
-            "description": "Blueprint to scan, e.g. /Game/BP_Plan.BP_Plan"
+            "description": "Blueprint to scan live. Omit to page package-level Asset Registry candidates, which can miss unsaved or unregistered references."
+          },
+          "scanBlueprints": {
+            "type": "boolean",
+            "description": "With no objectPath, scan /Game Blueprint assets, including loaded unsaved assets, up to eight per page. Includes matching Blueprint evidence and scan failures."
           },
           "classOrAssetPath": {
             "type": "string",
@@ -3079,11 +3647,14 @@
           },
           "limit": {
             "type": "integer",
-            "description": "Max hits returned (default 100, max 500); totalHits still counts everything."
+            "description": "Hits per page (default 100, max 500), or Blueprints per project scan page (max 8)."
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Skip this many hits; use nextOffset for the next page on an unchanged Blueprint."
           }
         },
         "required": [
-          "objectPath",
           "classOrAssetPath"
         ]
       }
@@ -3180,6 +3751,64 @@
       }
     },
     {
+      "name": "FindNodesByMember",
+      "description": "Find exact function-call and variable member names in a live Blueprint. Returns paged node locations and the declaring class when available.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path."
+          },
+          "memberName": {
+            "type": "string",
+            "description": "Exact internal function or variable name."
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Zero-based offset; use nextOffset on an unchanged Blueprint."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Page size, default 50, maximum 200."
+          }
+        },
+        "required": [
+          "objectPath",
+          "memberName"
+        ]
+      }
+    },
+    {
+      "name": "FindNodesByPinType",
+      "description": "Find exact reflected pin types in a live Blueprint, including map keys and values. Returns paged graph, node and pin locations.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Blueprint asset object path."
+          },
+          "typePath": {
+            "type": "string",
+            "description": "Exact reflected object path such as /Script/Engine.Pawn or /Game/BP_Pawn.BP_Pawn_C."
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Zero-based offset; use nextOffset on an unchanged Blueprint."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Page size, default 50, maximum 200."
+          }
+        },
+        "required": [
+          "objectPath",
+          "typePath"
+        ]
+      }
+    },
+    {
       "name": "FindUnusedBlueprintAssets",
       "description": "Finds conservative project Blueprint candidates with no indexed incoming package dependencies. Results are leads for review, never proof that an asset is unused.",
       "inputSchema": {
@@ -3243,7 +3872,7 @@
     },
     {
       "name": "FrameBlueprintGraph",
-      "description": "Open an exact Blueprint graph and frame all nodes or explicit node GUIDs for visual review. Changes editor view/selection only; no compile/save/asset mutation. dryRun validates without changing UI. Capture returned widgetRef after framing settles.",
+      "description": "Frame an exact Blueprint graph, node set or graph-space region for visual review. Supports upstream data nodes, measured tiles and no-focus framing of an already visible graph.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3271,6 +3900,54 @@
           "dryRun": {
             "type": "boolean",
             "description": "Validate graph and node identities without opening/focusing/selecting, default false."
+          },
+          "backgroundOnly": {
+            "type": "boolean",
+            "description": "Use an already visible exact graph without activating its tab or window."
+          },
+          "includeConnectedData": {
+            "type": "boolean",
+            "description": "Expand selected nodes upstream through pure data sources, up to 128 nodes."
+          },
+          "padding": {
+            "type": "number",
+            "description": "Graph-space padding for measured framing, default 32."
+          },
+          "minimumZoom": {
+            "type": "number",
+            "description": "Minimum graph zoom 0.1..1.8, default 0.8 for measured framing."
+          },
+          "tileIndex": {
+            "type": "integer",
+            "description": "Zero-based index for overlapping tiles, default 0. Capture this tile before framing the next."
+          },
+          "region": {
+            "type": "object",
+            "description": "Explicit graph-coordinate rectangle. Alternative to nodeGuids.",
+            "properties": {
+              "left": {
+                "type": "number",
+                "description": "Graph-space coordinate."
+              },
+              "top": {
+                "type": "number",
+                "description": "Graph-space coordinate."
+              },
+              "right": {
+                "type": "number",
+                "description": "Graph-space coordinate."
+              },
+              "bottom": {
+                "type": "number",
+                "description": "Graph-space coordinate."
+              }
+            },
+            "required": [
+              "left",
+              "top",
+              "right",
+              "bottom"
+            ]
           }
         },
         "additionalProperties": false,
@@ -3570,6 +4247,72 @@
       }
     },
     {
+      "name": "GetGitCommitChanges",
+      "description": "Page files changed by one exact Git commit and optionally read a bounded text patch for one file.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "commit"
+        ],
+        "properties": {
+          "commit": {
+            "type": "string",
+            "description": "Full commit hash."
+          },
+          "path": {
+            "type": "string",
+            "description": "Optional exact project-relative file path using forward slashes."
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Zero-based row offset; pass nextOffset."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Rows per page, default 25, max 100."
+          },
+          "parentIndex": {
+            "type": "integer",
+            "description": "One-based parent selector for merge commits; defaults to 1."
+          },
+          "patchOffset": {
+            "type": "integer",
+            "description": "Text patch offset from nextPatchOffset."
+          },
+          "includePatch": {
+            "type": "boolean",
+            "description": "Return up to 8,000 characters of patch text for the exact path. Binary files return Git\u0027s binary diff marker."
+          }
+        }
+      }
+    },
+    {
+      "name": "GetGitCommitHistory",
+      "description": "Page recent commits in the selected project, optionally filtered by file.",
+      "inputSchema": {
+        "type": "object",
+        "required": [],
+        "properties": {
+          "commit": {
+            "type": "string",
+            "description": "Optional full commit hash. Defaults to HEAD; pass returned commit for later history pages."
+          },
+          "path": {
+            "type": "string",
+            "description": "Optional exact project-relative file path using forward slashes."
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Zero-based row offset; pass nextOffset."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Rows per page, default 25, max 100."
+          }
+        }
+      }
+    },
+    {
       "name": "GetImplementedInterfaces",
       "description": "Lists interfaces implemented by a Blueprint, with optional inherited interfaces.",
       "inputSchema": {
@@ -3699,6 +4442,47 @@
       "description": "Returns plugin health and readiness information.",
       "inputSchema": {
         "type": "object"
+      }
+    },
+    {
+      "name": "InspectBlueprintCommit",
+      "description": "Read historical Blueprint graphs, nodes or pins from an exact Git commit without changing the working copy.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "commit",
+          "path"
+        ],
+        "properties": {
+          "commit": {
+            "type": "string",
+            "description": "Full commit hash."
+          },
+          "path": {
+            "type": "string",
+            "description": "Project-relative historical Blueprint Content/*.uasset path."
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Zero-based row offset; pass nextOffset."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Rows per page, default 25, max 100."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Omit for graph inventory; pass a graph GUID for node rows."
+          },
+          "nodeGuid": {
+            "type": "string",
+            "description": "Provide with graphGuid for pin rows and up to 32 links per pin."
+          },
+          "pinId": {
+            "type": "string",
+            "description": "Provide with graphGuid and nodeGuid to page all linked endpoints of one historical pin."
+          }
+        }
       }
     },
     {
@@ -3836,14 +4620,30 @@
       }
     },
     {
-      "name": "InspectUserDefinedStruct",
-      "description": "Inspect, add or remove authored members of a user-defined struct using Unreal\u0027s structure editor. Inspection includes member GUIDs, authored/internal names, types and defaults. Mutations support dryRun, require confirm, compile the struct, never save dependents, and report newly dirtied packages. Referenced structs require allowReferenced=true; removal can discard stored member values. Native structs are excluded.",
+      "name": "InspectUserDefinedEnum",
+      "description": "Inspect or edit entries of a Blueprint enum by stable internal name. Supports append and display-name edits, preserving existing values and order.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "objectPath": {
             "type": "string",
-            "description": "User-defined struct asset path; native structs are not supported."
+            "description": "User-defined struct or enum asset path for this tool."
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "InspectUserDefinedStruct",
+      "description": "Inspect or edit authored Blueprint struct members by GUID or name. Removal can discard stored member values.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "User-defined struct or enum asset path for this tool."
           }
         },
         "required": [
@@ -3954,6 +4754,23 @@
           "limit": {
             "type": "integer",
             "description": "Optional max result count. Defaults to 200."
+          }
+        }
+      }
+    },
+    {
+      "name": "ListBlueprintGitConflicts",
+      "description": "List unmerged project Content .uasset paths and their exact Git stage IDs. Includes asymmetric entries.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "offset": {
+            "type": "integer",
+            "description": "Zero-based offset, default 0."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Page size 1..200, default 50."
           }
         }
       }
@@ -4375,6 +5192,37 @@
       }
     },
     {
+      "name": "PreviewBlueprintSideReplay",
+      "description": "Translate one reviewed Git side\u0027s compatible existing-node link and layout changes into a dry-run graph patch. Reports overlaps and unsupported changes.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Working project-relative Blueprint path under Content."
+          },
+          "stageRevision": {
+            "type": "string",
+            "description": "Exact stage revision from the same-path three-way comparison."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Graph GUID present in the saved base, selected side and working Blueprint."
+          },
+          "side": {
+            "type": "string",
+            "description": "current or incoming."
+          }
+        },
+        "required": [
+          "path",
+          "stageRevision",
+          "graphGuid",
+          "side"
+        ]
+      }
+    },
+    {
       "name": "RefreshBlueprintCallSites",
       "description": "Finds every same-Blueprint and cross-Blueprint call site of a Blueprint function via the project index and reconstructs each call node to match the function\u0027s current signature, compiling callers without saving.",
       "inputSchema": {
@@ -4607,21 +5455,21 @@
     },
     {
       "name": "RemoveUserDefinedStructMember",
-      "description": "Inspect, add or remove authored members of a user-defined struct using Unreal\u0027s structure editor. Inspection includes member GUIDs, authored/internal names, types and defaults. Mutations support dryRun, require confirm, compile the struct, never save dependents, and report newly dirtied packages. Referenced structs require allowReferenced=true; removal can discard stored member values. Native structs are excluded.",
+      "description": "Inspect or edit authored Blueprint struct members by GUID or name. Removal can discard stored member values.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "objectPath": {
             "type": "string",
-            "description": "User-defined struct asset path; native structs are not supported."
+            "description": "User-defined struct or enum asset path for this tool."
           },
           "memberName": {
             "type": "string",
-            "description": "Authored display name; remove also accepts internal name."
+            "description": "Authored member name or existing internal name."
           },
           "memberGuid": {
             "type": "string",
-            "description": "Stable GUID from InspectUserDefinedStruct; preferred for removal."
+            "description": "Stable GUID from InspectUserDefinedStruct."
           },
           "dryRun": {
             "type": "boolean",
@@ -4635,9 +5483,13 @@
             "type": "boolean",
             "description": "Allow dependent assets to be reconstructed/dirtied, and potential loss of removed-member data. Default false."
           },
+          "compileDependents": {
+            "type": "boolean",
+            "description": "Compile discovered dependent Blueprints and return pin and compiler evidence. No dependent packages are saved."
+          },
           "save": {
             "type": "boolean",
-            "description": "Save the edited struct after compilation; never saves dependent packages. Default false."
+            "description": "Save only the edited schema asset. Default false."
           }
         },
         "required": [
@@ -5098,6 +5950,14 @@
       "inputSchema": {
         "type": "object",
         "properties": {
+          "inheritedOverrideGuid": {
+            "type": "string",
+            "description": "Optional GUID of an existing inherited SCS override owned by the child Blueprint. componentName must also match."
+          },
+          "createInheritedOverride": {
+            "type": "boolean",
+            "description": "Create a missing child override for inheritedOverrideGuid if values differ from the effective inherited template. Defaults false."
+          },
           "objectPath": {
             "type": "string",
             "description": "Target Blueprint object path."
@@ -5682,6 +6542,150 @@
           "objectPath",
           "nodeGuid",
           "cases"
+        ]
+      }
+    },
+    {
+      "name": "SetUserDefinedEnumEntryDisplayName",
+      "description": "Inspect or edit entries of a Blueprint enum by stable internal name. Supports append and display-name edits, preserving existing values and order.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "User-defined struct or enum asset path for this tool."
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Unique authored display name."
+          },
+          "entryName": {
+            "type": "string",
+            "description": "Exact internal name from InspectUserDefinedEnum."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate and report only."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required to apply."
+          },
+          "allowReferenced": {
+            "type": "boolean",
+            "description": "Allow dependent assets to be reconstructed/dirtied, and potential loss of removed-member data. Default false."
+          },
+          "compileDependents": {
+            "type": "boolean",
+            "description": "Compile discovered dependent Blueprints and return pin and compiler evidence. No dependent packages are saved."
+          },
+          "save": {
+            "type": "boolean",
+            "description": "Save only the edited schema asset. Default false."
+          }
+        },
+        "required": [
+          "objectPath",
+          "displayName",
+          "entryName"
+        ]
+      }
+    },
+    {
+      "name": "SetUserDefinedStructMemberDefault",
+      "description": "Inspect or edit authored Blueprint struct members by GUID or name. Removal can discard stored member values.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "User-defined struct or enum asset path for this tool."
+          },
+          "memberName": {
+            "type": "string",
+            "description": "Authored member name or existing internal name."
+          },
+          "memberGuid": {
+            "type": "string",
+            "description": "Stable GUID from InspectUserDefinedStruct."
+          },
+          "defaultValue": {
+            "type": "string",
+            "description": "Unreal property export text; empty resets the default."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate and report only."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required to apply."
+          },
+          "allowReferenced": {
+            "type": "boolean",
+            "description": "Allow dependent assets to be reconstructed/dirtied, and potential loss of removed-member data. Default false."
+          },
+          "compileDependents": {
+            "type": "boolean",
+            "description": "Compile discovered dependent Blueprints and return pin and compiler evidence. No dependent packages are saved."
+          },
+          "save": {
+            "type": "boolean",
+            "description": "Save only the edited schema asset. Default false."
+          }
+        },
+        "required": [
+          "objectPath",
+          "defaultValue"
+        ]
+      }
+    },
+    {
+      "name": "SetUserDefinedStructMemberName",
+      "description": "Inspect or edit authored Blueprint struct members by GUID or name. Removal can discard stored member values.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "User-defined struct or enum asset path for this tool."
+          },
+          "memberName": {
+            "type": "string",
+            "description": "Authored member name or existing internal name."
+          },
+          "memberGuid": {
+            "type": "string",
+            "description": "Stable GUID from InspectUserDefinedStruct."
+          },
+          "newName": {
+            "type": "string",
+            "description": "New authored member name."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate and report only."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required to apply."
+          },
+          "allowReferenced": {
+            "type": "boolean",
+            "description": "Allow dependent assets to be reconstructed/dirtied, and potential loss of removed-member data. Default false."
+          },
+          "compileDependents": {
+            "type": "boolean",
+            "description": "Compile discovered dependent Blueprints and return pin and compiler evidence. No dependent packages are saved."
+          },
+          "save": {
+            "type": "boolean",
+            "description": "Save only the edited schema asset. Default false."
+          }
+        },
+        "required": [
+          "objectPath",
+          "newName"
         ]
       }
     },

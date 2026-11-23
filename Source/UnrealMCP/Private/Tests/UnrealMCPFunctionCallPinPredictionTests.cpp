@@ -15,12 +15,12 @@
 #include "Misc/PackageName.h"
 #include "Misc/ScopeExit.h"
 #include "ObjectTools.h"
-#include "Tools/AddBlueprintFunctionCallNodeTool.h"
-#include "Tools/AddBlueprintBranchNodeTool.h"
-#include "Tools/AddBlueprintRerouteNodeTool.h"
-#include "Tools/AddBlueprintTypedOperatorNodeTool.h"
-#include "Tools/AddBlueprintVariableGetNodeTool.h"
-#include "Tools/AddBlueprintVariableSetNodeTool.h"
+#include "Tools/Blueprint/Graph/AddBlueprintFunctionCallNodeTool.h"
+#include "Tools/Blueprint/Graph/AddBlueprintBranchNodeTool.h"
+#include "Tools/Blueprint/Graph/AddBlueprintRerouteNodeTool.h"
+#include "Tools/Blueprint/Graph/AddBlueprintTypedOperatorNodeTool.h"
+#include "Tools/Blueprint/Graph/AddBlueprintVariableGetNodeTool.h"
+#include "Tools/Blueprint/Graph/AddBlueprintVariableSetNodeTool.h"
 
 namespace
 {

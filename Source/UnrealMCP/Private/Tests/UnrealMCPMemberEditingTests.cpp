@@ -12,12 +12,13 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Kismet2/StructureEditorUtils.h"
+#include "Kismet2/EnumEditorUtils.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/ScopeExit.h"
 #include "StructUtils/UserDefinedStruct.h"
-#include "Tools/BlueprintMemberRemovalTools.h"
-#include "Tools/UserDefinedStructMemberTools.h"
-#include "Tools/BlueprintGraphEditToolUtils.h"
+#include "Tools/Blueprint/Members/BlueprintMemberRemovalTools.h"
+#include "Tools/Data/UserDefinedStructMemberTools.h"
+#include "Tools/Blueprint/Shared/BlueprintGraphEditToolUtils.h"
 #include "UserDefinedStructure/UserDefinedStructEditorData.h"
 #include "UObject/StrongObjectPtr.h"
 
@@ -127,6 +128,67 @@ bool FUnrealMCPStructMemberTest::RunTest(const FString& Parameters)
     { P.SetStringField(TEXT("memberName"), TEXT("Keep")); P.SetBoolField(TEXT("confirm"), true); }).Error.IsSet());
     TestTrue(TEXT("Struct edit undoable"), GEditor->UndoTransaction());
     TestEqual(TEXT("Undo restores struct member"), FStructureEditorUtils::GetVarDesc(Struct.Get()).Num(), 2);
+    const auto Renamed = Call(FUserDefinedStructMemberTool(EUserStructMemberOperation::Rename), Struct.Get(), [&](FJsonObject& P)
+    {
+        P.SetStringField(TEXT("memberGuid"), Original.ToString());
+        P.SetStringField(TEXT("newName"), TEXT("Renamed"));
+        P.SetBoolField(TEXT("confirm"), true);
+    });
+    if (Renamed.Error.IsSet()) { AddError(Renamed.Error->Message); return false; }
+    TestEqual(TEXT("Rename preserves GUID"), FStructureEditorUtils::GetVarDesc(Struct.Get())[0].VarGuid, Original);
+    TestEqual(TEXT("Rename preserves default"), FStructureEditorUtils::GetVarDesc(Struct.Get())[0].DefaultValue, FString(TEXT("True")));
+    const auto Default = Call(FUserDefinedStructMemberTool(EUserStructMemberOperation::SetDefault), Struct.Get(), [&](FJsonObject& P)
+    {
+        P.SetStringField(TEXT("memberGuid"), Original.ToString());
+        P.SetStringField(TEXT("defaultValue"), TEXT("False"));
+        P.SetBoolField(TEXT("confirm"), true);
+    });
+    if (Default.Error.IsSet()) { AddError(Default.Error->Message); return false; }
+    TestEqual(TEXT("Default updated"), FStructureEditorUtils::GetVarDesc(Struct.Get())[0].DefaultValue, FString(TEXT("False")));
+
+    auto* Enum = CastChecked<UUserDefinedEnum>(FEnumEditorUtils::CreateUserDefinedEnum(Package, TEXT("E_MemberEditing"), RF_Public | RF_Transactional));
+    FEnumEditorUtils::AddNewEnumeratorForUserDefinedEnum(Enum);
+    const int32 OriginalCount = Enum->NumEnums() - 1;
+    const FName FirstEntry = Enum->GetNameByIndex(0);
+    const int64 FirstValue = Enum->GetValueByIndex(0);
+    UPackage* UserPackage = CreatePackage(*(TEXT("/Game/UnrealMCP_Automation/EnumUser_") + FGuid::NewGuid().ToString(EGuidFormats::Digits)));
+    ON_SCOPE_EXIT { UserPackage->SetDirtyFlag(false); };
+    TStrongObjectPtr<UBlueprint> User(FKismetEditorUtilities::CreateBlueprint(AActor::StaticClass(), UserPackage,
+        TEXT("BP_EnumUser"), BPTYPE_Normal, UBlueprint::StaticClass(), UBlueprintGeneratedClass::StaticClass()));
+    FEdGraphPinType EnumType;
+    EnumType.PinCategory = UEdGraphSchema_K2::PC_Byte;
+    EnumType.PinSubCategoryObject = Enum;
+    FBlueprintEditorUtils::AddMemberVariable(User.Get(), TEXT("Choice"), EnumType, FirstEntry.ToString());
+    UEdGraph* UserGraph = User->UbergraphPages[0];
+    auto* Choice = NewObject<UK2Node_VariableGet>(UserGraph);
+    Choice->VariableReference.SetSelfMember(TEXT("Choice"));
+    UnrealMCP::BlueprintGraphEditToolUtils::PlaceNewNode(UserGraph, Choice, {});
+    FKismetEditorUtilities::CompileBlueprint(User.Get());
+    const auto Appended = Call(FUserDefinedStructMemberTool(EUserStructMemberOperation::AddEnum), Enum, [](FJsonObject& P)
+    {
+        P.SetStringField(TEXT("displayName"), TEXT("Appended"));
+        P.SetBoolField(TEXT("confirm"), true);
+        P.SetBoolField(TEXT("allowReferenced"), true);
+        P.SetBoolField(TEXT("compileDependents"), true);
+    });
+    if (Appended.Error.IsSet()) { AddError(Appended.Error->Message); return false; }
+    TestEqual(TEXT("Append preserves first internal name"), Enum->GetNameByIndex(0), FirstEntry);
+    TestEqual(TEXT("Append preserves first numeric value"), Enum->GetValueByIndex(0), FirstValue);
+    const auto& Dependents = Appended.Result->GetArrayField(TEXT("dependentBlueprints"));
+    if (!TestEqual(TEXT("Unsaved dependent Blueprint found"), Dependents.Num(), 1)) return false;
+    const auto& Dependent = Dependents[0]->AsObject();
+    TestEqual(TEXT("Dependent compiles"), Dependent->GetIntegerField(TEXT("errorCount")), 0);
+    TestTrue(TEXT("Dependent pin located"), !Dependent->GetArrayField(TEXT("affectedPinsAfter")).IsEmpty());
+    const auto Relabeled = Call(FUserDefinedStructMemberTool(EUserStructMemberOperation::SetEnumDisplayName), Enum, [&](FJsonObject& P)
+    {
+        P.SetStringField(TEXT("entryName"), Appended.Result->GetStringField(TEXT("entryName")));
+        P.SetStringField(TEXT("displayName"), TEXT("Relabeled"));
+        P.SetBoolField(TEXT("confirm"), true);
+        P.SetBoolField(TEXT("allowReferenced"), true);
+    });
+    if (Relabeled.Error.IsSet()) { AddError(Relabeled.Error->Message); return false; }
+    TestEqual(TEXT("Relabel preserves appended numeric value"), Enum->GetValueByIndex(OriginalCount), static_cast<int64>(OriginalCount));
+    TestEqual(TEXT("Enum label updated"), Enum->GetDisplayNameTextByIndex(OriginalCount).ToString(), FString(TEXT("Relabeled")));
     return !HasAnyErrors();
 }
 #endif

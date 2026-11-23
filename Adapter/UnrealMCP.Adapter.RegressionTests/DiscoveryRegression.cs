@@ -25,6 +25,8 @@ internal static class DiscoveryRegression
         var search = Payload(await client.Call("unreal.adapter.SearchTools", new JsonObject { ["query"] = "regression", ["limit"] = 1 }));
         Check(search["tools"]!.AsArray()[0]!["inputSchema"] is null && search["matchedCount"]!.GetValue<int>() == 4,
             "Search omits schemas and reports exact catalog coverage");
+        Check(search["source"]!.GetValue<string>() == "live_catalog" && search["availabilityVerified"]!.GetValue<bool>()
+            && search["availability"]!["attachedProcessId"] is not null, "Live search identifies the verified pipe owner");
         var page = Payload(await client.Call("unreal.adapter.SearchTools", new JsonObject { ["query"] = "regression", ["offset"] = 1, ["limit"] = 1,
             ["expectedCatalogRevision"] = search["catalogRevision"]!.DeepClone() }));
         Check(page["returnedCount"]!.GetValue<int>() == 1, "Catalog pagination preserves revision");
@@ -50,11 +52,19 @@ internal static class DiscoveryRegression
         pipe.Available = false;
         var offline = Payload(await client.Call("unreal.adapter.SearchTools", new JsonObject { ["query"] = "GetRegressionNew" }));
         Check(offline["matchedCount"]!.GetValue<int>() == 1 && !offline["availabilityVerified"]!.GetValue<bool>(), "Offline search retains catalog without claiming availability");
+        Check(offline["source"]!.GetValue<string>() == "session_catalog"
+            && offline["availability"]!["errorCode"]!.GetValue<string>() == "unreal_mcp_not_ready"
+            && offline["availability"]!["attachedProcessId"] is null, "Cached search reports the native initialization failure without a verified PID");
         Check((await client.Call("unreal.adapter.CallTool", new JsonObject { ["name"] = "GetRegressionNew", ["arguments"] = new JsonObject() }))
             ["result"]!["isError"]!.GetValue<bool>(), "Offline gateway returns native availability failure");
         pipe.Available = true;
+        var recovered = Payload(await client.Call("unreal.adapter.SearchTools", new JsonObject()));
+        Check(recovered["availabilityVerified"]!.GetValue<bool>()
+            && JsonNode.DeepEquals(recovered["availability"]!["attachedProcessId"], search["availability"]!["attachedProcessId"]),
+            "Live discovery recovers on the same editor PID");
+        var savesBeforeShutdown = pipe.SaveAllCalls;
         await client.Call("unreal.adapter.RequestUnrealShutdown", new JsonObject());
-        Check(pipe.SaveAllCalls == 0, "Shutdown does not issue an implicit save-all operation");
+        Check(pipe.SaveAllCalls == savesBeforeShutdown, "Shutdown does not issue an implicit save-all operation");
     }
 
     public static async Task Live(string executable, string project, JsonObject fullList)

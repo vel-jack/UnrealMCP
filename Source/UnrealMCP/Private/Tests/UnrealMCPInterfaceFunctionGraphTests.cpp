@@ -15,8 +15,8 @@
 #include "Misc/AutomationTest.h"
 #include "Misc/ScopeExit.h"
 #include "ObjectTools.h"
-#include "Tools/AddBlueprintInterfaceFunctionGraphTool.h"
-#include "Tools/AddBlueprintInterfaceTool.h"
+#include "Tools/Blueprint/Members/AddBlueprintInterfaceFunctionGraphTool.h"
+#include "Tools/Blueprint/Members/AddBlueprintInterfaceTool.h"
 
 namespace
 {

@@ -16,8 +16,8 @@
 #include "Misc/AutomationTest.h"
 #include "Misc/PackageName.h"
 #include "Misc/ScopeExit.h"
-#include "Tools/BlueprintGraphEditToolUtils.h"
-#include "Tools/SpliceBlueprintExecFlowTool.h"
+#include "Tools/Blueprint/Shared/BlueprintGraphEditToolUtils.h"
+#include "Tools/Blueprint/Graph/SpliceBlueprintExecFlowTool.h"
 
 namespace
 {

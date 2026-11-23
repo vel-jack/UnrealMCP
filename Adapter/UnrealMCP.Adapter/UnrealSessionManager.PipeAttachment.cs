@@ -96,10 +96,10 @@ internal sealed partial class UnrealSessionManager
             {
                 var toolsResponse = await pipeClient.SendRequestAsync("tools/list", new JsonObject(), cancellationToken);
                 nativeError = toolsResponse["error"] as JsonObject;
-                if (nativeError is null)
+                if (nativeError is null && toolsResponse["result"]?["tools"] is JsonArray remoteTools
+                    && initializeResponse["result"] is JsonObject initializeResult)
                 {
-                    _cachedInitializeResult = initializeResponse["result"]?.AsObject();
-                    var remoteTools = toolsResponse["result"]?["tools"] as JsonArray ?? [];
+                    _cachedInitializeResult = initializeResult;
                     if (!JsonNode.DeepEquals(_cachedRemoteTools, remoteTools))
                     {
                         _cachedRemoteTools = remoteTools;
@@ -113,6 +113,7 @@ internal sealed partial class UnrealSessionManager
                         "Call Unreal tools directly through the adapter.", processes, _cachedInitializeResult,
                         _cachedRemoteTools, engineResolution);
                 }
+                nativeError ??= new JsonObject { ["message"] = "The native server returned an invalid initialize or tools/list result." };
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

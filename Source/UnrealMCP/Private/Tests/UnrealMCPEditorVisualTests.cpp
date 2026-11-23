@@ -12,8 +12,8 @@
 #include "Misc/AutomationTest.h"
 #include "Misc/Paths.h"
 #include "ObjectTools.h"
-#include "Tools/BlueprintGraphEditToolUtils.h"
-#include "Tools/EditorVisualTools.h"
+#include "Tools/Blueprint/Shared/BlueprintGraphEditToolUtils.h"
+#include "Tools/Editor/EditorVisualTools.h"
 
 namespace
 {

@@ -11,9 +11,9 @@
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/AutomationTest.h"
 #include "ObjectTools.h"
-#include "Tools/BlueprintGraphEditToolUtils.h"
-#include "Tools/ReparentBlueprintTool.h"
-#include "Tools/BlueprintClassDefaultsTools.h"
+#include "Tools/Blueprint/Shared/BlueprintGraphEditToolUtils.h"
+#include "Tools/Blueprint/Members/ReparentBlueprintTool.h"
+#include "Tools/Blueprint/Members/BlueprintClassDefaultsTools.h"
 #include "UObject/UnrealType.h"
 
 namespace

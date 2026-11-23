@@ -18,7 +18,7 @@
 #include "Misc/AutomationTest.h"
 #include "Misc/PackageName.h"
 #include "Misc/ScopeExit.h"
-#include "Tools/RefreshBlueprintCallSitesEngine.h"
+#include "Tools/Blueprint/Members/RefreshBlueprintCallSitesEngine.h"
 
 namespace
 {

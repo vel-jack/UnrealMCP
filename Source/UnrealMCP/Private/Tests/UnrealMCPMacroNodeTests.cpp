@@ -17,9 +17,9 @@
 #include "Misc/PackageName.h"
 #include "Misc/ScopeExit.h"
 #include "ObjectTools.h"
-#include "Tools/AddBlueprintMacroNodeTool.h"
-#include "Tools/BlueprintGraphEditToolUtils.h"
-#include "Tools/ConnectBlueprintPinsTool.h"
+#include "Tools/Blueprint/Graph/AddBlueprintMacroNodeTool.h"
+#include "Tools/Blueprint/Shared/BlueprintGraphEditToolUtils.h"
+#include "Tools/Blueprint/Graph/ConnectBlueprintPinsTool.h"
 
 namespace
 {

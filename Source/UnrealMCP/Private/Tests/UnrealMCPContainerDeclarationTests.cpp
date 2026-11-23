@@ -16,8 +16,8 @@
 #include "Misc/PackageName.h"
 #include "Misc/ScopeExit.h"
 #include "ObjectTools.h"
-#include "Tools/AddBlueprintFunctionParameterTool.h"
-#include "Tools/AddBlueprintVariableTool.h"
+#include "Tools/Blueprint/Members/AddBlueprintFunctionParameterTool.h"
+#include "Tools/Blueprint/Members/AddBlueprintVariableTool.h"
 
 namespace
 {

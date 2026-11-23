@@ -26,13 +26,13 @@
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/AutomationTest.h"
 #include "ObjectTools.h"
-#include "Tools/AddBlueprintOverrideEventNodeTool.h"
-#include "Tools/AddBlueprintVariableGetNodeTool.h"
-#include "Tools/AddBlueprintVariableSetNodeTool.h"
-#include "Tools/ApplyBlueprintGraphPatchTool.h"
-#include "Tools/BlueprintEditToolUtils.h"
-#include "Tools/BlueprintGraphEditToolUtils.h"
-#include "Tools/BlueprintMemberGraphTools.h"
+#include "Tools/Blueprint/Graph/AddBlueprintOverrideEventNodeTool.h"
+#include "Tools/Blueprint/Graph/AddBlueprintVariableGetNodeTool.h"
+#include "Tools/Blueprint/Graph/AddBlueprintVariableSetNodeTool.h"
+#include "Tools/Blueprint/Graph/ApplyBlueprintGraphPatchTool.h"
+#include "Tools/Blueprint/Shared/BlueprintEditToolUtils.h"
+#include "Tools/Blueprint/Shared/BlueprintGraphEditToolUtils.h"
+#include "Tools/Blueprint/Members/BlueprintMemberGraphTools.h"
 
 namespace InheritedGraphTests
 {
