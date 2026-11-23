@@ -13,10 +13,10 @@ if (args.FirstOrDefault() == "--hold")
 
 if (args.FirstOrDefault() == "--serve-test")
 {
-    var options = AdapterOptions.Parse(args.Skip(2).ToArray(), true);
+    var options = AdapterOptions.Parse(args.Skip(3).ToArray(), true);
     await SdkMcpServer.RunAsync(new McpRequestDispatcher(options,
         new ToolCatalogService(Path.Combine(args[1], "cache.json"), Path.Combine(args[1], "bundled.json")),
-        new UnrealSessionManager(options, _ => [Process.GetCurrentProcess()])), default);
+        new UnrealSessionManager(options, _ => [Process.GetProcessById(int.Parse(args[2]))])), default);
     return;
 }
 
@@ -91,7 +91,7 @@ try
     await File.WriteAllTextAsync(project, "{\"EngineAssociation\":\"5.4\"}");
     var pipeName = "UnrealMCPRegression_" + Guid.NewGuid().ToString("N");
     await using var pipe = new FakeNativePipe(pipeName);
-    string[] ServerArgs() => ["--serve-test", root, "serve", "--tool-surface", "full", "--workspace", workspace,
+    string[] ServerArgs() => ["--serve-test", root, Environment.ProcessId.ToString(), "serve", "--tool-surface", "full", "--workspace", workspace,
         "--pipe", pipeName, "--engine-exe", Environment.ProcessPath!,
         "--pipe-timeout-seconds", "0.2", "--request-timeout-seconds", "0.5"];
 
@@ -153,6 +153,13 @@ try
             Check(pipe.LastOperationId == operationId, $"{name} forwards the supplied operationId");
         }
 
+        pipe.DirtyPackageCount = 1;
+        var refusedShutdown = await client.Call("unreal.adapter.RequestUnrealShutdown", new JsonObject());
+        var refusedPayload = refusedShutdown["result"]!["structuredContent"]!;
+        Check(refusedPayload["errorCode"]?.GetValue<string>() == "dirty_packages"
+            && refusedPayload["dirtyPackages"]?.AsArray().Count == 1 && pipe.SaveAllCalls == 0 && pipe.DiscardCalls == 0,
+            "Default shutdown refuses dirty work and returns packages without saving or discarding");
+        pipe.DirtyPackageCount = 0;
         var pendingShutdown = await client.Call("unreal.adapter.RequestUnrealShutdown", new JsonObject { ["discardDirty"] = true });
         var pendingPayload = pendingShutdown["result"]!["structuredContent"]!;
         Check(pendingPayload["sessionState"]?.GetValue<string>() == "shutdown_pending"
@@ -278,6 +285,7 @@ sealed class FakeNativePipe : IAsyncDisposable
     public volatile bool StallReadTool;
     public string? LastOperationId;
     public int SaveAllCalls;
+    public int DirtyPackageCount;
     public int DiscardCalls;
 
     public FakeNativePipe(string name) => loop = Task.Run(async () =>
@@ -289,9 +297,11 @@ sealed class FakeNativePipe : IAsyncDisposable
             await server.WaitForConnectionAsync(stop.Token);
             using var reader = new StreamReader(server, new UTF8Encoding(false), leaveOpen: true);
             using var writer = new StreamWriter(server, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
-            var request = JsonNode.Parse((await reader.ReadLineAsync(stop.Token))!)!;
+            var requestLine = await reader.ReadLineAsync(stop.Token);
+            if (requestLine is null) continue;
+            var request = JsonNode.Parse(requestLine)!;
             var method = request["method"]!.GetValue<string>();
-            if (method == "SaveAllDirtyPackages") Interlocked.Increment(ref SaveAllCalls);
+            if (method == "SaveAllDirtyPackages" && request["params"]?["dryRun"]?.GetValue<bool>() != true) Interlocked.Increment(ref SaveAllCalls);
             JsonObject response = new() { ["jsonrpc"] = "2.0", ["id"] = request["id"]!.DeepClone() };
             if (!Available)
                 response["error"] = new JsonObject { ["code"] = -32000, ["message"] = "Simulated editor unavailable" };
@@ -320,6 +330,8 @@ sealed class FakeNativePipe : IAsyncDisposable
                 await reader.ReadLineAsync(stop.Token);
                 continue;
             }
+            else if (method == "SaveAllDirtyPackages")
+                response["result"] = new JsonObject { ["success"] = true, ["dirtyPackageCount"] = DirtyPackageCount, ["dirtyPackages"] = DirtyPackageCount > 0 ? new JsonArray("/Game/Fixture") : new JsonArray() };
             else if (method == "DiscardDirtyPackagesForShutdown")
             {
                 Interlocked.Increment(ref DiscardCalls);

@@ -5,9 +5,11 @@ namespace UnrealMCP.Adapter;
 
 internal sealed partial class UnrealSessionManager
 {
-    private PipeJsonRpcClient CreatePipeClient()
+    private PipeJsonRpcClient CreatePipeClient(IReadOnlyList<Process>? processes = null)
     {
-        return new PipeJsonRpcClient(GetEffectivePipeName(), _options.PipeConnectTimeout, _options.RequestTimeout);
+        var expectedIds = processes?.Select(p => p.Id).ToHashSet()
+            ?? (_attachedProcess is not null && IsRunning(_attachedProcess) ? new HashSet<int> { _attachedProcess.Id } : []);
+        return new PipeJsonRpcClient(GetEffectivePipeName(), _options.PipeConnectTimeout, _options.RequestTimeout, expectedIds);
     }
 
     private string GetEffectivePipeName()

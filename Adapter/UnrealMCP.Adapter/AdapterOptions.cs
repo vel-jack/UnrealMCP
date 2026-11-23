@@ -30,6 +30,7 @@ internal sealed class AdapterOptions
     public bool DryRun { get; init; }
     public bool AssumeYes { get; init; }
     public bool JsonOutput { get; init; }
+    public bool LaunchUnattended { get; init; } = true;
     public string ToolSurface { get; init; } = "compact";
 
     public static AdapterOptions Parse(string[] args, bool? inputRedirected = null)
@@ -61,6 +62,7 @@ internal sealed class AdapterOptions
         var dryRun = false;
         var assumeYes = false;
         var jsonOutput = false;
+        var launchUnattended = true;
         var toolSurface = "compact";
 
         for (; index < args.Length; index++)
@@ -68,6 +70,9 @@ internal sealed class AdapterOptions
             var argument = args[index];
             switch (argument)
             {
+                case "--interactive-editor":
+                    launchUnattended = false;
+                    break;
                 case "--tool-surface":
                     toolSurface = ReadValue(args, ref index, argument);
                     if (toolSurface is not ("compact" or "full"))
@@ -157,6 +162,7 @@ internal sealed class AdapterOptions
             DryRun = dryRun,
             AssumeYes = assumeYes,
             JsonOutput = jsonOutput,
+            LaunchUnattended = launchUnattended,
             ToolSurface = toolSurface
         };
     }
@@ -217,6 +223,7 @@ internal sealed class AdapterOptions
             "Options:",
             "  --tool-surface <compact|full>    Compact discovery/schema/call gateway (default), or all native schemas for legacy clients.",
             "  --workspace <path>              Optional discovery-root override. Otherwise the current working directory is used.",
+            "  --interactive-editor          Launch with editor dialogs enabled (default launch uses -unattended).",
             "  --engine-exe <path>             Optional default UnrealEditor.exe path for launch requests.",
             "  --project <path>                Optional .uproject path. Required for launch mode unless one project is discoverable.",
             "  --pipe <name>                   Optional named pipe override. Otherwise the adapter derives UnrealMCP_<ProjectName>.",

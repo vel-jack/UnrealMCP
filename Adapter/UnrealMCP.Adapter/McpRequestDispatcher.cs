@@ -160,7 +160,8 @@ internal sealed partial class McpRequestDispatcher(
                 "Launches a selected or explicitly provided Unreal project and waits for UnrealMCP to become ready.",
                 CreateObjectSchema(
                     ("projectPath", "string", "Optional absolute path to a .uproject file. When provided it becomes the active project.", false),
-                    ("engineExe", "string", "Optional UnrealEditor.exe override for this launch request.", false))),
+                    ("engineExe", "string", "Optional UnrealEditor.exe override for this launch request.", false),
+                    ("unattended", "boolean", "Defaults true: suppress startup dialogs including Zen wait prompts. False enables interactive editor dialogs. Applies only when launching a new editor.", false))),
             new McpToolDefinition(
                 "unreal.adapter.AttachToUnrealProject",
                 "Attaches to the selected Unreal project if it is already running.",

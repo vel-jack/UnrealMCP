@@ -36,6 +36,7 @@ internal sealed partial class UnrealSessionManager
     private long _toolCatalogVersion;
     private DateTimeOffset? _launchStartedUtc;
     private Process? _launchedProcess;
+    private Process? _attachedProcess;
     private readonly Func<string?, List<Process>>? _processFinderOverride;
     private readonly Func<ProjectDescriptor, EngineResolutionResult, CancellationToken, Task<Process?>>? _projectLauncherOverride;
 
@@ -97,6 +98,7 @@ internal sealed partial class UnrealSessionManager
         _cachedRemoteTools = [];
         _launchStartedUtc = null;
         _launchedProcess = null;
+        _attachedProcess = null;
         _sessionState = "project_selected";
 
         return Task.FromResult(new JsonObject
@@ -121,6 +123,7 @@ internal sealed partial class UnrealSessionManager
         _cachedRemoteTools = [];
         _launchStartedUtc = null;
         _launchedProcess = null;
+        _attachedProcess = null;
         _sessionState = "project_not_selected";
 
         return Task.FromResult(new JsonObject
@@ -206,13 +209,14 @@ internal sealed partial class UnrealSessionManager
             return BuildProjectNotSelectedPayload("RequestUnrealShutdown");
         }
 
-        var processes = FindRunningEditorProcesses(_activeProject.ProjectName);
+        var processes = GetMatchingOrTrackedProcesses(_activeProject.ProjectPath);
+        if (_attachedProcess is not null && IsRunning(_attachedProcess)) processes = [_attachedProcess];
         if (processes.Count > 1 && (_launchedProcess is null || _launchedProcess.HasExited))
             return new JsonObject
             {
                 ["success"] = false,
                 ["errorCode"] = "ambiguous_editor_session",
-                ["message"] = "More than one Editor window matches this project name; select and close the exact window manually.",
+                ["message"] = "More than one Editor process uses this exact project; attach to the intended session before shutdown.",
                 ["projectPath"] = _activeProject.ProjectPath
             };
         if (_launchedProcess is not null && !_launchedProcess.HasExited)
@@ -222,6 +226,17 @@ internal sealed partial class UnrealSessionManager
         if (arguments is JsonObject shutdownArgs && shutdownArgs["discardDirty"] is JsonNode discardNode
             && (discardNode is not JsonValue discardValue || !discardValue.TryGetValue(out discardDirty)))
             return new JsonObject { ["success"] = false, ["errorCode"] = "invalid_arguments", ["message"] = "discardDirty must be a boolean." };
+        if (!discardDirty && processes.Count > 0)
+        {
+            var (dirtyState, dirtyError) = await InvokeUnrealToolAsync("SaveAllDirtyPackages", new JsonObject { ["dryRun"] = true }, cancellationToken);
+            if (dirtyError || dirtyState["dirtyPackageCount"] is not JsonValue count || !count.TryGetValue<int>(out var dirtyCount))
+                return new JsonObject { ["success"] = false, ["errorCode"] = "dirty_state_unavailable", ["projectPath"] = _activeProject.ProjectPath,
+                    ["message"] = "Cannot verify unsaved work; editor left open.", ["recommendedAction"] = "Reconnect and inspect dirty packages, or explicitly request discardDirty=true." };
+            if (dirtyCount > 0)
+                return new JsonObject { ["success"] = false, ["errorCode"] = "dirty_packages", ["projectPath"] = _activeProject.ProjectPath,
+                    ["message"] = "Unsaved packages exist; editor left open without saving.", ["dirtyPackages"] = dirtyState["dirtyPackages"]?.DeepClone(),
+                    ["recommendedAction"] = "Save the intended assets explicitly, or use discardDirty=true." };
+        }
         JsonArray? discardedPackages = null;
         if (discardDirty && processes.Count > 0)
         {
@@ -371,7 +386,7 @@ internal sealed partial class UnrealSessionManager
         }
         catch (TimeoutException)
         {
-            var processes = FindRunningEditorProcesses(_activeProject?.ProjectName);
+            var processes = GetMatchingOrTrackedProcesses(_activeProject!.ProjectPath);
             return (new JsonObject
             {
                 ["success"] = false,

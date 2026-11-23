@@ -18,6 +18,8 @@ internal sealed partial class UnrealSessionManager
                 var project = _projectDiscovery.LoadProject(requestedProjectPath);
                 if (!string.Equals(_activeProject?.ProjectPath, project.ProjectPath, StringComparison.OrdinalIgnoreCase))
                 {
+                    _attachedProcess = null;
+                    ClearTrackedLaunch();
                     _cachedInitializeResult = null;
                     _cachedRemoteTools = [];
                 }
@@ -58,14 +60,24 @@ internal sealed partial class UnrealSessionManager
 
         _resolvedEngineExecutablePath = engineResolution.EditorExecutablePath;
 
+        var unattended = _options.LaunchUnattended;
+        if (allowLaunch && arguments is JsonObject launchArguments && launchArguments.ContainsKey("unattended")
+            && (launchArguments["unattended"] is not JsonValue value || !value.TryGetValue(out unattended)))
+            return SetUnavailable("invalid_arguments", "unattended must be a boolean.", false, "Use unattended=true for automated startup, false for interactive dialogs.", []);
         var launchedThisRequest = false;
-        var processes = GetMatchingOrTrackedProcesses(_activeProject.ProjectName);
+        List<Process> processes;
+        try { processes = GetMatchingOrTrackedProcesses(_activeProject.ProjectPath); }
+        catch (InvalidOperationException exception)
+        {
+            return SetUnavailable("editor_identity_unavailable", exception.Message, true,
+                "Restore editor process inspection and ReconnectUnreal; no additional editor was launched.", FindRunningEditorProcesses(null));
+        }
         if (processes.Count == 0 && allowLaunch)
         {
-            _launchedProcess = await LaunchProjectInternalAsync(_activeProject, engineResolution, cancellationToken);
+            _launchedProcess = await LaunchProjectInternalAsync(_activeProject, engineResolution, unattended, cancellationToken);
             launchedThisRequest = _launchedProcess is not null;
             _launchStartedUtc = DateTimeOffset.UtcNow;
-            processes = GetMatchingOrTrackedProcesses(_activeProject.ProjectName);
+            processes = GetMatchingOrTrackedProcesses(_activeProject.ProjectPath);
         }
         if (processes.Count == 0)
         {
@@ -77,7 +89,7 @@ internal sealed partial class UnrealSessionManager
         Exception? transportException = null;
         try
         {
-            var pipeClient = CreatePipeClient();
+            var pipeClient = CreatePipeClient(processes);
             var initializeResponse = await pipeClient.SendRequestAsync("initialize", BuildInitializeParameters(), cancellationToken);
             nativeError = initializeResponse["error"] as JsonObject;
             if (nativeError is null)
@@ -93,6 +105,7 @@ internal sealed partial class UnrealSessionManager
                         _cachedRemoteTools = remoteTools;
                         Interlocked.Increment(ref _toolCatalogVersion);
                     }
+                    _attachedProcess = processes.First(p => p.Id == pipeClient.ServerProcessId);
                     _sessionState = "ready";
                     _lastAttachUtc = DateTimeOffset.UtcNow;
                     ClearTrackedLaunch();
@@ -106,12 +119,17 @@ internal sealed partial class UnrealSessionManager
         {
             throw;
         }
+        catch (PipeIdentityException exception)
+        {
+            return SetUnavailable("project_identity_mismatch", exception.Message, false,
+                "Check selected project and pipe configuration; do not launch a duplicate editor.", processes);
+        }
         catch (Exception exception)
         {
             transportException = exception;
         }
 
-        processes = GetMatchingOrTrackedProcesses(_activeProject.ProjectName);
+        processes = GetMatchingOrTrackedProcesses(_activeProject.ProjectPath);
         if (processes.Count == 0)
         {
             ClearTrackedLaunch();
@@ -154,18 +172,16 @@ internal sealed partial class UnrealSessionManager
         return _engineResolver.Resolve(explicitEnginePath, _selectedEngineExecutablePath, _options.DefaultEngineExecutablePath, _activeProject?.EngineAssociation);
     }
 
-    private List<Process> GetMatchingOrTrackedProcesses(string projectName)
+    private List<Process> GetMatchingOrTrackedProcesses(string projectPath)
     {
-        var matches = FindRunningEditorProcesses(projectName);
-        if (matches.Count == 0 && _launchedProcess is not null)
-        {
-            try
-            {
-                if (!_launchedProcess.HasExited) matches.Add(_launchedProcess);
-                else ClearTrackedLaunch();
-            }
-            catch { ClearTrackedLaunch(); }
-        }
+        // A successful attachment retains the exact process handle across tab/title and pipe changes.
+        if (_attachedProcess is not null && IsRunning(_attachedProcess)) return [_attachedProcess];
+        _attachedProcess = null;
+        List<Process> matches;
+        try { matches = FindRunningEditorProcesses(projectPath); }
+        catch (InvalidOperationException) when (_launchedProcess is not null && IsRunning(_launchedProcess))
+        { return [_launchedProcess]; }
+        if (matches.Count == 0 && _launchedProcess is not null && IsRunning(_launchedProcess)) matches.Add(_launchedProcess);
         return matches;
     }
 
@@ -175,9 +191,9 @@ internal sealed partial class UnrealSessionManager
         _launchedProcess = null;
     }
 
-    private async Task<Process?> LaunchProjectInternalAsync(ProjectDescriptor project, EngineResolutionResult engineResolution, CancellationToken cancellationToken)
+    private async Task<Process?> LaunchProjectInternalAsync(ProjectDescriptor project, EngineResolutionResult engineResolution, bool unattended, CancellationToken cancellationToken)
     {
-        var existing = FindRunningEditorProcesses(project.ProjectName);
+        var existing = FindRunningEditorProcesses(project.ProjectPath);
         if (existing.Count > 0) return existing[0];
         if (_projectLauncherOverride is not null)
             return await _projectLauncherOverride(project, engineResolution, cancellationToken);
@@ -188,15 +204,17 @@ internal sealed partial class UnrealSessionManager
             throw new InvalidOperationException("Launch requested without a resolved Unreal Editor executable path.");
         }
 
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = executablePath,
-            UseShellExecute = true
-        };
-        startInfo.ArgumentList.Add(project.ProjectPath);
+        var startInfo = BuildEditorStartInfo(executablePath, project.ProjectPath, unattended);
 
         var process = Process.Start(startInfo);
         await Task.Delay(250, cancellationToken);
         return process;
+    }
+    internal static ProcessStartInfo BuildEditorStartInfo(string executablePath, string projectPath, bool unattended)
+    {
+        var startInfo = new ProcessStartInfo { FileName = executablePath, UseShellExecute = true };
+        startInfo.ArgumentList.Add(projectPath);
+        if (unattended) startInfo.ArgumentList.Add("-unattended");
+        return startInfo;
     }
 }
