@@ -4,11 +4,15 @@
 
 See [MCP Tool Index](docs/MCP-Tool-Index.md) for a searchable routing index across custom and official MCP tools, without full schemas. Regenerate it with `python Scripts/refresh_tool_index.py`; add `--official-url <endpoint>` to capture official discovery metadata live. Without an endpoint, the generator uses the checked-in official metadata snapshot and bundled native catalog, retaining their capture dates. Exact input schemas are fetched from the owning server when needed.
 
-`Adapter/UnrealMCP.Adapter/unreal-tools.json` contains 157 native tool definitions captured from the UGitClientSample UE 5.8 editor on November 15, 2026. The adapter copies this catalog into build output for offline discovery; a successful live attachment remains authoritative.
+`Adapter/UnrealMCP.Adapter/unreal-tools.json` contains 157 native tool definitions captured from the UGitClientSample UE 5.8 editor on November 23, 2026. The adapter copies this catalog into build output for offline discovery; a successful live attachment remains authoritative.
 
 If a registered tool is missing, call `unreal.adapter.RefreshToolManifest`, then re-list tools. In compact mode use `SearchTools`, `GetToolSchema`, and `CallTool`. If these discovery tools are themselves missing, check the running adapter version: refreshing a catalog cannot upgrade an old executable. Build the adapter, then reconnect clients to the new executable. Updating the plugin DLL alone does not update the external adapter.
 
 UnrealMCP combines a native Unreal Editor execution engine with a .NET MCP adapter for project inspection, Blueprint authoring and static verification. Progressive capability discovery avoids loading every tool schema before starting work.
+
+## Requirements and implementation status
+
+See [Consolidated requirements and status](docs/REQUIREMENTS_STATUS.md) for the deduplicated backlog, links to earlier tool requests, native-versus-official coverage, remaining acceptance work, and recommended next priorities. Reported failures must be reproduced against the current selected build before implementation.
 
 ## Development Context
 
@@ -347,7 +351,7 @@ The adapter is the recommended MCP entry point for coding agents:
 - `unreal.adapter.GetToolSchema`
 - `unreal.adapter.CallTool`
 
-`unreal.adapter.RequestUnrealShutdown` requests graceful closure without saving dirty packages. Resolve any Unreal save prompt manually, or explicitly save only intended assets before shutdown. `SaveAllDirtyPackages` remains an explicit broad-save tool; pass `dryRun=true` to inspect dirty packages without saving.
+`unreal.adapter.RequestUnrealShutdown` inspects dirty packages without saving and refuses closure with `dirty_packages` plus the package list when unsaved work exists. Explicitly save intended assets first, or pass `discardDirty=true` to discard them. If dirty state cannot be inspected, shutdown fails closed. `SaveAllDirtyPackages` remains an explicit broad-save tool; `dryRun=true` only inspects.
 
 The first `tools/list` automatically selects and attaches to the sole discoverable project, without launching the Editor. Ambiguous workspaces still require explicit selection. Once an attachment finds a changed native catalog, the adapter persists it and sends `notifications/tools/list_changed`; `unreal.adapter.RefreshToolManifest` also explicitly reattaches/refetches without launching. It accepts an optional `projectPath`. Clients must re-list tools after this notification; a client that ignores it still needs its own manifest refresh or reconnection. Running processes using an older adapter binary must load the new build once. Cache write failures do not hide live schemas, and unavailable Editors retain the last catalog.
 
@@ -468,6 +472,12 @@ Use `--engine-exe` when:
 - Unreal is installed in a custom location
 - you want to force a specific editor binary
 - you want to bypass `EngineAssociation` resolution
+
+### Editor identity and startup dialogs
+
+The adapter identifies a project by its exact absolute `.uproject` command-line argument and verifies the named-pipe server PID before sending requests. Successful attachment retains the process handle through tab/title changes, backgrounding and reconnects. Status returns `attachedProcessId`; unavailable transport keeps the running-process evidence and recommends reconnect rather than another launch. A pipe owned by a different project/process is refused as `project_identity_mismatch`. If Windows process identity cannot be inspected, the adapter reports `editor_identity_unavailable` and refuses to guess or launch another editor. WMI process inspection is required for discovery of editors launched outside the adapter.
+
+Adapter-launched editors default to `-unattended`, preventing modal startup dialogs such as **Wait for ZenServer?**. This does not repair an unhealthy Zen service; startup/transport readiness is still reported separately. Unattended mode also suppresses other Unreal dialogs. Use `LaunchUnrealProject(unattended=false)` or start the adapter/CLI with `--interactive-editor` when interactive dialogs are needed. The option applies only to a newly launched editor; it does not change an existing process. Shutdown dirty-work refusal is independent of this mode.
 
 ### Engine Resolution
 

@@ -2,8 +2,8 @@
 
 Generated metadata only; fetch the exact live schema before execution.
 
-Custom catalog captured: 2026-11-15T05:53:04.8765512Z. Official catalog captured: 2026-10-30T09:56:38.641Z.
-Contains 154 custom tools and 838 official tools across 53 toolsets.
+Custom catalog captured: 2026-11-23T05:52:48.2182701Z. Official catalog captured: 2026-10-30T09:56:38.641Z.
+Contains 157 custom tools and 838 official tools across 53 toolsets.
 
 Search this file with `rg -i 'interface|delete.*node|merge'`. Descriptions are shortened; a missing keyword is not proof a capability is absent.
 
@@ -39,8 +39,8 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `AddBlueprintSetOperationNode` | Adds a persistent typed Blueprint Set operation node with resolved element pins. |
 | Custom | `native registry` | `AddBlueprintTypedOperatorNode` | Adds an exact object, Boolean, or Vector operator node without ambiguous function lookup. |
 | Custom | `native registry` | `AddBlueprintVariable` | Transactionally adds a typed Blueprint member variable with optional default, instance-editable metadata, compile, and save. |
-| Custom | `native registry` | `AddBlueprintVariableGetNode` | Adds a variable Get node for an local, inherited or external Blueprint-visible member with collision-aware placement, dry-run, and optional save. |
-| Custom | `native registry` | `AddBlueprintVariableSetNode` | Adds a variable Set node for an local, inherited or external Blueprint-visible member with collision-aware placement, dry-run, and optional save. |
+| Custom | `native registry` | `AddBlueprintVariableGetNode` | Adds a variable Get node for a function local or Blueprint-visible member (local-first without ownerClassPath; explicit owner selects class... |
+| Custom | `native registry` | `AddBlueprintVariableSetNode` | Adds a variable Set node for a function local or Blueprint-visible member (local-first without ownerClassPath; explicit owner selects class... |
 | Custom | `native registry` | `AddDataTableRow` | Transactionally edits one DataTable row in memory; leaves the asset dirty for an explicit save. |
 | Custom | `native registry` | `AddEnhancedInputActionNode` | Adds an Enhanced Input Action event node for an exact InputAction asset without requiring Enhanced Input as a hard plugin dependency. |
 | Custom | `native registry` | `AddInputMappingContextMapping` | Adds one key-mapping row to an existing InputMappingContext. Idempotent if the identical Action+Key row already exists. |
@@ -52,6 +52,7 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `ApplyBlueprintInteractionPlan` | Preflights and idempotently applies Blueprint interaction nodes, exact named-pin connections, and safe Sequence splices that preserve an existing... |
 | Custom | `native registry` | `AssetExists` | Checks whether an asset exists by object path without loading it. |
 | Custom | `native registry` | `BuildProjectIndex` | Expensive manual action that builds or rebuilds the local UnrealMCP project-understanding index. Prefer user-triggered rebuilds instead of... |
+| Custom | `native registry` | `CaptureEditorWidget` | Capture an explicit live editor widgetRef to PNG under this project's Saved/UnrealMCP/Captures. No implicit active window or OS screenshot. Retry... |
 | Custom | `native registry` | `CompareBlueprintClassDefaults` | Compares two Blueprint CDOs by property name, including properties present on one side only. |
 | Custom | `native registry` | `CompileAllBlueprints` | Compiles multiple Blueprint assets under a package path and returns aggregate results. |
 | Custom | `native registry` | `CompileBlueprint` | Compiles one Blueprint asset and returns structured status, errors[{graph,nodeGuid,message}] and warnings[] plus the raw message list. |
@@ -83,6 +84,7 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `FindFeatureEntryPoints` | Finds likely starting assets for a feature by ranking indexed assets that match a query, optionally boosted by a related context asset. |
 | Custom | `native registry` | `FindUnusedBlueprintAssets` | Finds conservative project Blueprint candidates with no indexed incoming package dependencies. Results are leads for review, never proof that an... |
 | Custom | `native registry` | `FixupRedirectors` | Editor 'Fix Up Redirectors in Folder': finds redirectors under packagePath (recursive by default), resaves their referencers and deletes them.... |
+| Custom | `native registry` | `FrameBlueprintGraph` | Open an exact Blueprint graph and frame all nodes or explicit node GUIDs for visual review. Changes editor view/selection only; no... |
 | Custom | `native registry` | `GetActorInfo` | Returns detailed information about one actor from the active editor world, including transform, components, and attached actors. |
 | Custom | `native registry` | `GetAssetInfo` | Returns detailed Asset Registry information for one asset without loading it. |
 | Custom | `native registry` | `GetAssetReferencers` | Returns indexed package referencers for one asset or package. |
@@ -94,6 +96,7 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `GetBlueprintInfo` | Returns summary information about a Blueprint asset. |
 | Custom | `native registry` | `GetBlueprintOverview` | Inspect a Blueprint asset in one bounded live read: parent, compile/dirty state, graph, variable, component and interface inventory. Filter and... |
 | Custom | `native registry` | `GetDependencies` | Returns Asset Registry package dependencies for one asset or package. |
+| Custom | `native registry` | `GetEditorWidgetSnapshot` | Read-only native Slate inspection. Without windowRef lists visible editor windows; with an explicit windowRef returns a bounded widget tree.... |
 | Custom | `native registry` | `GetImplementedInterfaces` | Lists interfaces implemented by a Blueprint, with optional inherited interfaces. |
 | Custom | `native registry` | `GetIndexStatus` | Returns status information for the local UnrealMCP project index. |
 | Custom | `native registry` | `GetInputMappingContextMappings` | Reads back every key-mapping row (action, key, triggers, modifiers) in an InputMappingContext without loading it for editing. |
