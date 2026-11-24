@@ -36,6 +36,7 @@
 #include "Tools/Blueprint/Shared/BlueprintGraphEditToolUtils.h"
 #include "Tools/Blueprint/Shared/BlueprintToolUtils.h"
 #include "UObject/LinkerLoad.h"
+#include "UObject/LinkerInstancingContext.h"
 #include "UObject/UObjectHash.h"
 
 namespace
@@ -244,15 +245,85 @@ namespace
 
     using FStructure = TMap<FString, FString>;
 
+    TSharedRef<FJsonObject> BuildGraphReviewView(UBlueprint* Blueprint, const FGuid& GraphGuid, const FGuid& FocusGuid)
+    {
+        using namespace UnrealMCP::BlueprintGraphEditToolUtils;
+        const auto View = MakeShared<FJsonObject>();
+        TArray<UEdGraph*> Graphs;
+        Blueprint->GetAllGraphs(Graphs);
+        const auto* Found = Graphs.FindByPredicate([&](const UEdGraph* Candidate)
+            { return Candidate && Candidate->GraphGuid == GraphGuid; });
+        if (!Found) { View->SetStringField(TEXT("state"), TEXT("graph_absent")); return View; }
+        const UEdGraph* Graph = *Found;
+        View->SetStringField(TEXT("graph"), Graph->GetPathName(Blueprint));
+        View->SetStringField(TEXT("graphGuid"), GraphGuid.ToString(EGuidFormats::DigitsWithHyphensLower));
+        TArray<const UEdGraphNode*> Nodes;
+        for (const UEdGraphNode* Node : Graph->Nodes) if (Node) Nodes.Add(Node);
+        const UEdGraphNode* Focus = nullptr;
+        if (FocusGuid.IsValid())
+        {
+            const auto* Match = Nodes.FindByPredicate([&](const UEdGraphNode* Node) { return Node->NodeGuid == FocusGuid; });
+            if (!Match) { View->SetStringField(TEXT("state"), TEXT("node_absent")); return View; }
+            Focus = *Match;
+            Nodes.Reset();
+            Nodes.Add(Focus);
+        }
+        View->SetStringField(TEXT("state"), TEXT("loaded"));
+        View->SetNumberField(TEXT("nodeCount"), Graph->Nodes.Num());
+        TArray<TSharedPtr<FJsonValue>> Links;
+        int32 Total = 0;
+        auto Endpoint = [](const UEdGraphNode* Node, const UEdGraphPin* Pin)
+        {
+            auto Item = MakeShared<FJsonObject>();
+            Item->SetStringField(TEXT("node"), Node->GetNodeTitle(ENodeTitleType::ListView).ToString());
+            Item->SetStringField(TEXT("nodeGuid"), GetNodeGuid(Node));
+            Item->SetStringField(TEXT("pin"), Pin->PinName.ToString());
+            Item->SetStringField(TEXT("pinId"), GetPinId(Pin));
+            Item->SetStringField(TEXT("graphGuid"), Node->GetGraph()->GraphGuid.ToString(EGuidFormats::DigitsWithHyphensLower));
+            return Item;
+        };
+        if (Focus)
+        {
+            View->SetStringField(TEXT("focusTitle"), Focus->GetNodeTitle(ENodeTitleType::ListView).ToString());
+            View->SetStringField(TEXT("focusNodeGuid"), GetNodeGuid(Focus));
+        }
+        for (const UEdGraphNode* Node : Nodes)
+            for (const UEdGraphPin* Pin : Node->Pins)
+            {
+                if (!Pin || (!Focus && (Pin->Direction != EGPD_Output || Pin->PinType.PinCategory != TEXT("exec")))) continue;
+                for (const UEdGraphPin* Linked : Pin->LinkedTo)
+                {
+                    const UEdGraphNode* Other = Linked ? Linked->GetOwningNodeUnchecked() : nullptr;
+                    if (!Other || !Other->GetGraph() || (Other == Focus && Pin->Direction == EGPD_Input)) continue;
+                    if (++Total > 32) continue;
+                    const bool bOutput = Pin->Direction == EGPD_Output;
+                    auto Link = MakeShared<FJsonObject>();
+                    Link->SetStringField(TEXT("kind"), Pin->PinType.PinCategory == TEXT("exec") ? TEXT("execution") : TEXT("data"));
+                    Link->SetObjectField(TEXT("from"), bOutput ? Endpoint(Node, Pin) : Endpoint(Other, Linked));
+                    Link->SetObjectField(TEXT("to"), bOutput ? Endpoint(Other, Linked) : Endpoint(Node, Pin));
+                    Links.Add(MakeShared<FJsonValueObject>(Link));
+                }
+            }
+        View->SetNumberField(TEXT("linkCount"), Total);
+        View->SetBoolField(TEXT("truncated"), Total > Links.Num());
+        View->SetArrayField(TEXT("links"), Links);
+        return View;
+    }
+
     // Snapshot logic adapted from GraphXPort's MIT-licensed historical Blueprint reader.
-    FStructure SnapshotStructure(UBlueprint* Blueprint, bool bIncludeGraphBodies, bool& bReferencesAvailable)
+    FStructure SnapshotStructure(UBlueprint* Blueprint, bool bIncludeGraphBodies, bool& bReferencesAvailable, const FString& DependencyMount = FString(), const FGuid& GraphScope = FGuid())
     {
         FStructure Fields;
         const FString Package = Blueprint->GetOutermost()->GetName();
-        auto Add = [&](const FString& Key, FString Value)
+        auto Add = [&](FString Key, FString Value)
         {
             Value.ReplaceInline(*Package, TEXT("<self>"));
-            Fields.Add(Key, MoveTemp(Value));
+            if (!DependencyMount.IsEmpty())
+            {
+                Key.ReplaceInline(*DependencyMount, TEXT("/Game/"));
+                Value.ReplaceInline(*DependencyMount, TEXT("/Game/"));
+            }
+            Fields.Add(MoveTemp(Key), MoveTemp(Value));
         };
         auto PathOf = [](const UObject* Object)
         {
@@ -364,7 +435,7 @@ namespace
             Blueprint->GetAllGraphs(Graphs);
             for (const UEdGraph* Graph : Graphs)
             {
-                if (!Graph) continue;
+                if (!Graph || (GraphScope.IsValid() && Graph->GraphGuid != GraphScope)) continue;
                 const FString GraphKey = TEXT("graph/") + GraphId(Graph);
                 Add(GraphKey + TEXT("/path"), Graph->GetPathName(Blueprint));
                 for (const UEdGraphNode* Node : Graph->Nodes)
@@ -465,8 +536,95 @@ namespace
         return false;
     }
 
+    FString ResolveStageCommit(const FString& ProjectDir, int32 Side, const FString& RepoPath, const FString& BlobId)
+    {
+        FString Commit, AtPath;
+        const TCHAR* Query = Side == 0 ? TEXT("merge-base HEAD MERGE_HEAD")
+            : Side == 1 ? TEXT("rev-parse --verify HEAD^{commit}") : TEXT("rev-parse --verify MERGE_HEAD^{commit}");
+        if (ReadGitText(ProjectDir, Query, Commit) && IsGitObjectId(Commit)
+            && ReadGitText(ProjectDir, FString::Printf(TEXT("rev-parse --verify --quiet \"%s:%s\""), *Commit, *RepoPath), AtPath)
+            && AtPath == BlobId)
+            return Commit;
+        return FString();
+    }
+
+    bool MaterializeHistoricalDependencies(const FString& ProjectDir, const FString& Commit, const FString& RootFile,
+        const FString& TempDir, const FString& MountRoot, FLinkerInstancingContext& Context, TArray<FString>& Files,
+        TArray<FString>& Missing, TArray<FString>& Resolved, FString& Error)
+    {
+        auto& Registry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
+        TArray<FString> Pending{RootFile};
+        TSet<FName> Seen;
+        int64 Bytes = 0;
+        for (int32 Index = 0; Index < Pending.Num(); ++Index)
+        {
+            IAssetRegistry::FLoadPackageRegistryData Metadata(true);
+            Registry.LoadPackageRegistryData(Pending[Index], Metadata);
+            for (const FName Dependency : Metadata.DataDependencies)
+            {
+                const FString Name = Dependency.ToString();
+                if (Seen.Contains(Dependency) || !Name.StartsWith(TEXT("/")) || Name.StartsWith(TEXT("/Script/"))) continue;
+                Seen.Add(Dependency);
+                if (FindPackage(nullptr, *Name) || FPackageName::DoesPackageExist(Name)) continue;
+                FString RepoPath, BlobId;
+                const FString Relative = Name.Mid(6) + TEXT(".uasset");
+                TArray<uint8> Blob;
+                if (Commit.IsEmpty() || !Name.StartsWith(TEXT("/Game/")) || !SafeContentPath(TEXT("Content/") + Relative)
+                    || !ResolveRepoPath(ProjectDir, TEXT("Content/") + Relative, RepoPath, Error)
+                    || !ReadGitText(ProjectDir, FString::Printf(TEXT("rev-parse --verify --quiet \"%s:%s\""), *Commit, *RepoPath), BlobId)
+                    || !IsGitObjectId(BlobId) || !RunGit(ProjectDir, TEXT("cat-file blob ") + BlobId, Blob) || Blob.IsEmpty())
+                {
+                    Missing.AddUnique(Name);
+                    continue;
+                }
+                FString LfsId;
+                int64 LfsSize = 0;
+                static const ANSICHAR Prefix[] = "version https://git-lfs.github.com/spec/v1";
+                if (Blob.Num() >= sizeof(Prefix) - 1 && FMemory::Memcmp(Blob.GetData(), Prefix, sizeof(Prefix) - 1) == 0)
+                {
+                    // Dependency pointers must be verified before use, just like the root package.
+                    const FUTF8ToTCHAR Pointer(reinterpret_cast<const ANSICHAR*>(Blob.GetData()), Blob.Num());
+                    if (Blob.Num() > 1024 || !ReadLfsPointer(FString(Pointer.Length(), Pointer.Get()), LfsId, LfsSize))
+                    { Missing.AddUnique(Name); continue; }
+                    TArray<uint8> Payload;
+                    if (!ReadCachedLfsObject(ProjectDir, LfsId, LfsSize, Payload, Error))
+                    { Missing.AddUnique(Name); continue; }
+                    Blob = MoveTemp(Payload);
+                }
+                Bytes += Blob.Num();
+                if (Resolved.Num() >= 64 || Bytes > 256ll * 1024 * 1024)
+                { Error = TEXT("Historical dependency recovery exceeded 64 packages or 256 MiB."); return false; }
+                const FString Filename = TempDir / TEXT("Dependencies") / Relative;
+                if (!IFileManager::Get().MakeDirectory(*FPaths::GetPath(Filename), true)
+                    || !FFileHelper::SaveArrayToFile(Blob, *Filename))
+                { Error = TEXT("Could not materialize a historical dependency."); return false; }
+                Files.Add(Filename);
+                if (!LfsId.IsEmpty())
+                {
+                    const FString PointerFile = Filename + TEXT(".pointer");
+                    ON_SCOPE_EXIT { IFileManager::Get().Delete(*PointerFile, false, true); };
+                    const FString Canonical = FString::Printf(TEXT("version https://git-lfs.github.com/spec/v1\noid sha256:%s\nsize %lld\n"),
+                        *LfsId, static_cast<long long>(LfsSize));
+                    TArray<uint8> Ignored;
+                    if (!FFileHelper::SaveStringToFile(Canonical, *PointerFile, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM)
+                        || !RunGit(ProjectDir, FString::Printf(TEXT("lfs pointer --file=\"%s\" --pointer=\"%s\""), *Filename, *PointerFile), Ignored))
+                    { Missing.AddUnique(Name); continue; }
+                }
+                Pending.Add(Filename);
+                Context.AddPackageMapping(Dependency, FName(*(MountRoot + Name.Mid(6))));
+                Resolved.Add(Name);
+            }
+        }
+        Missing.Sort();
+        Resolved.Sort();
+        if (Missing.IsEmpty()) return true;
+        Error = TEXT("Saved package references dependencies unavailable from the active project or verified Git revision.");
+        return false;
+    }
+
     bool WithHistoricalBlueprint(const FString& ProjectDir, const FString& AssetPath, const TArray<uint8>& Blob,
-        TFunctionRef<bool(UBlueprint*)> Read, FString& Error, TArray<FString>* MissingDependencies = nullptr)
+        TFunctionRef<bool(UBlueprint*)> Read, FString& Error, TArray<FString>* MissingDependencies = nullptr,
+        const FString& Commit = FString(), TArray<FString>* RecoveredDependencies = nullptr, FString* DependencyMount = nullptr)
     {
         static const ANSICHAR LfsPrefix[] = "version https://git-lfs.github.com/spec/v1";
         FString LfsId;
@@ -506,28 +664,47 @@ namespace
             { Error = TEXT("Cached historical Git LFS object failed SHA-256 verification."); return false; }
         }
 
+        const FString MountRoot = TEXT("/UnrealMCPHistory") + FGuid::NewGuid().ToString(EGuidFormats::Digits) + TEXT("/");
+        const FString MountDirectory = TempDir / TEXT("Dependencies/");
+        TArray<FString> DependencyFiles, Recovered;
+        FLinkerInstancingContext Context;
+        bool bMounted = false;
+        ON_SCOPE_EXIT
+        {
+            if (bMounted)
+            {
+                for (const FString& Name : Recovered)
+                    if (UPackage* Dependency = FindPackage(nullptr, *(MountRoot + Name.Mid(6))))
+                    {
+                        ResetLoaders(Dependency);
+                        Dependency->SetDirtyFlag(false);
+                    }
+                FPackageName::UnRegisterMountPoint(MountRoot, MountDirectory);
+            }
+            for (const FString& File : DependencyFiles) IFileManager::Get().Delete(*File, false, true);
+            if (!DependencyFiles.IsEmpty()) IFileManager::Get().DeleteDirectory(*MountDirectory, false, true);
+        };
         if (MissingDependencies)
         {
-            auto& Registry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
-            IAssetRegistry::FLoadPackageRegistryData Metadata(true);
-            Registry.LoadPackageRegistryData(TempFile, Metadata);
-            for (const FName Dependency : Metadata.DataDependencies)
-            {
-                const FString Name = Dependency.ToString();
-                if (Name.StartsWith(TEXT("/")) && !Name.StartsWith(TEXT("/Script/"))
-                    && !FindPackage(nullptr, *Name) && !FPackageName::DoesPackageExist(Name))
-                    MissingDependencies->AddUnique(Name);
-            }
-            MissingDependencies->Sort();
-            if (!MissingDependencies->IsEmpty())
-            { Error = TEXT("Saved package references dependencies missing from the active project."); return false; }
+            if (!MaterializeHistoricalDependencies(ProjectDir, Commit, TempFile, TempDir, MountRoot, Context,
+                DependencyFiles, *MissingDependencies, Recovered, Error))
+                return false;
+            if (RecoveredDependencies) *RecoveredDependencies = Recovered;
+            if (DependencyMount && !Recovered.IsEmpty()) *DependencyMount = MountRoot;
         }
 
         const FPackagePath Temporary = FPackagePath::FromLocalPath(TempFile);
         const FPackagePath Original = FPackagePath::FromLocalPath(ProjectDir / AssetPath);
         if (!FPackageName::IsTempPackage(Temporary.GetPackageName()))
         { Error = TEXT("Temporary file did not resolve to an isolated Unreal diff package."); return false; }
-        UPackage* Package = DiffUtils::LoadPackageForDiff(Temporary, Original);
+        UPackage* Package = nullptr;
+        if (Recovered.IsEmpty()) Package = DiffUtils::LoadPackageForDiff(Temporary, Original);
+        else
+        {
+            FPackageName::RegisterMountPoint(MountRoot, MountDirectory);
+            bMounted = true;
+            Package = LoadPackage(nullptr, Temporary, LOAD_ForDiff | LOAD_DisableCompileOnLoad, nullptr, &Context, &Original);
+        }
         if (!Package) { Error = TEXT("Could not load the historical package. Check its dependencies and engine version."); return false; }
         ON_SCOPE_EXIT { ResetLoaders(Package); Package->SetDirtyFlag(false); };
 
@@ -556,9 +733,11 @@ namespace
     }
 }
 
-FCompareBlueprintMergeStructureTool::FCompareBlueprintMergeStructureTool()
-    : FMCPToolBase(TEXT("CompareBlueprintMergeStructure"),
-        TEXT("Read-only three-way Blueprint comparison from exact Git conflict stages. Pages declarations, defaults, components, direct references and optional graph details."))
+FCompareBlueprintMergeStructureTool::FCompareBlueprintMergeStructureTool(bool bInCompareSnapshots)
+    : FMCPToolBase(bInCompareSnapshots ? TEXT("CompareBlueprintGitSnapshots") : TEXT("CompareBlueprintMergeStructure"),
+        bInCompareSnapshots ? TEXT("Compare Blueprint declarations, defaults, components, nodes and wiring between two Git or saved worktree snapshots.")
+        : TEXT("Read-only three-way Blueprint comparison from exact Git conflict stages. Pages declarations, defaults, components, direct references and optional graph details.")),
+      bCompareSnapshots(bInCompareSnapshots)
 {
 }
 
@@ -567,7 +746,10 @@ UnrealMCP::FMCPResponse FCompareBlueprintMergeStructureTool::Execute(const Unrea
     using namespace UnrealMCP;
     FString Path, ExpectedRevision, Cursor, CursorRevision, OutputMode = TEXT("compact");
     int32 Offset = 0, Limit = 50;
-    bool bIncludeGraphBodies = false;
+    bool bIncludeGraphBodies = bCompareSnapshots;
+    const int32 SideCount = bCompareSnapshots ? 2 : 3;
+    const TCHAR* SnapshotSides[] = {TEXT("before"), TEXT("after")};
+    const TCHAR* const* Labels = bCompareSnapshots ? SnapshotSides : Sides;
     if (!Request.Params.IsValid() || !Request.Params->TryGetStringField(TEXT("path"), Path) || !SafeContentPath(Path)
         || (Request.Params->HasField(TEXT("offset")) && !Request.Params->TryGetNumberField(TEXT("offset"), Offset))
         || (Request.Params->HasField(TEXT("limit")) && !Request.Params->TryGetNumberField(TEXT("limit"), Limit))
@@ -585,12 +767,46 @@ UnrealMCP::FMCPResponse FCompareBlueprintMergeStructureTool::Execute(const Unrea
             || !LexTryParseString(Offset, *CursorOffset) || Offset <= 0)
             return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("Use the exact nextCursor with the same path, stagePaths and graph scope, without offset."));
     }
+    FString GraphText, FocusText;
+    FGuid GraphScope, FocusNode;
+    if ((Request.Params->HasField(TEXT("graphGuid")) && (!Request.Params->TryGetStringField(TEXT("graphGuid"), GraphText)
+        || !FGuid::Parse(GraphText, GraphScope) || !GraphScope.IsValid()))
+        || (Request.Params->HasField(TEXT("focusNodeGuid")) && (!GraphScope.IsValid()
+        || !Request.Params->TryGetStringField(TEXT("focusNodeGuid"), FocusText) || !FGuid::Parse(FocusText, FocusNode) || !FocusNode.IsValid())))
+        return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("Provide a valid graphGuid and optional focusNodeGuid."));
+    bIncludeGraphBodies |= GraphScope.IsValid();
     const bool bCompact = OutputMode == TEXT("compact");
 
     const FString ProjectDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
     FString RepoPaths[3], StagePaths[3] = {Path, Path, Path}, Ids[3], Error;
+    FString SnapshotSources[2], SnapshotCommits[2];
+    if (bCompareSnapshots)
+    {
+        for (int32 Side = 0; Side < SideCount; ++Side)
+        {
+            const TSharedPtr<FJsonObject>* Endpoint = nullptr;
+            if (!Request.Params->TryGetObjectField(Labels[Side], Endpoint)
+                || !(*Endpoint)->TryGetStringField(TEXT("source"), SnapshotSources[Side])
+                || ((*Endpoint)->HasField(TEXT("path")) && (!(*Endpoint)->TryGetStringField(TEXT("path"), StagePaths[Side]) || !SafeContentPath(StagePaths[Side]))))
+                return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("Each endpoint requires source and accepts a project-relative Content/*.uasset path override."));
+            const FString& Source = SnapshotSources[Side];
+            if (Source == TEXT("commit"))
+            {
+                FString Commit;
+                if (!(*Endpoint)->TryGetStringField(TEXT("commit"), Commit) || !IsGitObjectId(Commit)
+                    || !ReadGitText(ProjectDir, TEXT("rev-parse --verify --quiet ") + Commit + TEXT("^{commit}"), SnapshotCommits[Side])
+                    || !IsGitObjectId(SnapshotCommits[Side]))
+                    return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("Commit endpoints require a full locally available commit hash."));
+            }
+            else if ((Source != TEXT("head") && Source != TEXT("index") && Source != TEXT("worktree")) || (*Endpoint)->HasField(TEXT("commit")))
+                return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("Use source commit, head, index or worktree. Only source commit accepts a commit hash."));
+            else if (Source == TEXT("head") && (!ReadGitText(ProjectDir, TEXT("rev-parse --verify --quiet HEAD^{commit}"), SnapshotCommits[Side])
+                || !IsGitObjectId(SnapshotCommits[Side])))
+                return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("HEAD does not resolve to a commit."));
+        }
+    }
     const TSharedPtr<FJsonObject>* PathOverrides = nullptr;
-    if (Request.Params->HasField(TEXT("stagePaths")))
+    if (!bCompareSnapshots && Request.Params->HasField(TEXT("stagePaths")))
     {
         if (!Request.Params->TryGetObjectField(TEXT("stagePaths"), PathOverrides))
             return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("stagePaths must map base, current or incoming to a project-relative .uasset path."));
@@ -606,45 +822,75 @@ UnrealMCP::FMCPResponse FCompareBlueprintMergeStructureTool::Execute(const Unrea
     for (int32 Side = 0; Side < 3; ++Side)
         if (!ResolveRepoPath(ProjectDir, StagePaths[Side], RepoPaths[Side], Error))
             return BuildError(Request, EMCPErrorCode::InvalidParams, Error);
-    if (!ReadReviewStages(ProjectDir, RepoPaths, Ids, Error))
-        return BuildError(Request, EMCPErrorCode::InvalidParams, Error);
+    TArray<uint8> Blobs[3];
+    auto ReadSnapshots = [&](FString (&OutIds)[3], TArray<uint8>* SavedBytes)
+    {
+        for (int32 Side = 0; Side < SideCount; ++Side)
+        {
+            if (SnapshotSources[Side] == TEXT("worktree"))
+            {
+                const FString File = FPaths::Combine(ProjectDir, StagePaths[Side]);
+                const int64 Size = IFileManager::Get().FileSize(*File);
+                TArray<uint8> Bytes;
+                if (Size <= 0 || Size > MaxGitOutput || !FFileHelper::LoadFileToArray(Bytes, *File) || Bytes.Num() != Size)
+                    return false;
+                FMD5 Hash;
+                Hash.Update(Bytes.GetData(), Bytes.Num());
+                OutIds[Side] = FinishEvidence(Hash);
+                if (SavedBytes) SavedBytes[Side] = MoveTemp(Bytes);
+            }
+            else
+            {
+                const FString Spec = SnapshotSources[Side] == TEXT("index")
+                    ? TEXT(":0:") + RepoPaths[Side] : SnapshotCommits[Side] + TEXT(":") + RepoPaths[Side];
+                if (!ReadGitText(ProjectDir, FString::Printf(TEXT("rev-parse --verify --quiet \"%s\""), *Spec), OutIds[Side])
+                    || !IsGitObjectId(OutIds[Side])) return false;
+            }
+        }
+        return true;
+    };
+    if (bCompareSnapshots ? !ReadSnapshots(Ids, Blobs) : !ReadReviewStages(ProjectDir, RepoPaths, Ids, Error))
+        return BuildError(Request, EMCPErrorCode::InvalidParams, bCompareSnapshots
+            ? TEXT("Both Blueprint snapshots must exist and be readable. For an unmerged index path select a commit instead.") : Error);
     const bool bRenamed = StagePaths[0] != Path || StagePaths[1] != Path || StagePaths[2] != Path;
     const FString Revision = ReviewRevision(Path, StagePaths, Ids);
     if (!ExpectedRevision.IsEmpty() && ExpectedRevision != Revision)
         return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("Git stages changed. Restart comparison at offset 0."));
 
     FStructure Structures[3];
-    TArray<uint8> Blobs[3];
+    TSharedPtr<FJsonObject> GraphViews[3];
     bool HasDefaults[3] = {};
     bool HasReferences[3] = {};
     FString SideErrors[3];
-    TArray<FString> Missing[3];
-    for (int32 Side = 0; Side < 3; ++Side)
-        if (!Ids[Side].IsEmpty() && (!RunGit(ProjectDir, TEXT("cat-file blob ") + Ids[Side], Blobs[Side]) || Blobs[Side].IsEmpty()))
+    TArray<FString> Missing[3], Recovered[3];
+    for (int32 Side = 0; Side < SideCount; ++Side)
+        if (!Ids[Side].IsEmpty() && Blobs[Side].IsEmpty() && (!RunGit(ProjectDir, TEXT("cat-file blob ") + Ids[Side], Blobs[Side]) || Blobs[Side].IsEmpty()))
             SideErrors[Side] = TEXT("Could not read the saved Git blob within the 64 MiB and 10 second limits.");
     TSet<FString> Keys;
     if (!BlueprintToolUtils::ExecuteOnGameThreadSync([&](FString&)
     {
-        for (int32 Side = 0; Side < 3; ++Side)
+        for (int32 Side = 0; Side < SideCount; ++Side)
         {
             if (Ids[Side].IsEmpty() || !SideErrors[Side].IsEmpty()) continue;
+            FString DependencyMount;
             if (WithHistoricalBlueprint(ProjectDir, StagePaths[Side], Blobs[Side], [&](UBlueprint* Blueprint)
             {
                 HasDefaults[Side] = Blueprint->GeneratedClass && Blueprint->GeneratedClass->GetDefaultObject(false);
-                Structures[Side] = SnapshotStructure(Blueprint, bIncludeGraphBodies, HasReferences[Side]);
+                if (GraphScope.IsValid()) GraphViews[Side] = BuildGraphReviewView(Blueprint, GraphScope, FocusNode);
+                Structures[Side] = SnapshotStructure(Blueprint, bIncludeGraphBodies, HasReferences[Side], DependencyMount, GraphScope);
                 return true;
-            }, SideErrors[Side], &Missing[Side]))
+            }, SideErrors[Side], &Missing[Side], bCompareSnapshots ? SnapshotCommits[Side] : ResolveStageCommit(ProjectDir, Side, RepoPaths[Side], Ids[Side]), &Recovered[Side], &DependencyMount))
                 for (const auto& Pair : Structures[Side]) Keys.Add(Pair.Key);
         }
         return true;
     }, Error)) return BuildError(Request, EMCPErrorCode::InvalidParams, Error);
 
     FString AfterIds[3];
-    if (!ReadReviewStages(ProjectDir, RepoPaths, AfterIds, Error) || ReviewRevision(Path, StagePaths, AfterIds) != Revision)
+    if ((bCompareSnapshots ? !ReadSnapshots(AfterIds, nullptr) : !ReadReviewStages(ProjectDir, RepoPaths, AfterIds, Error)) || ReviewRevision(Path, StagePaths, AfterIds) != Revision)
         return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("Git stages changed during comparison. Restart at offset 0."));
 
     const bool bReadable = SideErrors[0].IsEmpty() && SideErrors[1].IsEmpty() && SideErrors[2].IsEmpty();
-    const bool bAsymmetric = Ids[0].IsEmpty() || Ids[1].IsEmpty() || Ids[2].IsEmpty();
+    const bool bAsymmetric = Ids[0].IsEmpty() || Ids[1].IsEmpty() || (!bCompareSnapshots && Ids[2].IsEmpty());
     // An unreadable side is unknown. Null values are reserved for actual absence.
     if (!bReadable) Keys.Reset();
     TArray<FString> SortedKeys = Keys.Array();
@@ -660,6 +906,8 @@ UnrealMCP::FMCPResponse FCompareBlueprintMergeStructureTool::Execute(const Unrea
     FMD5 EvidenceHash;
     HashEvidence(EvidenceHash, Path);
     HashEvidence(EvidenceHash, Revision);
+    HashEvidence(EvidenceHash, GraphScope.ToString());
+    HashEvidence(EvidenceHash, FocusNode.ToString());
     HashEvidence(EvidenceHash, bIncludeGraphBodies ? TEXT("graphs") : TEXT("structure"));
     HashEvidence(EvidenceHash, bCompareDefaults ? TEXT("defaults") : TEXT("no_defaults"));
     HashEvidence(EvidenceHash, bCompareReferences ? TEXT("references") : TEXT("no_references"));
@@ -667,13 +915,15 @@ UnrealMCP::FMCPResponse FCompareBlueprintMergeStructureTool::Execute(const Unrea
     {
         HashEvidence(EvidenceHash, SideErrors[Side]);
         for (const FString& Dependency : Missing[Side]) HashEvidence(EvidenceHash, Dependency);
+        for (const FString& Dependency : Recovered[Side]) HashEvidence(EvidenceHash, Dependency);
     }
     for (const FString& Key : SortedKeys)
     {
+        if (GraphScope.IsValid() && !Key.StartsWith(TEXT("graph/"))) continue;
         if (!bCompareDefaults && Key.StartsWith(TEXT("classDefault/"))) continue;
         if (!bCompareReferences && Key.StartsWith(TEXT("reference/"))) continue;
         const FString* Values[] = {Structures[0].Find(Key), Structures[1].Find(Key), Structures[2].Find(Key)};
-        if (Equal(Values[0], Values[1]) && Equal(Values[0], Values[2])) continue;
+        if (Equal(Values[0], Values[1]) && (bCompareSnapshots || Equal(Values[0], Values[2]))) continue;
         HashEvidence(EvidenceHash, Key);
         for (const FString* Value : Values)
         {
@@ -683,12 +933,12 @@ UnrealMCP::FMCPResponse FCompareBlueprintMergeStructureTool::Execute(const Unrea
         if (Total++ < Offset || Rows.Num() >= Limit) continue;
         TArray<TSharedPtr<FJsonValue>> Cells;
         Cells.Add(MakeShared<FJsonValueString>(Key));
-        for (int32 Index = 0; Index < 3; ++Index)
+        for (int32 Index = 0; Index < SideCount; ++Index)
         {
             if (Values[Index]) Cells.Add(MakeShared<FJsonValueString>(*Values[Index]));
             else Cells.Add(MakeShared<FJsonValueNull>());
         }
-        Cells.Add(MakeShared<FJsonValueBoolean>(!Equal(Values[0], Values[1]) && !Equal(Values[0], Values[2]) && !Equal(Values[1], Values[2])));
+        if (!bCompareSnapshots) Cells.Add(MakeShared<FJsonValueBoolean>(!Equal(Values[0], Values[1]) && !Equal(Values[0], Values[2]) && !Equal(Values[1], Values[2])));
         if (bCompact)
         {
             Rows.Add(MakeShared<FJsonValueArray>(MoveTemp(Cells)));
@@ -697,8 +947,8 @@ UnrealMCP::FMCPResponse FCompareBlueprintMergeStructureTool::Execute(const Unrea
         {
             auto Row = MakeShared<FJsonObject>();
             Row->SetField(TEXT("identity"), Cells[0]);
-            for (int32 Index = 0; Index < 3; ++Index) Row->SetField(Sides[Index], Cells[Index + 1]);
-            Row->SetField(TEXT("overlapCandidate"), Cells[4]);
+            for (int32 Index = 0; Index < SideCount; ++Index) Row->SetField(Labels[Index], Cells[Index + 1]);
+            if (!bCompareSnapshots) Row->SetField(TEXT("overlapCandidate"), Cells[4]);
             Rows.Add(MakeShared<FJsonValueObject>(Row));
         }
     }
@@ -712,26 +962,37 @@ UnrealMCP::FMCPResponse FCompareBlueprintMergeStructureTool::Execute(const Unrea
     auto Stages = MakeShared<FJsonObject>();
     auto Defaults = MakeShared<FJsonObject>();
     auto References = MakeShared<FJsonObject>();
-    for (int32 Index = 0; Index < 3; ++Index)
+    for (int32 Index = 0; Index < SideCount; ++Index)
     {
         auto State = MakeShared<FJsonObject>();
         State->SetStringField(TEXT("path"), StagePaths[Index]);
+        if (bCompareSnapshots)
+        {
+            State->SetStringField(TEXT("source"), SnapshotSources[Index]);
+            if (!SnapshotCommits[Index].IsEmpty()) State->SetStringField(TEXT("commit"), SnapshotCommits[Index]);
+        }
         State->SetStringField(TEXT("state"), Ids[Index].IsEmpty() ? TEXT("absent") : SideErrors[Index].IsEmpty() ? TEXT("loaded") : TEXT("unreadable"));
         if (!SideErrors[Index].IsEmpty()) State->SetStringField(TEXT("error"), SideErrors[Index]);
+        if (!Recovered[Index].IsEmpty())
+        {
+            TArray<TSharedPtr<FJsonValue>> Names;
+            for (const FString& Dependency : Recovered[Index]) Names.Add(MakeShared<FJsonValueString>(Dependency));
+            State->SetArrayField(TEXT("recoveredHistoricalDependencies"), Names);
+        }
         if (!Missing[Index].IsEmpty())
         {
             TArray<TSharedPtr<FJsonValue>> Names;
             for (const FString& Dependency : Missing[Index]) Names.Add(MakeShared<FJsonValueString>(Dependency));
             State->SetArrayField(TEXT("missingDependencies"), Names);
         }
-        StageStates->SetObjectField(Sides[Index], State);
-        Stages->SetField(Sides[Index], Ids[Index].IsEmpty() ? TSharedPtr<FJsonValue>(MakeShared<FJsonValueNull>())
+        StageStates->SetObjectField(Labels[Index], State);
+        Stages->SetField(Labels[Index], Ids[Index].IsEmpty() ? TSharedPtr<FJsonValue>(MakeShared<FJsonValueNull>())
             : TSharedPtr<FJsonValue>(MakeShared<FJsonValueString>(Ids[Index])));
-        Defaults->SetBoolField(Sides[Index], HasDefaults[Index]);
-        References->SetBoolField(Sides[Index], HasReferences[Index]);
+        Defaults->SetBoolField(Labels[Index], HasDefaults[Index]);
+        References->SetBoolField(Labels[Index], HasReferences[Index]);
     }
-    Result->SetObjectField(TEXT("stageBlobs"), Stages);
-    Result->SetObjectField(TEXT("stageStates"), StageStates);
+    Result->SetObjectField(bCompareSnapshots ? TEXT("snapshotIds") : TEXT("stageBlobs"), Stages);
+    Result->SetObjectField(bCompareSnapshots ? TEXT("snapshotStates") : TEXT("stageStates"), StageStates);
     Result->SetBoolField(TEXT("evidenceComplete"), bReadable && bCompareDefaults && bCompareReferences);
     Result->SetBoolField(TEXT("requiresExplicitResolution"), bAsymmetric || bRenamed || !bCompareDefaults || !bCompareReferences);
     Result->SetObjectField(TEXT("classDefaultsAvailable"), Defaults);
@@ -739,9 +1000,27 @@ UnrealMCP::FMCPResponse FCompareBlueprintMergeStructureTool::Execute(const Unrea
     Result->SetObjectField(TEXT("directReferencesAvailable"), References);
     Result->SetBoolField(TEXT("directReferencesCompared"), bCompareReferences);
     Result->SetBoolField(TEXT("graphBodiesCompared"), bIncludeGraphBodies);
+    if (GraphScope.IsValid())
+    {
+        auto Views = MakeShared<FJsonObject>();
+        for (int32 Index = 0; Index < SideCount; ++Index)
+        {
+            if (!GraphViews[Index])
+            {
+                GraphViews[Index] = MakeShared<FJsonObject>();
+                GraphViews[Index]->SetStringField(TEXT("state"), Ids[Index].IsEmpty() ? TEXT("stage_absent") : TEXT("stage_unreadable"));
+            }
+            Views->SetObjectField(Labels[Index], GraphViews[Index]);
+        }
+        Result->SetObjectField(TEXT("graphViews"), Views);
+        Result->SetStringField(TEXT("graphGuid"), GraphScope.ToString(EGuidFormats::DigitsWithHyphensLower));
+    }
     Result->SetStringField(TEXT("stageRevision"), Revision);
     Result->SetStringField(TEXT("path"), Path);
-    if (bCompact)
+    if (bCompact && bCompareSnapshots)
+        Result->SetArrayField(TEXT("columns"), {MakeShared<FJsonValueString>(TEXT("identity")),
+            MakeShared<FJsonValueString>(Labels[0]), MakeShared<FJsonValueString>(Labels[1])});
+    else if (bCompact)
         Result->SetArrayField(TEXT("columns"), {MakeShared<FJsonValueString>(TEXT("identity")),
             MakeShared<FJsonValueString>(Sides[0]), MakeShared<FJsonValueString>(Sides[1]), MakeShared<FJsonValueString>(Sides[2]),
             MakeShared<FJsonValueString>(TEXT("overlapCandidate"))});
@@ -753,7 +1032,7 @@ UnrealMCP::FMCPResponse FCompareBlueprintMergeStructureTool::Execute(const Unrea
         Result->SetNumberField(TEXT("nextOffset"), Next);
         Result->SetStringField(TEXT("nextCursor"), FString::FromInt(Next) + TEXT(":") + EvidenceRevision);
     }
-    Result->SetStringField(TEXT("coverage"), TEXT("Declarations, function signatures and locals, editable asset/class settings and defaults, parent/interfaces, SCS and component overrides, and direct hard/soft package references when available. Optional graph rows include nodes, pins, links, editable fields and common K2 references. Historical dependencies resolve from the active project. Native/custom serialized state, dependency closure and runtime behavior are outside coverage."));
+    Result->SetStringField(TEXT("coverage"), TEXT("Declarations, function signatures and locals, editable asset/class settings and defaults, parent/interfaces, SCS and component overrides, and direct hard/soft package references when available. Optional graph rows include nodes, pins, links, editable fields and common K2 references. Available dependencies resolve from the active project. Missing project packages may be recovered from verified stage commits. Native/custom serialized state, dependency closure and runtime behavior are outside coverage."));
     FMCPResponse Response;
     Response.Id = Request.Id;
     Response.Result = Result;
@@ -773,8 +1052,23 @@ TSharedPtr<FJsonObject> FCompareBlueprintMergeStructureTool::BuildInputSchema() 
     for (const TCHAR* Side : Sides) SidePaths->SetObjectField(Side, BuildStringProperty(TEXT("Exact project-relative path of this unmerged Git stage.")));
     Paths->SetObjectField(TEXT("properties"), SidePaths);
     Paths->SetBoolField(TEXT("additionalProperties"), false);
-    Properties->SetObjectField(TEXT("stagePaths"), Paths);
+    if (bCompareSnapshots)
+    {
+        auto Endpoint = MakeShared<FJsonObject>();
+        Endpoint->SetStringField(TEXT("type"), TEXT("object"));
+        auto Fields = MakeShared<FJsonObject>();
+        Fields->SetObjectField(TEXT("source"), BuildStringProperty(TEXT("head, index (stage 0), worktree (saved file), or commit.")));
+        Fields->SetObjectField(TEXT("path"), BuildStringProperty(TEXT("Optional project-relative path override, including the historical name after a rename.")));
+        Fields->SetObjectField(TEXT("commit"), BuildStringProperty(TEXT("Full locally available commit hash for source commit.")));
+        Endpoint->SetObjectField(TEXT("properties"), Fields);
+        Endpoint->SetArrayField(TEXT("required"), {MakeShared<FJsonValueString>(TEXT("source"))});
+        Properties->SetObjectField(TEXT("before"), Endpoint);
+        Properties->SetObjectField(TEXT("after"), Endpoint);
+    }
+    else Properties->SetObjectField(TEXT("stagePaths"), Paths);
     Properties->SetObjectField(TEXT("expectedStageRevision"), BuildStringProperty(TEXT("Stage revision returned on the first page; required when offset is nonzero.")));
+    Properties->SetObjectField(TEXT("graphGuid"), BuildStringProperty(TEXT("Compare only this exact graph and return bounded named execution links for each stage.")));
+    Properties->SetObjectField(TEXT("focusNodeGuid"), BuildStringProperty(TEXT("With graphGuid, return exact incoming and outgoing execution and data links for this node on each side.")));
     Properties->SetObjectField(TEXT("includeGraphBodies"), BuildBoolProperty(TEXT("Defaults false. Include graph nodes, pins, links, editable fields and common K2 references. Keep this setting unchanged between pages.")));
     auto OutputMode = BuildStringProperty(TEXT("compact (default): rows are arrays in columns order, with null for absent values. full: each row is an object."));
     OutputMode->SetArrayField(TEXT("enum"), {MakeShared<FJsonValueString>(TEXT("compact")), MakeShared<FJsonValueString>(TEXT("full"))});
@@ -788,7 +1082,13 @@ TSharedPtr<FJsonObject> FCompareBlueprintMergeStructureTool::BuildInputSchema() 
     }
     Schema->SetStringField(TEXT("type"), TEXT("object"));
     Schema->SetObjectField(TEXT("properties"), Properties);
-    Schema->SetArrayField(TEXT("required"), {MakeShared<FJsonValueString>(TEXT("path"))});
+    TArray<TSharedPtr<FJsonValue>> Required = {MakeShared<FJsonValueString>(TEXT("path"))};
+    if (bCompareSnapshots)
+    {
+        Required.Add(MakeShared<FJsonValueString>(TEXT("before")));
+        Required.Add(MakeShared<FJsonValueString>(TEXT("after")));
+    }
+    Schema->SetArrayField(TEXT("required"), Required);
     return Schema;
 }
 
@@ -1218,7 +1518,7 @@ FUnrealMCPGitHistoryTool::FUnrealMCPGitHistoryTool(EOperation InOperation)
     : FMCPToolBase(InOperation == EOperation::History ? TEXT("GetGitCommitHistory")
         : InOperation == EOperation::Changes ? TEXT("GetGitCommitChanges") : TEXT("InspectBlueprintCommit"),
         InOperation == EOperation::History ? TEXT("Page recent commits in the selected project, optionally filtered by file.")
-        : InOperation == EOperation::Changes ? TEXT("Page files changed by one exact Git commit and optionally read a bounded text patch for one file.")
+        : InOperation == EOperation::Changes ? TEXT("List committed, staged or tracked unstaged Git changes. Optionally return a bounded text patch for one file.")
         : TEXT("Read historical Blueprint graphs, nodes or pins from an exact Git commit without changing the working copy.")),
       Operation(InOperation)
 {
@@ -1230,13 +1530,19 @@ UnrealMCP::FMCPResponse FUnrealMCPGitHistoryTool::Execute(const UnrealMCP::FMCPR
     FString Path, Commit, GraphGuidText, NodeGuidText, PinIdText;
     int32 Offset = 0, Limit = 25, ParentIndex = 1, PatchOffset = 0;
     bool bIncludePatch = false;
+    FString Source = TEXT("commit"), BaseCommit;
     const auto& Params = Request.Params;
     const bool bHistory = Operation == EOperation::History;
     const bool bChanges = Operation == EOperation::Changes;
     if (!Params.IsValid()
         || (Params->HasField(TEXT("path")) && (!Params->TryGetStringField(TEXT("path"), Path) || !SafeProjectPath(Path)))
         || (Params->HasField(TEXT("commit")) && (!Params->TryGetStringField(TEXT("commit"), Commit) || !IsGitObjectId(Commit)))
-        || (!bHistory && Commit.IsEmpty())
+        || (bChanges && Params->HasField(TEXT("source")) && !Params->TryGetStringField(TEXT("source"), Source))
+        || (Source != TEXT("commit") && Source != TEXT("staged") && Source != TEXT("unstaged"))
+        || (bChanges && Params->HasField(TEXT("baseCommit")) && (!Params->TryGetStringField(TEXT("baseCommit"), BaseCommit) || !IsGitObjectId(BaseCommit)))
+        || (!bHistory && Source == TEXT("commit") && Commit.IsEmpty())
+        || (Source != TEXT("commit") && (!Commit.IsEmpty() || !BaseCommit.IsEmpty() || Params->HasField(TEXT("parentIndex"))))
+        || (!BaseCommit.IsEmpty() && Params->HasField(TEXT("parentIndex")))
         || (Params->HasField(TEXT("offset")) && !Params->TryGetNumberField(TEXT("offset"), Offset))
         || (Params->HasField(TEXT("limit")) && !Params->TryGetNumberField(TEXT("limit"), Limit))
         || Offset < 0 || Offset > MAX_int32 - 101 || Limit < 1 || Limit > 100
@@ -1245,18 +1551,23 @@ UnrealMCP::FMCPResponse FUnrealMCPGitHistoryTool::Execute(const UnrealMCP::FMCPR
 
     const FString ProjectDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
     FString ResolvedCommit;
-    if (!ReadGitText(ProjectDir, TEXT("rev-parse --verify --quiet ") + (Commit.IsEmpty() ? TEXT("HEAD") : Commit)
-        + TEXT("^{commit}"), ResolvedCommit) || !IsGitObjectId(ResolvedCommit))
+    if (Source == TEXT("commit") && (!ReadGitText(ProjectDir, TEXT("rev-parse --verify --quiet ") + (Commit.IsEmpty() ? TEXT("HEAD") : Commit)
+        + TEXT("^{commit}"), ResolvedCommit) || !IsGitObjectId(ResolvedCommit)))
         return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("Git could not resolve the requested commit in this project's worktree."));
 
     auto Result = BuildBooleanResult(true);
-    Result->SetStringField(TEXT("commit"), ResolvedCommit);
+    if (!ResolvedCommit.IsEmpty()) Result->SetStringField(TEXT("commit"), ResolvedCommit);
     if (!Path.IsEmpty()) Result->SetStringField(TEXT("path"), Path);
     TArray<TSharedPtr<FJsonValue>> Rows;
+    FString DependencyMount;
     auto AddRow = [&](std::initializer_list<FString> Cells)
     {
         TArray<TSharedPtr<FJsonValue>> Values;
-        for (const FString& Cell : Cells) Values.Add(MakeShared<FJsonValueString>(Cell));
+        for (FString Cell : Cells)
+        {
+            if (!DependencyMount.IsEmpty()) Cell.ReplaceInline(*DependencyMount, TEXT("/Game/"));
+            Values.Add(MakeShared<FJsonValueString>(MoveTemp(Cell)));
+        }
         Rows.Add(MakeShared<FJsonValueArray>(MoveTemp(Values)));
     };
     auto Columns = [&](std::initializer_list<const TCHAR*> Names)
@@ -1286,21 +1597,41 @@ UnrealMCP::FMCPResponse FUnrealMCPGitHistoryTool::Execute(const UnrealMCP::FMCPR
             || (Params->HasField(TEXT("patchOffset")) && !Params->TryGetNumberField(TEXT("patchOffset"), PatchOffset))
             || ParentIndex < 1 || PatchOffset < 0 || (bIncludePatch && Path.IsEmpty()))
             return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("Use a positive parentIndex, nonnegative patchOffset, and an exact path when includePatch is true."));
-        if (!ReadGitFields(ProjectDir, TEXT("log -1 -z --format=%P%x00%aI%x00%s ") + ResolvedCommit, Fields) || Fields.Num() != 3)
-            return BuildError(Request, EMCPErrorCode::InternalError, TEXT("Git commit metadata could not be read."));
-        TArray<FString> Parents;
-        Fields[0].ParseIntoArrayWS(Parents);
-        if (ParentIndex > FMath::Max(1, Parents.Num()))
-            return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("parentIndex exceeds the commit's parent count."));
-        const FString Parent = Parents.IsEmpty() ? FString() : Parents[ParentIndex - 1];
-        if (!Parent.IsEmpty() && !IsGitObjectId(Parent))
-            return BuildError(Request, EMCPErrorCode::InternalError, TEXT("Git returned an invalid parent commit ID."));
-        Result->SetStringField(TEXT("parent"), Parent);
-        Result->SetNumberField(TEXT("parentCount"), Parents.Num());
-        Result->SetStringField(TEXT("authoredAt"), Fields[1]);
-        Result->SetStringField(TEXT("subject"), Fields[2]);
-        const FString Diff = TEXT("--literal-pathspecs diff-tree --root -r --relative --no-commit-id --no-ext-diff --no-textconv -M ");
-        const FString Revisions = Parent.IsEmpty() ? ResolvedCommit : Parent + TEXT(" ") + ResolvedCommit;
+        Result->SetStringField(TEXT("source"), Source);
+        const FString DiffOptions = TEXT(" --relative --no-ext-diff --no-textconv -M ");
+        FString Diff = TEXT("--literal-pathspecs diff") + DiffOptions;
+        FString Revisions;
+        if (Source == TEXT("staged"))
+        {
+            Diff += TEXT("--cached ");
+        }
+        else if (!BaseCommit.IsEmpty())
+        {
+            FString ResolvedBase;
+            if (!ReadGitText(ProjectDir, TEXT("rev-parse --verify --quiet ") + BaseCommit + TEXT("^{commit}"), ResolvedBase)
+                || !IsGitObjectId(ResolvedBase))
+                return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("Git could not resolve baseCommit."));
+            Result->SetStringField(TEXT("baseCommit"), ResolvedBase);
+            Revisions = ResolvedBase + TEXT(" ") + ResolvedCommit;
+        }
+        else if (Source == TEXT("commit"))
+        {
+            if (!ReadGitFields(ProjectDir, TEXT("log -1 -z --format=%P%x00%aI%x00%s ") + ResolvedCommit, Fields) || Fields.Num() != 3)
+                return BuildError(Request, EMCPErrorCode::InternalError, TEXT("Git commit metadata could not be read."));
+            TArray<FString> Parents;
+            Fields[0].ParseIntoArrayWS(Parents);
+            if (ParentIndex > FMath::Max(1, Parents.Num()))
+                return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("parentIndex exceeds the commit's parent count."));
+            const FString Parent = Parents.IsEmpty() ? FString() : Parents[ParentIndex - 1];
+            if (!Parent.IsEmpty() && !IsGitObjectId(Parent))
+                return BuildError(Request, EMCPErrorCode::InternalError, TEXT("Git returned an invalid parent commit ID."));
+            Result->SetStringField(TEXT("parent"), Parent);
+            Result->SetNumberField(TEXT("parentCount"), Parents.Num());
+            Result->SetStringField(TEXT("authoredAt"), Fields[1]);
+            Result->SetStringField(TEXT("subject"), Fields[2]);
+            Diff = TEXT("--literal-pathspecs diff-tree --root -r --no-commit-id") + DiffOptions;
+            Revisions = Parent.IsEmpty() ? ResolvedCommit : Parent + TEXT(" ") + ResolvedCommit;
+        }
         Fields.Reset();
         if (!ReadGitFields(ProjectDir, Diff + TEXT("--name-status -z ") + Revisions + TEXT(" -- ."), Fields))
             return BuildError(Request, EMCPErrorCode::InternalError, TEXT("Git file changes could not be read."));
@@ -1358,8 +1689,8 @@ UnrealMCP::FMCPResponse FUnrealMCPGitHistoryTool::Execute(const UnrealMCP::FMCPR
         if (!RunGit(ProjectDir, TEXT("cat-file blob ") + BlobId, Blob) || Blob.IsEmpty())
             return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("Historical Blueprint blob could not be read within the output limit."));
         Result->SetStringField(TEXT("blobId"), BlobId);
-        Result->SetStringField(TEXT("dependencyScope"), TEXT("active_project"));
-        TArray<FString> MissingDependencies;
+        Result->SetStringField(TEXT("dependencyScope"), TEXT("active_project_with_historical_fallback"));
+        TArray<FString> MissingDependencies, RecoveredDependencies;
         if (!BlueprintToolUtils::ExecuteOnGameThreadSync([&](FString& OutError)
         {
             return WithHistoricalBlueprint(ProjectDir, Path, Blob, [&](UBlueprint* Blueprint)
@@ -1445,7 +1776,7 @@ UnrealMCP::FMCPResponse FUnrealMCPGitHistoryTool::Execute(const UnrealMCP::FMCPR
                 bHasMore = Offset + Rows.Num() < Total;
                 Result->SetNumberField(TEXT("total"), Total);
                 return true;
-            }, OutError, &MissingDependencies);
+            }, OutError, &MissingDependencies, ResolvedCommit, &RecoveredDependencies, &DependencyMount);
         }, Error))
         {
             Result->SetBoolField(TEXT("success"), false);
@@ -1455,6 +1786,9 @@ UnrealMCP::FMCPResponse FUnrealMCPGitHistoryTool::Execute(const UnrealMCP::FMCPR
             if (!Dependencies.IsEmpty()) Result->SetArrayField(TEXT("missingDependencies"), Dependencies);
             return BuildError(Request, EMCPErrorCode::InvalidParams, Error, Result);
         }
+        TArray<TSharedPtr<FJsonValue>> RecoveredNames;
+        for (const FString& Dependency : RecoveredDependencies) RecoveredNames.Add(MakeShared<FJsonValueString>(Dependency));
+        if (!RecoveredNames.IsEmpty()) Result->SetArrayField(TEXT("recoveredHistoricalDependencies"), RecoveredNames);
         Result->SetBoolField(TEXT("evidenceComplete"), true);
     }
     Result->SetArrayField(TEXT("rows"), Rows);
@@ -1490,6 +1824,8 @@ TSharedPtr<FJsonObject> FUnrealMCPGitHistoryTool::BuildInputSchema() const
     Integer(TEXT("limit"), TEXT("Rows per page, default 25, max 100."));
     if (Operation == EOperation::Changes)
     {
+        Properties->SetObjectField(TEXT("source"), BuildStringProperty(TEXT("commit (default): commit comparison; staged: index vs HEAD; unstaged: tracked worktree vs index.")));
+        Properties->SetObjectField(TEXT("baseCommit"), BuildStringProperty(TEXT("Optional full base commit hash for comparing two commits. Omit to compare with the selected parent.")));
         Integer(TEXT("parentIndex"), TEXT("One-based parent selector for merge commits; defaults to 1."));
         Integer(TEXT("patchOffset"), TEXT("Text patch offset from nextPatchOffset."));
         Properties->SetObjectField(TEXT("includePatch"), BuildBoolProperty(TEXT("Return up to 8,000 characters of patch text for the exact path. Binary files return Git's binary diff marker.")));
@@ -1501,7 +1837,7 @@ TSharedPtr<FJsonObject> FUnrealMCPGitHistoryTool::BuildInputSchema() const
         Properties->SetObjectField(TEXT("pinId"), BuildStringProperty(TEXT("Provide with graphGuid and nodeGuid to page all linked endpoints of one historical pin.")));
     }
     TArray<TSharedPtr<FJsonValue>> Required;
-    if (!bHistory) Required.Add(MakeShared<FJsonValueString>(TEXT("commit")));
+    if (bGraph) Required.Add(MakeShared<FJsonValueString>(TEXT("commit")));
     if (bGraph) Required.Add(MakeShared<FJsonValueString>(TEXT("path")));
     Schema->SetArrayField(TEXT("required"), Required);
     Schema->SetObjectField(TEXT("properties"), Properties);

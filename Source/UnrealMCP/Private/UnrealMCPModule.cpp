@@ -354,6 +354,7 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FCompileBlueprintTool>());
     Registry.RegisterTool(MakeShared<FFindClassUsagesTool>());
     Registry.RegisterTool(MakeShared<FCompareBlueprintMergeStructureTool>());
+    Registry.RegisterTool(MakeShared<FCompareBlueprintMergeStructureTool>(true));
     Registry.RegisterTool(MakeShared<FCompareBlueprintGraphPreservationTool>());
     Registry.RegisterTool(MakeShared<FApplyBlueprintMergePlanTool>());
     Registry.RegisterTool(MakeShared<FBlueprintGitConflictTool>(false));

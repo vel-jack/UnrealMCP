@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "capturedUtc": "2026-11-24T02:51:32.5631419Z",
+  "capturedUtc": "2026-11-24T07:24:45.1880575Z",
   "tools": [
     {
       "name": "AddBlueprintArrayOperationNode",
@@ -2164,6 +2164,37 @@
                 "type"
               ]
             }
+          },
+          "collapse": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Unique collapsed graph name containing letters, digits or underscores."
+              },
+              "nodeIds": {
+                "type": "array",
+                "maxItems": 64,
+                "items": {
+                  "type": "string",
+                  "description": "ID of a new node from this patch."
+                }
+              }
+            },
+            "required": [
+              "name",
+              "nodeIds"
+            ],
+            "description": "Group selected new nodes behind generated boundary pins in the same transaction. Requires expectedGraphRevision."
+          },
+          "removeNodeGuids": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "type": "string",
+              "description": "Exact GUID of a deletable node."
+            },
+            "description": "Remove these nodes before rewiring. Requires expectedGraphRevision. Use nodes: [] for removal-only patches."
           }
         },
         "required": [
@@ -2774,6 +2805,100 @@
       }
     },
     {
+      "name": "CompareBlueprintGitSnapshots",
+      "description": "Compare Blueprint declarations, defaults, components, nodes and wiring between two Git or saved worktree snapshots.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Project-relative Blueprint file path under Content, using forward slashes."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pass nextCursor with the same path, stagePaths and graph scope. Replaces offset and verifies unchanged comparison evidence."
+          },
+          "before": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "description": "head, index (stage 0), worktree (saved file), or commit."
+              },
+              "path": {
+                "type": "string",
+                "description": "Optional project-relative path override, including the historical name after a rename."
+              },
+              "commit": {
+                "type": "string",
+                "description": "Full locally available commit hash for source commit."
+              }
+            },
+            "required": [
+              "source"
+            ]
+          },
+          "after": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "description": "head, index (stage 0), worktree (saved file), or commit."
+              },
+              "path": {
+                "type": "string",
+                "description": "Optional project-relative path override, including the historical name after a rename."
+              },
+              "commit": {
+                "type": "string",
+                "description": "Full locally available commit hash for source commit."
+              }
+            },
+            "required": [
+              "source"
+            ]
+          },
+          "expectedStageRevision": {
+            "type": "string",
+            "description": "Stage revision returned on the first page; required when offset is nonzero."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Compare only this exact graph and return bounded named execution links for each stage."
+          },
+          "focusNodeGuid": {
+            "type": "string",
+            "description": "With graphGuid, return exact incoming and outgoing execution and data links for this node on each side."
+          },
+          "includeGraphBodies": {
+            "type": "boolean",
+            "description": "Defaults false. Include graph nodes, pins, links, editable fields and common K2 references. Keep this setting unchanged between pages."
+          },
+          "outputMode": {
+            "type": "string",
+            "description": "compact (default): rows are arrays in columns order, with null for absent values. full: each row is an object.",
+            "enum": [
+              "compact",
+              "full"
+            ]
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Zero-based offset; default 0."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Page size 1..200; default 50."
+          }
+        },
+        "required": [
+          "path",
+          "before",
+          "after"
+        ]
+      }
+    },
+    {
       "name": "CompareBlueprintGraphPreservation",
       "description": "Capture a bounded live Blueprint wiring snapshot or compare it against an earlier snapshot. Reports exact edits, normalized input sources and cache timing to review.",
       "inputSchema": {
@@ -2834,6 +2959,14 @@
           "expectedStageRevision": {
             "type": "string",
             "description": "Stage revision returned on the first page; required when offset is nonzero."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Compare only this exact graph and return bounded named execution links for each stage."
+          },
+          "focusNodeGuid": {
+            "type": "string",
+            "description": "With graphGuid, return exact incoming and outgoing execution and data links for this node on each side."
           },
           "includeGraphBodies": {
             "type": "boolean",
@@ -4296,12 +4429,10 @@
     },
     {
       "name": "GetGitCommitChanges",
-      "description": "Page files changed by one exact Git commit and optionally read a bounded text patch for one file.",
+      "description": "List committed, staged or tracked unstaged Git changes. Optionally return a bounded text patch for one file.",
       "inputSchema": {
         "type": "object",
-        "required": [
-          "commit"
-        ],
+        "required": [],
         "properties": {
           "commit": {
             "type": "string",
@@ -4318,6 +4449,14 @@
           "limit": {
             "type": "integer",
             "description": "Rows per page, default 25, max 100."
+          },
+          "source": {
+            "type": "string",
+            "description": "commit (default): commit comparison; staged: index vs HEAD; unstaged: tracked worktree vs index."
+          },
+          "baseCommit": {
+            "type": "string",
+            "description": "Optional full base commit hash for comparing two commits. Omit to compare with the selected parent."
           },
           "parentIndex": {
             "type": "integer",
@@ -7706,6 +7845,37 @@
                     "type"
                   ]
                 }
+              },
+              "collapse": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Unique collapsed graph name containing letters, digits or underscores."
+                  },
+                  "nodeIds": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "items": {
+                      "type": "string",
+                      "description": "ID of a new node from this patch."
+                    }
+                  }
+                },
+                "required": [
+                  "name",
+                  "nodeIds"
+                ],
+                "description": "Group selected new nodes behind generated boundary pins in the same transaction. Requires expectedGraphRevision."
+              },
+              "removeNodeGuids": {
+                "type": "array",
+                "maxItems": 64,
+                "items": {
+                  "type": "string",
+                  "description": "Exact GUID of a deletable node."
+                },
+                "description": "Remove these nodes before rewiring. Requires expectedGraphRevision. Use nodes: [] for removal-only patches."
               },
               "format": {
                 "type": "string",

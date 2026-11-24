@@ -5,11 +5,14 @@
 class FCompareBlueprintMergeStructureTool final : public FMCPToolBase
 {
 public:
-    FCompareBlueprintMergeStructureTool();
+    explicit FCompareBlueprintMergeStructureTool(bool bCompareSnapshots = false);
     UnrealMCP::FMCPResponse Execute(const UnrealMCP::FMCPRequest& Request) const override;
 
 protected:
     TSharedPtr<FJsonObject> BuildInputSchema() const override;
+
+private:
+    bool bCompareSnapshots;
 };
 
 class FUnrealMCPGitHistoryTool final : public FMCPToolBase

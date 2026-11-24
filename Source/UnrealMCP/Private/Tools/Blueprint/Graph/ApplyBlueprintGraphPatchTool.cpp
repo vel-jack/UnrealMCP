@@ -3,12 +3,14 @@
 #include "MCP/MutationRequestTracker.h"
 
 #include "Dom/JsonObject.h"
+#include "Algo/AllOf.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraphSchema_K2.h"
 #include "Editor.h"
 #include "EdGraphNode_Comment.h"
 #include "Engine/Blueprint.h"
 #include "K2Node_CallFunction.h"
+#include "K2Node_Composite.h"
 #include "K2Node_CallArrayFunction.h"
 #include "Kismet/KismetArrayLibrary.h"
 #include "K2Node_IfThenElse.h"
@@ -442,6 +444,90 @@ namespace
         return nullptr;
     }
 
+    bool CollapsePatchNodes(UEdGraph* Graph, const TArray<UEdGraphNode*>& Nodes, const FString& GraphName,
+        const FGuid& Guid, TSharedPtr<FJsonObject>& Receipt, FString& Error)
+    {
+        using namespace UnrealMCP::BlueprintGraphEditToolUtils;
+        TSet<const UEdGraphNode*> Selection;
+        for (const UEdGraphNode* Node : Nodes) Selection.Add(Node);
+        struct FBoundary
+        {
+            UEdGraphPin* Internal;
+            TArray<UEdGraphPin*> External;
+        };
+        TArray<FBoundary> Boundaries;
+        for (UEdGraphNode* Node : Nodes)
+            for (UEdGraphPin* Pin : Node->Pins)
+            {
+                if (!Pin) continue;
+                FBoundary Boundary{Pin, {}};
+                for (UEdGraphPin* Linked : Pin->LinkedTo)
+                {
+                    UEdGraphNode* Owner = Linked ? Linked->GetOwningNodeUnchecked() : nullptr;
+                    if (!Owner || Selection.Contains(Owner)) continue;
+                    if (Owner->GetGraph() != Graph || Pin->bOrphanedPin || Pin->ParentPin
+                        || !Pin->SubPins.IsEmpty() || IsWildcardPin(Pin))
+                    {
+                        Error = TEXT("Collapsed graph boundary contains a cross-graph, split, orphaned, or unresolved pin.");
+                        return false;
+                    }
+                    Boundary.External.Add(Linked);
+                }
+                if (!Boundary.External.IsEmpty()) Boundaries.Add(MoveTemp(Boundary));
+            }
+        auto* Composite = NewObject<UK2Node_Composite>(Graph);
+        FPlacement Placement;
+        Placement.X = Nodes[0]->NodePosX;
+        Placement.Y = Nodes[0]->NodePosY;
+        Graph->Modify();
+        PlaceNewNode(Graph, Composite, Placement);
+        Composite->NodeGuid = Guid;
+        Composite->OnRenameNode(GraphName);
+        UEdGraph* Body = Composite->BoundGraph;
+        Body->Modify();
+        for (UEdGraphNode* Node : Nodes)
+        {
+            Node->Modify();
+            if (!Node->Rename(nullptr, Body, REN_DontCreateRedirectors))
+            { Error = TEXT("Could not move a node into the collapsed graph."); return false; }
+            Graph->Nodes.Remove(Node);
+            Body->Nodes.Add(Node);
+        }
+
+        TArray<TSharedPtr<FJsonValue>> Ports;
+        for (const FBoundary& Boundary : Boundaries)
+        {
+            UEdGraphPin* Internal = Boundary.Internal;
+            const auto Direction = Internal->Direction;
+            const FName PortName = Composite->CreateUniquePinName(Internal->PinName);
+            auto* Tunnel = Direction == EGPD_Input ? Composite->GetEntryNode() : Composite->GetExitNode();
+            Tunnel->Modify();
+            UEdGraphPin* Outer = Composite->CreatePin(Direction, Internal->PinType, PortName);
+            UEdGraphPin* Inner = Tunnel->CreateUserDefinedPin(PortName, Internal->PinType,
+                UEdGraphPin::GetComplementaryDirection(Direction));
+            if (!Outer || !Inner) { Error = TEXT("Could not create collapsed graph boundary pins."); return false; }
+            for (UEdGraphPin* External : Boundary.External)
+            {
+                External->GetOwningNode()->Modify();
+                Internal->BreakLinkTo(External);
+                Outer->MakeLinkTo(External);
+            }
+            Internal->MakeLinkTo(Inner);
+            auto Port = MakeShared<FJsonObject>();
+            Port->SetStringField(TEXT("name"), Outer->PinName.ToString());
+            Port->SetStringField(TEXT("direction"), Direction == EGPD_Input ? TEXT("input") : TEXT("output"));
+            Port->SetStringField(TEXT("internalNodeGuid"), GetNodeGuid(Internal->GetOwningNode()));
+            Port->SetStringField(TEXT("internalPin"), Internal->PinName.ToString());
+            Port->SetNumberField(TEXT("externalLinkCount"), Boundary.External.Num());
+            Ports.Add(MakeShared<FJsonValueObject>(Port));
+        }
+        Receipt = MakeShared<FJsonObject>();
+        Receipt->SetStringField(TEXT("graphName"), Body->GetName());
+        Receipt->SetStringField(TEXT("nodeGuid"), GetNodeGuid(Composite));
+        Receipt->SetArrayField(TEXT("ports"), Ports);
+        return true;
+    }
+
     bool ApplyDefaults(FPatchNode& Spec, UEdGraphNode* Node, const UEdGraphSchema_K2* Schema, bool bExisting, FString& Error)
     {
         if (Spec.bHasTolerance)
@@ -510,6 +596,7 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
     const TArray<TSharedPtr<FJsonValue>>* DisconnectionValues = nullptr;
     const TArray<TSharedPtr<FJsonValue>>* SpliceValues = nullptr;
     const TArray<TSharedPtr<FJsonValue>>* LocalValues = nullptr;
+    const TArray<TSharedPtr<FJsonValue>>* RemoveValues = nullptr;
     if (!Request.Params.IsValid()
         || !Request.Params->TryGetStringField(TEXT("objectPath"), ObjectPath)
         || !Request.Params->TryGetStringField(TEXT("patchId"), PatchId)
@@ -532,8 +619,43 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
     if (Request.Params->HasField(TEXT("locals"))
         && (!Request.Params->TryGetArrayField(TEXT("locals"), LocalValues) || LocalValues->Num() > 64))
         return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("locals must be an array of at most 64 declarations."));
-    if (NodeValues->IsEmpty() && (!LocalValues || LocalValues->IsEmpty()))
-        return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("Provide nodes or local declarations."));
+    if (Request.Params->HasField(TEXT("removeNodeGuids"))
+        && (!Request.Params->TryGetArrayField(TEXT("removeNodeGuids"), RemoveValues) || RemoveValues->Num() > 64))
+        return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("removeNodeGuids must be an array of at most 64 exact GUIDs."));
+    TSet<FGuid> RemovalGuids;
+    if (RemoveValues) for (const auto& Value : *RemoveValues)
+    {
+        FString Text;
+        FGuid Guid;
+        if (!Value->TryGetString(Text) || !FGuid::Parse(Text, Guid) || !Guid.IsValid() || RemovalGuids.Contains(Guid))
+            return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("Removal GUIDs must be valid and unique."));
+        RemovalGuids.Add(Guid);
+    }
+    if (!RemovalGuids.IsEmpty() && ExpectedRevision.IsEmpty())
+        return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("Node removal requires expectedGraphRevision."));
+    if (NodeValues->IsEmpty() && (!LocalValues || LocalValues->IsEmpty()) && RemovalGuids.IsEmpty())
+        return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("Provide nodes, local declarations, or removals."));
+
+    FString CollapseName;
+    TArray<FString> CollapseIds;
+    if (Request.Params->HasField(TEXT("collapse")))
+    {
+        const TSharedPtr<FJsonObject>* Collapse = nullptr;
+        const TArray<TSharedPtr<FJsonValue>>* IdValues = nullptr;
+        if (!Request.Params->TryGetObjectField(TEXT("collapse"), Collapse)
+            || !(*Collapse)->TryGetStringField(TEXT("name"), CollapseName) || CollapseName.IsEmpty() || CollapseName.Len() > 64
+            || !Algo::AllOf(CollapseName, [](TCHAR Ch) { return FChar::IsAlnum(Ch) || Ch == TEXT('_'); })
+            || !(*Collapse)->TryGetArrayField(TEXT("nodeIds"), IdValues) || IdValues->IsEmpty() || IdValues->Num() > 64
+            || ExpectedRevision.IsEmpty())
+            return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("collapse requires expectedGraphRevision, a graph name, and 1..64 new node IDs."));
+        for (const auto& Value : *IdValues)
+        {
+            FString Id;
+            if (!Value->TryGetString(Id) || Id.IsEmpty() || CollapseIds.Contains(Id))
+                return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("Collapse node IDs must be unique nonempty strings."));
+            CollapseIds.Add(Id);
+        }
+    }
 
     TArray<FPatchNode> Nodes; TSet<FString> NodeIds;
     for (int32 Index = 0; Index < NodeValues->Num(); ++Index)
@@ -595,6 +717,8 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
     bool bChanged = false, bCompiled = false, bCompileSucceeded = false, bSaved = false, bIndexRefreshed = false, bRolledBack = false;
     int32 CompileErrors = 0, CompileWarnings = 0;
     TArray<TSharedPtr<FJsonValue>> LocatedErrors, LocatedWarnings;
+    TArray<TSharedPtr<FJsonValue>> RemovalResults;
+    TSharedPtr<FJsonObject> CollapseResult;
 
     FMutationRequestTracker::Get().Update(OperationId, EMutationRequestState::Preflighting,
         TEXT("Resolving the target graph and simulating the complete patch."));
@@ -620,6 +744,37 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
         if (!ExpectedRevision.IsEmpty() && !ExpectedRevision.Equals(InitialRevision, ESearchCase::IgnoreCase))
         { Error = FString::Printf(TEXT("Graph revision mismatch. expected=%s current=%s"), *ExpectedRevision, *InitialRevision); return false; }
 
+        TArray<UEdGraphNode*> Removals;
+        for (const FGuid& Guid : RemovalGuids)
+        {
+            UEdGraphNode* Node = FindNodeByGuid(Graph, Guid);
+            if (!Node || !Node->CanUserDeleteNode() || !Node->GetSubGraphs().IsEmpty())
+            {
+                Error = TEXT("Removal target is missing, protected, or owns a nested graph: ") + Guid.ToString();
+                return false;
+            }
+            Removals.Add(Node);
+            auto Item = MakeShared<FJsonObject>();
+            Item->SetStringField(TEXT("nodeGuid"), BlueprintGraphEditToolUtils::GetNodeGuid(Node));
+            Item->SetStringField(TEXT("nodeTitle"), Node->GetNodeTitle(ENodeTitleType::ListView).ToString());
+            TArray<TSharedPtr<FJsonValue>> Links;
+            for (const UEdGraphPin* Pin : Node->Pins)
+                if (Pin) for (const UEdGraphPin* Linked : Pin->LinkedTo)
+                {
+                    const UEdGraphNode* Other = Linked ? Linked->GetOwningNodeUnchecked() : nullptr;
+                    if (!Other) continue;
+                    auto Link = MakeShared<FJsonObject>();
+                    Link->SetStringField(TEXT("pinName"), Pin->PinName.ToString());
+                    Link->SetStringField(TEXT("pinId"), BlueprintGraphEditToolUtils::GetPinId(Pin));
+                    Link->SetStringField(TEXT("otherNodeGuid"), BlueprintGraphEditToolUtils::GetNodeGuid(Other));
+                    Link->SetStringField(TEXT("otherPinName"), Linked->PinName.ToString());
+                    Link->SetStringField(TEXT("otherPinId"), BlueprintGraphEditToolUtils::GetPinId(Linked));
+                    Links.Add(MakeShared<FJsonValueObject>(Link));
+                }
+            Item->SetArrayField(TEXT("disconnectedLinks"), Links);
+            RemovalResults.Add(MakeShared<FJsonValueObject>(Item));
+        }
+
         // Preflight on a transient duplicate so TryCreateConnection can reproduce K2 wildcard
         // specialization and connection-order effects without touching the live graph.
         UBlueprint* PreviewBlueprint = NewObject<UBlueprint>(GetTransientPackage(), NAME_None, RF_Transient);
@@ -633,6 +788,12 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
         SimulationGraph->SetFlags(RF_Transient);
         if (Blueprint->FunctionGraphs.Contains(Graph)) PreviewBlueprint->FunctionGraphs.Add(SimulationGraph);
         else PreviewBlueprint->UbergraphPages.Add(SimulationGraph);
+        for (const UEdGraphNode* Node : Removals)
+        {
+            UEdGraphNode* Preview = FindNodeByGuid(SimulationGraph, Node->NodeGuid);
+            if (!Preview) { Error = TEXT("Removal target is missing in the transient graph."); return false; }
+            FBlueprintEditorUtils::RemoveNode(PreviewBlueprint, Preview, true);
+        }
         UK2Node_FunctionEntry* LiveEntry = nullptr;
         TArray<FBPVariableDescription> AddedLocals;
         if (LocalValues && !LocalValues->IsEmpty())
@@ -698,6 +859,8 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
             if (Spec.Kind.Equals(TEXT("existingNode"), ESearchCase::IgnoreCase))
             {
                 FGuid Guid; FGuid::Parse(Spec.NodeGuid, Guid); Spec.Live = FindNodeByGuid(Graph, Guid);
+                if (RemovalGuids.Contains(Guid))
+                { Error = TEXT("A node being removed cannot also be a patch anchor: ") + Spec.Id; return false; }
                 if (Spec.Live == nullptr) { Error = FString::Printf(TEXT("Existing node '%s' was not found."), *Spec.Id); return false; }
                 if ((Spec.bHasWidth || Spec.bHasHeight || Spec.bHasColor || Spec.bHasBubble) && !Spec.Live->IsA<UEdGraphNode_Comment>())
                 { Error = FString::Printf(TEXT("Node '%s' is not a comment and cannot accept comment styling."), *Spec.Id); return false; }
@@ -761,6 +924,8 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
                     if (!Probe->CanPasteHere(Graph)) { Error = TEXT("Macro is not compatible with this graph."); return false; }
                 }
                 Spec.Live = FindNodeByGuid(Graph, Spec.DeterministicGuid);
+                if (RemovalGuids.Contains(Spec.DeterministicGuid))
+                { Error = TEXT("A node being removed cannot also be reused by the patch: ") + Spec.Id; return false; }
                 if (Spec.Live != nullptr && !NodeMatches(Spec, Spec.Live))
                 { Error = FString::Printf(TEXT("Deterministic node identity collision for '%s'."), *Spec.Id); return false; }
                 Spec.bReused = Spec.Live != nullptr;
@@ -877,15 +1042,53 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
             { Error = FString::Printf(TEXT("External instance function node '%s' requires an explicit self/target connection."), *Spec.Id); return false; }
         }
 
+        FGuid CollapsedGuid;
+        if (!CollapseIds.IsEmpty())
+        {
+            TArray<UEdGraph*> ExistingGraphs;
+            Blueprint->GetAllGraphs(ExistingGraphs);
+            if (ExistingGraphs.ContainsByPredicate([&](const UEdGraph* Candidate)
+                { return Candidate && Candidate->GetFName() == FName(*CollapseName); }))
+            { Error = TEXT("The collapsed graph name is already in use."); return false; }
+            TArray<UEdGraphNode*> Selected;
+            for (const FString& Id : CollapseIds)
+            {
+                const FPatchNode* Spec = ById.FindRef(Id);
+                if (!Spec || Spec->Live || !Spec->Preview)
+                { Error = TEXT("Only newly created patch nodes can be collapsed: ") + Id; return false; }
+                Selected.Add(Spec->Preview);
+            }
+            CollapsedGuid = MakeDeterministicGuid(ObjectPath, Graph->GraphGuid, PatchId, TEXT("collapse:") + CollapseName);
+            if (FindNodeByGuid(Graph, CollapsedGuid) || !CollapsePatchNodes(SimulationGraph, Selected, CollapseName, CollapsedGuid, CollapseResult, Error))
+                return false;
+        }
         if (bDryRun) { FinalRevision = InitialRevision; return true; }
 
         FMutationRequestTracker::Get().Update(OperationId, EMutationRequestState::Mutating,
             TEXT("Applying the preflighted graph patch transaction."));
 
+        if ((!Removals.IsEmpty() || !CollapseIds.IsEmpty()) && (!GEditor || GEditor->IsTransactionActive()))
+        { Error = TEXT("Removal and collapse require an idle editor transaction system."); return false; }
         bool bApplyFailed = false;
         {
             const FScopedTransaction Transaction(NSLOCTEXT("UnrealMCP", "ApplyBlueprintGraphPatch", "UnrealMCP Apply Blueprint Graph Patch"));
+            if ((!Removals.IsEmpty() || !CollapseIds.IsEmpty()) && !GUndo)
+            { Error = TEXT("Undo recording is unavailable."); return false; }
             Blueprint->Modify(); Graph->Modify();
+            for (UEdGraphNode* Node : Removals)
+            {
+                Node->SetFlags(RF_Transactional);
+                Node->Modify();
+                for (const UEdGraphPin* Pin : Node->Pins)
+                    if (Pin) for (const UEdGraphPin* Linked : Pin->LinkedTo)
+                        if (UEdGraphNode* Other = Linked ? Linked->GetOwningNodeUnchecked() : nullptr)
+                        {
+                            Other->SetFlags(RF_Transactional);
+                            Other->Modify();
+                        }
+                FBlueprintEditorUtils::RemoveNode(Blueprint, Node, true);
+                bChanged = true;
+            }
             if (!AddedLocals.IsEmpty())
             {
                 LiveEntry->Modify();
@@ -943,6 +1146,12 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
                 if (!Schema->TryCreateConnection(Source, Target))
                 { Error = TEXT("Unreal rejected a preflighted direct connection."); bApplyFailed = true; break; }
                 Connection.bConnected = true; bChanged = true;
+            }
+            if (!bApplyFailed && !CollapseIds.IsEmpty())
+            {
+                TArray<UEdGraphNode*> Selected;
+                for (const FString& Id : CollapseIds) Selected.Add(ById.FindChecked(Id)->Live);
+                bApplyFailed = !CollapsePatchNodes(Graph, Selected, CollapseName, CollapsedGuid, CollapseResult, Error);
             }
             if (!bApplyFailed && bChanged)
             {
@@ -1092,6 +1301,9 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
     Result->SetBoolField(TEXT("wildcardSpecializationSimulated"), true);
     Result->SetNumberField(TEXT("wildcardResolvedConnectionCount"), WildcardResolvedConnectionCount);
     Result->SetBoolField(TEXT("alreadyComplete"), !bDryRun && !bChanged); Result->SetBoolField(TEXT("rolledBack"), bRolledBack);
+    if (CollapseResult) Result->SetObjectField(TEXT("collapsedGraph"), CollapseResult);
+    Result->SetArrayField(TEXT("nodeRemovals"), RemovalResults);
+    Result->SetNumberField(TEXT("removedNodeCount"), bDryRun ? 0 : RemovalResults.Num());
     Result->SetArrayField(TEXT("nodes"), NodeResults); Result->SetArrayField(TEXT("connections"), ConnectionResults);
     Result->SetArrayField(TEXT("disconnections"), DisconnectionResults);
     Result->SetBoolField(TEXT("compiled"), bCompiled); Result->SetBoolField(TEXT("compileSucceeded"), bCompileSucceeded);
@@ -1207,6 +1419,25 @@ TSharedPtr<FJsonObject> FApplyBlueprintGraphPatchTool::BuildInputSchema() const
     LocalItem->SetArrayField(TEXT("required"), {MakeShared<FJsonValueString>(TEXT("name")), MakeShared<FJsonValueString>(TEXT("type"))});
     Locals->SetObjectField(TEXT("items"), LocalItem);
     Properties->SetObjectField(TEXT("locals"), Locals);
+    auto Remove = MakeShared<FJsonObject>();
+    Remove->SetStringField(TEXT("type"), TEXT("array"));
+    Remove->SetNumberField(TEXT("maxItems"), 64);
+    Remove->SetObjectField(TEXT("items"), BuildStringProperty(TEXT("Exact GUID of a deletable node.")));
+    Remove->SetStringField(TEXT("description"), TEXT("Remove these nodes before rewiring. Requires expectedGraphRevision. Use nodes: [] for removal-only patches."));
+    Properties->SetObjectField(TEXT("removeNodeGuids"), Remove);
+    auto Collapse = MakeShared<FJsonObject>();
+    auto CollapseProperties = MakeShared<FJsonObject>();
+    auto CollapseNodes = MakeShared<FJsonObject>();
+    Collapse->SetStringField(TEXT("type"), TEXT("object"));
+    CollapseNodes->SetStringField(TEXT("type"), TEXT("array"));
+    CollapseNodes->SetNumberField(TEXT("maxItems"), 64);
+    CollapseNodes->SetObjectField(TEXT("items"), BuildStringProperty(TEXT("ID of a new node from this patch.")));
+    CollapseProperties->SetObjectField(TEXT("name"), BuildStringProperty(TEXT("Unique collapsed graph name containing letters, digits or underscores.")));
+    CollapseProperties->SetObjectField(TEXT("nodeIds"), CollapseNodes);
+    Collapse->SetObjectField(TEXT("properties"), CollapseProperties);
+    Collapse->SetArrayField(TEXT("required"), {MakeShared<FJsonValueString>(TEXT("name")), MakeShared<FJsonValueString>(TEXT("nodeIds"))});
+    Collapse->SetStringField(TEXT("description"), TEXT("Group selected new nodes behind generated boundary pins in the same transaction. Requires expectedGraphRevision."));
+    Properties->SetObjectField(TEXT("collapse"), Collapse);
     Schema->SetObjectField(TEXT("properties"), Properties);
     Schema->SetArrayField(TEXT("required"), {MakeShared<FJsonValueString>(TEXT("objectPath")), MakeShared<FJsonValueString>(TEXT("patchId")), MakeShared<FJsonValueString>(TEXT("nodes"))});
     return Schema;

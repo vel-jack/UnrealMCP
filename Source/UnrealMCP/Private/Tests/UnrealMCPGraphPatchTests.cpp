@@ -370,6 +370,12 @@ bool FUnrealMCPGraphPatchCompileRollbackTest::RunTest(const FString& Parameters)
         Blueprint, EBlueprintCompileOptions::SkipSave | EBlueprintCompileOptions::SkipGarbageCollection, &InvalidLog);
     if (!TestTrue(TEXT("Fixture is deterministically compiler-invalid"), InvalidLog.NumErrors > 0)) return false;
 
+    auto* RemovedOnFailure = NewObject<UK2Node_IfThenElse>(Graph);
+    auto* SurvivingBranch = NewObject<UK2Node_IfThenElse>(Graph);
+    UnrealMCP::BlueprintGraphEditToolUtils::PlaceNewNode(Graph, RemovedOnFailure, {});
+    UnrealMCP::BlueprintGraphEditToolUtils::PlaceNewNode(Graph, SurvivingBranch, {});
+    RemovedOnFailure->GetThenPin()->MakeLinkTo(SurvivingBranch->GetExecPin());
+
     const int32 InitialNodeCount = Graph->Nodes.Num();
     const FString InitialRevision = UnrealMCP::BlueprintGraphEditToolUtils::ComputeGraphRevision(Graph);
     const FString GraphGuid = Graph->GraphGuid.ToString(EGuidFormats::DigitsWithHyphensLower);
@@ -384,6 +390,7 @@ bool FUnrealMCPGraphPatchCompileRollbackTest::RunTest(const FString& Parameters)
     Request.Params->SetStringField(TEXT("patchId"), TEXT("graph-patch-compile-rollback-v1"));
     Request.Params->SetStringField(TEXT("expectedGraphRevision"), InitialRevision);
     Request.Params->SetArrayField(TEXT("nodes"), {MakeShared<FJsonValueObject>(Node(TEXT("rolledBackAddUnique"), TEXT("arrayAddUnique")))});
+    Request.Params->SetArrayField(TEXT("removeNodeGuids"), {MakeShared<FJsonValueString>(RemovedOnFailure->NodeGuid.ToString())});
     Request.Params->SetBoolField(TEXT("compileAfterEdit"), true);
     Request.Params->SetBoolField(TEXT("saveAfterEdit"), true);
 

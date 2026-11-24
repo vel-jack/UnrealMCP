@@ -2,8 +2,8 @@
 
 Generated metadata only; fetch the exact live schema before execution.
 
-Custom catalog captured: 2026-11-24T02:51:32.5631419Z. Official catalog captured: 2026-10-30T09:56:38.641Z.
-Contains 183 custom tools and 842 official tools across 53 toolsets.
+Custom catalog captured: 2026-11-24T07:24:45.1880575Z. Official catalog captured: 2026-10-30T09:56:38.641Z.
+Contains 184 custom tools and 842 official tools across 53 toolsets.
 
 Search this file with `rg -i 'interface|delete.*node|merge'`. Descriptions are shortened; a missing keyword is not proof a capability is absent.
 
@@ -62,6 +62,7 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `BuildProjectIndex` | Expensive manual action that builds or rebuilds the local UnrealMCP project-understanding index. Prefer user-triggered rebuilds instead of... |
 | Custom | `native registry` | `CaptureEditorWidget` | Capture an explicit live editor widgetRef to PNG under this project's Saved/UnrealMCP/Captures. Waits for pending graph framing on adapter... |
 | Custom | `native registry` | `CompareBlueprintClassDefaults` | Compares two Blueprint CDOs by property name, including properties present on one side only. |
+| Custom | `native registry` | `CompareBlueprintGitSnapshots` | Compare Blueprint declarations, defaults, components, nodes and wiring between two Git or saved worktree snapshots. |
 | Custom | `native registry` | `CompareBlueprintGraphPreservation` | Capture a bounded live Blueprint wiring snapshot or compare it against an earlier snapshot. Reports exact edits, normalized input sources and... |
 | Custom | `native registry` | `CompareBlueprintMergeStructure` | Read-only three-way Blueprint comparison from exact Git conflict stages. Pages declarations, defaults, components, direct references and optional... |
 | Custom | `native registry` | `CompileAllBlueprints` | Compiles multiple Blueprint assets under a package path and returns aggregate results. |
@@ -109,7 +110,7 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `GetBlueprintOverview` | Inspect a Blueprint asset in one bounded live read: parent, compile/dirty state, graph, variable, component and interface inventory. Filter and... |
 | Custom | `native registry` | `GetDependencies` | Returns Asset Registry package dependencies for one asset or package. |
 | Custom | `native registry` | `GetEditorWidgetSnapshot` | Read-only native Slate inspection. Without windowRef lists visible editor windows; with an explicit windowRef returns a bounded widget tree.... |
-| Custom | `native registry` | `GetGitCommitChanges` | Page files changed by one exact Git commit and optionally read a bounded text patch for one file. |
+| Custom | `native registry` | `GetGitCommitChanges` | List committed, staged or tracked unstaged Git changes. Optionally return a bounded text patch for one file. |
 | Custom | `native registry` | `GetGitCommitHistory` | Page recent commits in the selected project, optionally filtered by file. |
 | Custom | `native registry` | `GetImplementedInterfaces` | Lists interfaces implemented by a Blueprint, with optional inherited interfaces. |
 | Custom | `native registry` | `GetIndexStatus` | Returns status information for the local UnrealMCP project index. |
