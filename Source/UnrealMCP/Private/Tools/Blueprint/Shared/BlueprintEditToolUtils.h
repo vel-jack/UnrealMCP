@@ -7,11 +7,13 @@ class UBlueprint;
 class UClass;
 class UObject;
 class FTokenizedMessage;
+class FJsonObject;
 
 namespace UnrealMCP::BlueprintEditToolUtils
 {
     bool ResolveBlueprint(const FString& ObjectPath, UBlueprint*& OutBlueprint, FString& OutError);
     bool ResolveClass(const FString& ClassPath, UClass*& OutClass, FString& OutError);
+    bool DescribeBrokenNodes(UBlueprint* Blueprint, FJsonObject& Result);
     bool SaveAsset(UObject* Asset, FString& OutFilename, FString& OutError);
     bool RefreshAssetIndex(const FString& ObjectPath, FString& OutError);
     bool BuildPinType(

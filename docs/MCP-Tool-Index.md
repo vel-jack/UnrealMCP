@@ -2,8 +2,8 @@
 
 Generated metadata only; fetch the exact live schema before execution.
 
-Custom catalog captured: 2026-11-23T18:03:09.7421820Z. Official catalog captured: 2026-10-30T09:56:38.641Z.
-Contains 178 custom tools and 842 official tools across 53 toolsets.
+Custom catalog captured: 2026-11-24T02:51:32.5631419Z. Official catalog captured: 2026-10-30T09:56:38.641Z.
+Contains 183 custom tools and 842 official tools across 53 toolsets.
 
 Search this file with `rg -i 'interface|delete.*node|merge'`. Descriptions are shortened; a missing keyword is not proof a capability is absent.
 
@@ -127,7 +127,7 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `InspectLiveBlueprint` | Read-only live graph/node/pin inspection, including a map's embedded Level Blueprint. Defaults to the current editor level. No index, loading,... |
 | Custom | `native registry` | `InspectUserDefinedEnum` | Inspect or edit entries of a Blueprint enum by stable internal name. Supports append and display-name edits, preserving existing values and order. |
 | Custom | `native registry` | `InspectUserDefinedStruct` | Inspect or edit authored Blueprint struct members by GUID or name. Removal can discard stored member values. |
-| Custom | `native registry` | `LayoutBlueprintNodes` | Deterministically lays out an explicit Blueprint node set by execution-flow depth with configurable spacing, collision avoidance, dry-run, and... |
+| Custom | `native registry` | `LayoutBlueprintNodes` | Deterministically lays out an Blueprint graph or explicit node set by execution-flow depth with configurable spacing, collision avoidance,... |
 | Custom | `native registry` | `ListActors` | Lists actors from the active editor world so agents can inspect current level composition without modifying it. |
 | Custom | `native registry` | `ListAssets` | Lists assets under a package path without loading them. |
 | Custom | `native registry` | `ListBlueprintGitConflicts` | List unmerged project Content .uasset paths and their exact Git stage IDs. Includes asymmetric entries. |
@@ -148,7 +148,10 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `OverrideBlueprintFunction` | Creates a parent function override with its inherited signature and optional wired parent implementation. Undoable; supports dry-run, compile and... |
 | Custom | `native registry` | `PlanProjectRefactor` | Builds a deterministic, evidence-backed, non-mutating Blueprint refactor plan from indexed architecture analyses. It never changes assets and... |
 | Custom | `native registry` | `PreviewBlueprintSideReplay` | Translate one reviewed Git side's compatible existing-node link and layout changes into a dry-run graph patch. Reports overlaps and unsupported... |
+| Custom | `native registry` | `PruneUnreachableNodes` | Previews or removes unreachable Blueprint nodes while preserving entry points, reachable execution and required data. Apply requires the preview... |
+| Custom | `native registry` | `ReadBlueprintGraphDsl` | Read a revision-bound UnrealMCP graph patch document and exact node, pin, and link evidence for one resident Blueprint graph. |
 | Custom | `native registry` | `RefreshBlueprintCallSites` | Finds every same-Blueprint and cross-Blueprint call site of a Blueprint function via the project index and reconstructs each call node to match... |
+| Custom | `native registry` | `RefreshBlueprintNodes` | Runs Unreal Editor Refresh All Nodes on one Blueprint in an undo transaction. Requires confirm=true; does not save. |
 | Custom | `native registry` | `RefreshProjectIndex` | Refreshes only changed, added, deleted, or explicitly requested project assets in the existing UnrealMCP index. This is cheaper than... |
 | Custom | `native registry` | `RemoveBlueprintFunction` | Removes one locally declared Blueprint member variable or function graph. Dry-run reports usage and indexed referencer packages. Refuses used... |
 | Custom | `native registry` | `RemoveBlueprintLocalVariable` | Removes one local variable from a Blueprint function graph. Requires confirm=true unless dryRun=true; reports how many Get/Set nodes still... |
@@ -159,7 +162,7 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `ReparentBlueprint` | Changes a Blueprint's parent class. Dry-run/preflight lists graph nodes using old-parent members the new parent lacks (graph, nodeGuid, member),... |
 | Custom | `native registry` | `ResetBlueprintClassDefaults` | Resets inherited Blueprint class defaults to their parent CDO values. |
 | Custom | `native registry` | `RestoreStructMemberValueBackup` | Restores live value snapshots from a durable migration backup in the same project and unchanged struct layout. Refuses stale roots. Requires... |
-| Custom | `native registry` | `RetargetBlueprintMemberNode` | Retargets a variable Get/Set or ordinary function-call node, even if its old member no longer resolves. Inherited members use self context.... |
+| Custom | `native registry` | `RetargetBlueprintMemberNode` | Retargets a variable Get/Set, ordinary function call, or inherited event override, even if its old member no longer resolves. Inherited members... |
 | Custom | `native registry` | `RetargetBlueprintNode` | Retargets a cast node (including a 'Bad cast node' whose class was deleted) to newClassPath without needing the old class. Output links whose pins... |
 | Custom | `native registry` | `RunUnrealMCPAutomationTest` | Runs one exact synchronous UnrealMCP.* editor automation test and returns structured execution evidence. |
 | Custom | `native registry` | `RunUnrealMCPAutomationTests` | Runs a bounded explicit list of synchronous UnrealMCP editor automation tests and returns one suite result. |
@@ -180,7 +183,7 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `SetBlueprintSequenceOutputs` | Sets a Sequence node to 2-32 execution outputs. Removing outputs requires explicit confirmation, with separate confirmation for linked pins. |
 | Custom | `native registry` | `SetDataTableRowFields` | Transactionally edits one DataTable row in memory; leaves the asset dirty for an explicit save. |
 | Custom | `native registry` | `SetInputMappingContextMappingKey` | Replaces the key of one exact Action+Key row, preserving its position, action, inline objects and metadata. Static asset editing only; no runtime... |
-| Custom | `native registry` | `SetSwitchCases` | Edits Switch on String cases; renames preserve compatible exec links, removed cases report dropped links, and Default is retained. Enum cases are... |
+| Custom | `native registry` | `SetSwitchCases` | Edits Switch on String and Switch on Name cases; renames preserve compatible exec links, removed cases report dropped links, and Default is... |
 | Custom | `native registry` | `SetUserDefinedEnumEntryDisplayName` | Inspect or edit entries of a Blueprint enum by stable internal name. Supports append and display-name edits, preserving existing values and order. |
 | Custom | `native registry` | `SetUserDefinedStructMemberDefault` | Inspect or edit authored Blueprint struct members by GUID or name. Removal can discard stored member values. |
 | Custom | `native registry` | `SetUserDefinedStructMemberName` | Inspect or edit authored Blueprint struct members by GUID or name. Removal can discard stored member values. |
@@ -193,6 +196,8 @@ Refresh from snapshots: `python Scripts/refresh_tool_index.py`. Refresh official
 | Custom | `native registry` | `WireBlueprintEventToFunction` | Idempotently ensures a custom event calls one exact Blueprint-callable function, optionally through a Blueprint component/member target. Refuses... |
 | Custom | `native registry` | `WireEnhancedInputActionToComponent` | Idempotently inserts one component function call into an exact Enhanced Input action phase while preserving its existing execution continuation. |
 | Custom | `native registry` | `WireSelectionWorkflow` | Idempotently scaffolds four collection-backed helper functions (SelectOne, ToggleSelection, ClearSelection, ContainsSelection) over a named... |
+| Custom | `native registry` | `WrapWithIsValid` | Atomically inserts an Is Valid branch before a Blueprint execution input, with an optional invalid route. Defaults to dry-run. |
+| Custom | `native registry` | `WriteBlueprintGraphDsl` | Apply a revision-bound UnrealMCP graph patch document. Defaults to dry run; confirm to apply. Existing graph content is preserved unless... |
 | Official | `AutomationTestToolset.AutomationTestToolset` | `DiscoverTests` | Initialize automation worker discovery and load the test list. Must be called once before ListTests or RunTests. Takes several seconds as it... |
 | Official | `AutomationTestToolset.AutomationTestToolset` | `GetTestResults` | Get detailed results for the current or most recent test run. Requires DiscoverTests() to have completed. Returns a JSON object with per-test... |
 | Official | `AutomationTestToolset.AutomationTestToolset` | `GetTestStatus` | Get a lightweight status snapshot of the automation controller. Requires DiscoverTests() to have completed. Returns a JSON object with the... |

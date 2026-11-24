@@ -25,7 +25,9 @@
 #include "Misc/Paths.h"
 #include "Misc/ScopeExit.h"
 #include "Misc/SecureHash.h"
+#include "Misc/EngineVersionComparison.h"
 #include "Serialization/JsonSerializer.h"
+#include "Policies/CondensedJsonPrintPolicy.h"
 #include "Tools/Blueprint/Members/BlueprintClassDefaultsTools.h"
 #include "Tools/Blueprint/Members/AddBlueprintInterfaceTool.h"
 #include "Tools/Blueprint/Members/AddBlueprintVariableTool.h"
@@ -531,7 +533,11 @@ namespace
 
         UBlueprint* Blueprint = nullptr;
         TArray<UObject*> PackageObjects;
+#if UE_VERSION_OLDER_THAN(5, 8, 0)
         GetObjectsWithOuter(Package, PackageObjects, false);
+#else
+        GetObjectsWithOuter(Package, PackageObjects, EGetObjectsFlags::None);
+#endif
         for (UObject* Object : PackageObjects)
         {
             if (auto* Candidate = Cast<UBlueprint>(Object))

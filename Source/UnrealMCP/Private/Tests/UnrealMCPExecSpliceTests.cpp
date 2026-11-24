@@ -1,4 +1,5 @@
 #include "CoreMinimal.h"
+#include "UnrealMCPTestRenameFlags.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -90,7 +91,7 @@ bool FUnrealMCPExecSpliceLiveTest::RunTest(const FString& Parameters)
             Blueprint->ClearFlags(RF_Public | RF_Standalone);
             const FName TransientName = MakeUniqueObjectName(GetTransientPackage(), Blueprint->GetClass(), Blueprint->GetFName());
             Blueprint->Rename(*TransientName.ToString(), GetTransientPackage(),
-                REN_DontCreateRedirectors | REN_NonTransactional | REN_DoNotDirty | REN_ForceNoResetLoaders);
+                REN_DontCreateRedirectors | REN_NonTransactional | REN_DoNotDirty | UnrealMCPTest::TransientRenameLinkerFlag);
         }
         if (UPackage* Package = FindPackage(nullptr, *PackagePath)) Package->SetDirtyFlag(false);
     };

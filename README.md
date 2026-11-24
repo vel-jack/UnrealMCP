@@ -208,7 +208,7 @@ TraceLiveBlueprintFlow {"startEvent":"BeginPlay","maxNodes":200,"maxDepth":128}
 TraceLiveBlueprintFlow {"objectPath":"<returned Blueprint objectPath>","graphPath":"<returned graphPath>","startNodeGuid":"<returned nodeGuid>"}
 ```
 
-Inspection defaults to paginated graph inventory. `mode: "nodes"`, `query`, or `nodeGuid` returns nodes with GUIDs, exact linked endpoints, pin types, split-pin relationships, literal/object/text defaults, function/variable owner information, and direct level-actor references where present. Defaults are authored values, not evaluated runtime values. `offset` and `limit` (default 50, maximum 200) page the selected graph/node inventory; use `nextOffset` while `hasMore` is true. Graph inventory includes revisions for before/after comparison.
+Inspection defaults to paginated graph inventory. `mode: "nodes"`, `query`, or `nodeGuid` returns nodes with GUIDs, exact linked endpoints, pin types, split-pin relationships, literal/object/text defaults, function/variable owner information, and direct level-actor references where present. Defaults are authored values, not evaluated runtime values. `offset` and `limit` (default 50, maximum 200) page the selected graph/node inventory; use `nextOffset` while `hasMore` is true. Pass the first page’s `revision` as `expectedRevision` on later pages. If inspection returns `stale_live_revision`, restart at offset 0. Node inspection reports the declaring class of resolved variables and the exact graph of resolved macro instances.
 
 Tracing defaults to `BeginPlay` (`ReceiveBeginPlay`), or accepts an exact event member name or `startNodeGuid`. It follows outgoing execution/data links and incoming data dependencies, including the connected continuation after delays and function calls. Data producers do not imply their execution successors ran. Resident Blueprint function, custom-event, macro, and collapsed-graph bodies are expanded with caller/body pin bindings; native implementations, unavailable bodies, and dynamic interface dispatch are explicit boundaries. Declared external instance bodies are static candidates, not proof of runtime dispatch. Caller continuation is retained even when a body is unavailable or expansion is bounded.
 
@@ -248,7 +248,7 @@ Project-oriented authoring now includes function input/output parameters and ret
 
 Output-bearing interface graph creation is regression-tested by `UnrealMCP.Blueprint.Authoring.AddInterfaceFunctionGraph.Live`, including signature propagation, idempotent retry, target compilation, and temporary fixture cleanup.
 
-`LayoutBlueprintNodes` arranges an explicit node set by local execution-flow depth with configurable spacing and collision avoidance. It returns every proposed or applied position and supports dry-run before mutation.
+`LayoutBlueprintNodes` arranges an explicit node set or an entire graph by local execution-flow depth with configurable spacing and collision avoidance. Omit `nodeGuids` to preview or apply layout to the entire graph (up to 2,048 nodes). It returns every proposed or applied position and supports dry-run before mutation.
 
 `WireBlueprintEventToFunction` is the first Phase 4 high-level workflow. It idempotently creates or reuses a Custom Event, adds one exact impure Blueprint-callable function call, optionally wires a Blueprint component/member variable into the call target, lays out the nodes, and performs at most one compile/save/index refresh. It refuses to replace an event's existing execution route or a function call's existing target connection. Use `dryRun=true` before applying changes to an unfamiliar Blueprint.
 
@@ -483,7 +483,7 @@ Use `--engine-exe` when:
 
 The adapter identifies a project by its exact absolute `.uproject` command-line argument and verifies the named-pipe server PID before sending requests. Successful attachment retains the process handle through tab/title changes, backgrounding and reconnects. Status returns `attachedProcessId`; unavailable transport keeps the running-process evidence and recommends reconnect rather than another launch. A pipe owned by a different project/process is refused as `project_identity_mismatch`. If Windows process identity cannot be inspected, the adapter reports `editor_identity_unavailable` and refuses to guess or launch another editor. WMI process inspection is required for discovery of editors launched outside the adapter.
 
-Adapter-launched editors default to `-unattended`, preventing modal startup dialogs such as **Wait for ZenServer?**. This does not repair an unhealthy Zen service; startup/transport readiness is still reported separately. Unattended mode also suppresses other Unreal dialogs. Use `LaunchUnrealProject(unattended=false)` or start the adapter/CLI with `--interactive-editor` when interactive dialogs are needed. The option applies only to a newly launched editor; it does not change an existing process. Shutdown dirty-work refusal is independent of this mode.
+Adapter-launched editors show Unreal dialogs by default. Pass `unattended=true` to `LaunchUnrealProject` to suppress dialogs for that launch. The option applies to newly launched editors.
 
 ### Engine Resolution
 

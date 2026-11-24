@@ -153,6 +153,15 @@ bool FUnrealMCPLiveBlueprintTest::RunTest(const FString& Parameters)
     if (!TestFalse(TEXT("Direct graph path resolves"), Page.Error.IsSet())) return false;
     TestTrue(TEXT("Page truncation visible"), Page.Result->GetBoolField(TEXT("hasMore")));
     TestFalse(TEXT("Partial page is not complete"), Page.Result->GetBoolField(TEXT("coverageComplete")));
+    Request.Params->SetStringField(TEXT("expectedRevision"), Page.Result->GetStringField(TEXT("revision")));
+    Request.Params->SetNumberField(TEXT("offset"), 1);
+    TestFalse(TEXT("Page resumes against the same revision"), Inspector.Execute(Request).Error.IsSet());
+    const int32 OriginalX = Delay->NodePosX;
+    ++Delay->NodePosX;
+    TestTrue(TEXT("Page refuses an edited graph"), Inspector.Execute(Request).Error.IsSet());
+    Delay->NodePosX = OriginalX;
+    Request.Params->RemoveField(TEXT("expectedRevision"));
+    Request.Params->RemoveField(TEXT("offset"));
     Request.Params->SetStringField(TEXT("outputMode"), TEXT("compact"));
     auto Compact = Inspector.Execute(Request);
     if (!TestFalse(TEXT("Compact inspection succeeds"), Compact.Error.IsSet())) return false;
@@ -161,6 +170,11 @@ bool FUnrealMCPLiveBlueprintTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Compact node keeps links"), CompactNode->HasField(TEXT("links")));
     TestFalse(TEXT("Compact node omits pin dumps"), CompactNode->HasField(TEXT("pins")));
     Request.Params->RemoveField(TEXT("outputMode"));
+    Request.Params->SetStringField(TEXT("nodeGuid"), Macro->NodeGuid.ToString());
+    const auto MacroRead = Inspector.Execute(Request);
+    if (MacroRead.Error.IsSet()) { AddError(MacroRead.Error->Message); return false; }
+    const auto MacroNode = MacroRead.Result->GetArrayField(TEXT("nodes"))[0]->AsObject();
+    TestEqual(TEXT("Macro instance exposes the exact body path"), MacroNode->GetStringField(TEXT("macroGraphPath")), MacroGraph->GetPathName());
     Request.Params->SetStringField(TEXT("nodeGuid"), Delay->NodeGuid.ToString());
     auto DelayResult = Inspector.Execute(Request);
     if (!TestFalse(TEXT("Exact GUID inspection"), DelayResult.Error.IsSet())) return false;
@@ -233,6 +247,34 @@ bool FUnrealMCPLiveBlueprintTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Dirty state preserved"), Blueprint->GetOutermost()->IsDirty(), bDirtyBefore);
     TestEqual(TEXT("Compile status preserved"), static_cast<int32>(Blueprint->Status), static_cast<int32>(StatusBefore));
     TestEqual(TEXT("Friendly name preserved"), Blueprint->FriendlyName, FString(TEXT("KeepThisFriendlyName")));
+    // Exercise multiple pages against one large resident Blueprint without saving assets.
+    for (int32 Index = 3; Index < 100; ++Index)
+    {
+        const FName Name(*FString::Printf(TEXT("StressGraph_%03d"), Index));
+        UEdGraph* ExtraGraph = NewObject<UEdGraph>(Blueprint, Name, RF_Transient);
+        ExtraGraph->GraphGuid = FGuid::NewGuid();
+        ExtraGraph->Schema = UEdGraphSchema_K2::StaticClass();
+        Blueprint->FunctionGraphs.Add(ExtraGraph);
+        for (int32 NodeIndex = 0; NodeIndex < 24; ++NodeIndex)
+            AddNode<UEdGraphNode>(ExtraGraph, *FString::Printf(TEXT("Node_%03d"), NodeIndex));
+    }
+    Request.Params = MakeShared<FJsonObject>();
+    Request.Params->SetStringField(TEXT("objectPath"), Blueprint->GetPathName());
+    Request.Params->SetNumberField(TEXT("limit"), 20);
+    TSet<FString> GraphPaths;
+    for (int32 Offset = 0; Offset < 100; Offset += 20)
+    {
+        Request.Params->SetNumberField(TEXT("offset"), Offset);
+        const auto StressPage = Inspector.Execute(Request);
+        if (!TestFalse(TEXT("Large graph page succeeds"), StressPage.Error.IsSet()) || !StressPage.Result)
+            return false;
+        const auto& Graphs = StressPage.Result->GetArrayField(TEXT("graphs"));
+        TestEqual(TEXT("Large graph page is bounded"), Graphs.Num(), 20);
+        for (const auto& GraphValue : Graphs)
+            GraphPaths.Add(GraphValue->AsObject()->GetStringField(TEXT("graphPath")));
+        Request.Params->SetStringField(TEXT("expectedRevision"), StressPage.Result->GetStringField(TEXT("revision")));
+    }
+    TestEqual(TEXT("100 distinct graphs returned across pages"), GraphPaths.Num(), 100);
     return true;
 }
 

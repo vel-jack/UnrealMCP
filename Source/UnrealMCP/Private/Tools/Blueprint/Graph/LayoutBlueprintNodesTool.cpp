@@ -31,7 +31,7 @@ namespace
 FLayoutBlueprintNodesTool::FLayoutBlueprintNodesTool()
     : FMCPToolBase(
         TEXT("LayoutBlueprintNodes"),
-        TEXT("Deterministically lays out an explicit Blueprint node set by execution-flow depth with configurable spacing, collision avoidance, dry-run, and optional save."))
+        TEXT("Deterministically lays out an Blueprint graph or explicit node set by execution-flow depth with configurable spacing, collision avoidance, dry-run, and optional save."))
 {
 }
 
@@ -45,11 +45,10 @@ UnrealMCP::FMCPResponse FLayoutBlueprintNodesTool::Execute(const UnrealMCP::FMCP
     const TArray<TSharedPtr<FJsonValue>>* NodeGuidValues = nullptr;
     if (!Request.Params.IsValid()
         || !Request.Params->TryGetStringField(TEXT("objectPath"), ObjectPath)
-        || !Request.Params->TryGetArrayField(TEXT("nodeGuids"), NodeGuidValues)
-        || NodeGuidValues == nullptr
-        || NodeGuidValues->IsEmpty())
+        || (Request.Params->HasField(TEXT("nodeGuids"))
+            && (!Request.Params->TryGetArrayField(TEXT("nodeGuids"), NodeGuidValues) || NodeGuidValues->IsEmpty())))
     {
-        return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("LayoutBlueprintNodes requires objectPath, graph selector, and a non-empty nodeGuids array."));
+        return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("LayoutBlueprintNodes requires objectPath, a graph selector, and a nonempty nodeGuids array when supplied."));
     }
     Request.Params->TryGetStringField(TEXT("graphName"), GraphName);
     Request.Params->TryGetStringField(TEXT("graphGuid"), GraphGuid);
@@ -60,7 +59,7 @@ UnrealMCP::FMCPResponse FLayoutBlueprintNodesTool::Execute(const UnrealMCP::FMCP
 
     TArray<FString> NodeGuids;
     TSet<FString> UniqueGuids;
-    for (const TSharedPtr<FJsonValue>& Value : *NodeGuidValues)
+    if (NodeGuidValues) for (const TSharedPtr<FJsonValue>& Value : *NodeGuidValues)
     {
         FString Guid;
         if (!Value.IsValid() || !Value->TryGetString(Guid) || Guid.IsEmpty())
@@ -96,6 +95,8 @@ UnrealMCP::FMCPResponse FLayoutBlueprintNodesTool::Execute(const UnrealMCP::FMCP
     FString SavedFilename;
     FString IndexRefreshError;
     FString ExecutionError;
+    FString ExpectedRevision, FinalRevision;
+    Request.Params->TryGetStringField(TEXT("expectedGraphRevision"), ExpectedRevision);
     TArray<TSharedPtr<FJsonValue>> LayoutResults;
 
     const bool bSucceeded = BlueprintToolUtils::ExecuteOnGameThreadSync([&](FString& OutError)
@@ -111,6 +112,12 @@ UnrealMCP::FMCPResponse FLayoutBlueprintNodesTool::Execute(const UnrealMCP::FMCP
             return false;
         }
 
+        FinalRevision = BlueprintGraphEditToolUtils::ComputeGraphRevision(Graph);
+        if (!ExpectedRevision.IsEmpty() && ExpectedRevision != FinalRevision)
+        {
+            OutError = TEXT("Graph revision changed before layout.");
+            return false;
+        }
         TArray<UEdGraphNode*> SelectedNodes;
         TSet<UEdGraphNode*> SelectedSet;
         for (const FString& Guid : NodeGuids)
@@ -122,6 +129,15 @@ UnrealMCP::FMCPResponse FLayoutBlueprintNodesTool::Execute(const UnrealMCP::FMCP
             }
             SelectedNodes.Add(Node);
             SelectedSet.Add(Node);
+        }
+
+        if (!NodeGuidValues)
+        {
+            for (UEdGraphNode* Node : Graph->Nodes)
+                if (Node) { SelectedNodes.Add(Node); SelectedSet.Add(Node); }
+            if (SelectedNodes.Num() > 2048)
+            { OutError = TEXT("Whole-graph layout supports at most 2048 nodes. Select a smaller set."); return false; }
+            if (SelectedNodes.IsEmpty()) return true;
         }
 
         TMap<UEdGraphNode*, int32> InDegree;
@@ -267,6 +283,7 @@ UnrealMCP::FMCPResponse FLayoutBlueprintNodesTool::Execute(const UnrealMCP::FMCP
             Layout.Node->NodePosY = Layout.NewY;
         }
         FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+        FinalRevision = BlueprintGraphEditToolUtils::ComputeGraphRevision(Graph);
         return BlueprintGraphEditToolUtils::SaveAndRefreshIfRequested(
             Blueprint,
             ObjectPath,
@@ -286,7 +303,8 @@ UnrealMCP::FMCPResponse FLayoutBlueprintNodesTool::Execute(const UnrealMCP::FMCP
     Response.Id = Request.Id;
     TSharedRef<FJsonObject> Result = BuildBooleanResult(true);
     Result->SetStringField(TEXT("objectPath"), ObjectPath);
-    Result->SetNumberField(TEXT("nodeCount"), NodeGuids.Num());
+    Result->SetNumberField(TEXT("nodeCount"), LayoutResults.Num());
+    Result->SetStringField(TEXT("finalGraphRevision"), FinalRevision);
     Result->SetNumberField(TEXT("horizontalSpacing"), HorizontalSpacing);
     Result->SetNumberField(TEXT("verticalSpacing"), VerticalSpacing);
     Result->SetBoolField(TEXT("collisionAdjusted"), bCollisionAdjusted);
@@ -311,9 +329,10 @@ TSharedPtr<FJsonObject> FLayoutBlueprintNodesTool::BuildInputSchema() const
     Properties->SetObjectField(TEXT("objectPath"), BuildStringProperty(TEXT("Target Blueprint object path.")));
     Properties->SetObjectField(TEXT("graphName"), BuildStringProperty(TEXT("Stable graph name.")));
     Properties->SetObjectField(TEXT("graphGuid"), BuildStringProperty(TEXT("Exact graph GUID.")));
+    Properties->SetObjectField(TEXT("expectedGraphRevision"), BuildStringProperty(TEXT("Optional current graph revision required before laying out nodes.")));
     TSharedRef<FJsonObject> NodeGuids = MakeShared<FJsonObject>();
     NodeGuids->SetStringField(TEXT("type"), TEXT("array"));
-    NodeGuids->SetStringField(TEXT("description"), TEXT("Explicit stable node GUIDs to arrange."));
+    NodeGuids->SetStringField(TEXT("description"), TEXT("Explicit stable node GUIDs to arrange. Omit to arrange the whole graph."));
     TSharedRef<FJsonObject> GuidItem = MakeShared<FJsonObject>();
     GuidItem->SetStringField(TEXT("type"), TEXT("string"));
     NodeGuids->SetObjectField(TEXT("items"), GuidItem);
@@ -329,8 +348,7 @@ TSharedPtr<FJsonObject> FLayoutBlueprintNodesTool::BuildInputSchema() const
     Properties->SetObjectField(TEXT("saveAfterEdit"), BuildBoolProperty(TEXT("Save and partially refresh the index.")));
     Schema->SetObjectField(TEXT("properties"), Properties);
     TArray<TSharedPtr<FJsonValue>> Required{
-        MakeShared<FJsonValueString>(TEXT("objectPath")),
-        MakeShared<FJsonValueString>(TEXT("nodeGuids"))};
+        MakeShared<FJsonValueString>(TEXT("objectPath"))};
     Schema->SetArrayField(TEXT("required"), Required);
     return Schema;
 }

@@ -21,6 +21,7 @@
 #include "Misc/ScopeExit.h"
 #include "ObjectTools.h"
 #include "Tools/Blueprint/Graph/AddBlueprintBranchNodeTool.h"
+#include "Tools/Blueprint/Graph/BlueprintGraphDslTool.h"
 #include "Tools/Blueprint/Shared/BlueprintGraphEditToolUtils.h"
 #include "Tools/Blueprint/Graph/ConnectBlueprintPinsTool.h"
 #include "Tools/Blueprint/Graph/DeleteBlueprintNodeTool.h"
@@ -109,6 +110,25 @@ bool FUnrealMCPCollapsedGraphLiveTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Link exists in collapsed graph"),
         FirstBranch != nullptr && FirstBranch->GetThenPin()->LinkedTo.ContainsByPredicate(
             [Second](const UEdGraphPin* Pin) { return Pin && Pin->GetOwningNode() == Second; }));
+
+    UnrealMCP::FMCPRequest ReadDsl;
+    ReadDsl.Id = TEXT("collapsed-dsl-read");
+    ReadDsl.Params = MakeShared<FJsonObject>();
+    ReadDsl.Params->SetStringField(TEXT("objectPath"), ObjectPath);
+    ReadDsl.Params->SetStringField(TEXT("graphPath"), Collapsed->GetPathName());
+    const auto ReadResponse = FBlueprintGraphDslTool(false).Execute(ReadDsl);
+    if (ReadResponse.Error.IsSet()) AddError(ReadResponse.Error->Message);
+    if (!TestTrue(TEXT("Read nested DSL graph"), ReadResponse.Result.IsValid())) return false;
+    const auto& Document = ReadResponse.Result->GetObjectField(TEXT("document"));
+    TestEqual(TEXT("Nested DSL document preserves exact graph link"), Document->GetArrayField(TEXT("connections")).Num(), 1);
+    UnrealMCP::FMCPRequest WriteDsl;
+    WriteDsl.Id = TEXT("collapsed-dsl-write");
+    WriteDsl.Params = MakeShared<FJsonObject>();
+    WriteDsl.Params->SetObjectField(TEXT("document"), Document);
+    const auto WriteResponse = FBlueprintGraphDslTool(true).Execute(WriteDsl);
+    if (WriteResponse.Error.IsSet()) AddError(WriteResponse.Error->Message);
+    TestTrue(TEXT("Nested DSL document contains an unchanged replay"), WriteResponse.Result.IsValid()
+        && WriteResponse.Result->GetBoolField(TEXT("dryRun")) && !WriteResponse.Result->GetBoolField(TEXT("changed")));
 
     UnrealMCP::FMCPRequest Delete;
     Delete.Id = TEXT("collapsed-delete");

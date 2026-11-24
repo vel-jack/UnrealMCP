@@ -365,24 +365,10 @@ UnrealMCP::FMCPResponse FTraceBlueprintFlowTool::Execute(const UnrealMCP::FMCPRe
             TraversedEdgesFinal = TraversedEdges;
             return true;
         },
-        Error);
+        Error, ObjectPath);
     };
 
-    bool bQuerySucceeded = RunIndexedQuery();
-    bool bIndexRefreshed = false;
-    if (bQuerySucceeded && !bMatchedStartNodes)
-    {
-        FString RefreshError;
-        bIndexRefreshed = UnrealMCP::BlueprintToolUtils::ExecuteOnGameThreadSync([&](FString& OutError)
-        {
-            return UnrealMCP::BlueprintEditToolUtils::RefreshAssetIndex(ObjectPath, OutError);
-        }, RefreshError);
-        if (!bIndexRefreshed)
-            return BuildError(Request, UnrealMCP::EMCPErrorCode::InternalError,
-                FString::Printf(TEXT("TraceBlueprintFlow could not refresh the selected Blueprint index: %s"), *RefreshError));
-        bQuerySucceeded = RunIndexedQuery();
-    }
-
+    const bool bQuerySucceeded = RunIndexedQuery();
     if (!bQuerySucceeded)
     {
         return BuildError(Request, UnrealMCP::EMCPErrorCode::InternalError, FString::Printf(TEXT("TraceBlueprintFlow failed to query the project index: %s"), *Error));
@@ -412,7 +398,7 @@ UnrealMCP::FMCPResponse FTraceBlueprintFlowTool::Execute(const UnrealMCP::FMCPRe
         StartNodeKeysFinal,
         VisitedOrderFinal,
         TraversedEdgesFinal);
-    Response.Result->SetBoolField(TEXT("indexRefreshed"), bIndexRefreshed);
+    Response.Result->SetBoolField(TEXT("indexRefreshed"), true);
     return Response;
 }
 

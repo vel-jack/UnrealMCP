@@ -1,3 +1,6 @@
+#include "Engine/Blueprint.h"
+#include "UObject/UObjectIterator.h"
+
 #include "Index/UnrealMCPProjectIndex.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
@@ -58,7 +61,7 @@ bool FUnrealMCPProjectIndex::RefreshProjectIndex(
     IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
 
     TArray<FAssetData> RegistryAssets;
-    AssetRegistry.GetAllAssets(RegistryAssets, true);
+    AssetRegistry.GetAllAssets(RegistryAssets, false);
     TMap<FString, FAssetData> CurrentAssetsByPath;
     for (const FAssetData& AssetData : RegistryAssets)
     {
@@ -117,6 +120,10 @@ bool FUnrealMCPProjectIndex::RefreshProjectIndex(
     else
     {
         CandidatePaths.Append(DirtyAssetSet);
+        for (const TPair<FString, FAssetData>& Pair : CurrentAssetsByPath)
+            if (const UPackage* Package = FindPackage(nullptr, *Pair.Value.PackageName.ToString()))
+                if (Package->IsDirty()) CandidatePaths.Add(Pair.Key);
+
 
         for (const TPair<FString, FAssetData>& Pair : CurrentAssetsByPath)
         {
@@ -223,4 +230,25 @@ bool FUnrealMCPProjectIndex::RefreshProjectIndex(
         ProgressCallback(SortedCandidates.Num(), SortedCandidates.Num(), TEXT("UnrealMCP partial index refresh complete."));
     }
     return true;
+}
+
+bool FUnrealMCPProjectIndex::RefreshBeforeRead(const FString& RequiredObjectPath, FString& OutError)
+{
+    check(IsInGameThread());
+    if (!bHasUsableIndex) return true;
+
+    TSet<FString> Candidates = DirtyAssetSet;
+    for (TObjectIterator<UBlueprint> It; It; ++It)
+    {
+        const UBlueprint* Blueprint = *It;
+        if (Blueprint->IsAsset() && Blueprint->GetPackage()->IsDirty()
+            && Blueprint->GetPackage()->GetName().StartsWith(TEXT("/Game/")))
+            Candidates.Add(Blueprint->GetPathName());
+    }
+    if (!RequiredObjectPath.IsEmpty()) Candidates.Add(RequiredObjectPath);
+    if (Candidates.IsEmpty() && !bIndexDirty) return true;
+
+    FRefreshResult RefreshResult;
+    return RefreshProjectIndex(bIndexDirty && DirtyAssetSet.IsEmpty() ? TArray<FString>() : Candidates.Array(),
+        RefreshResult, OutError);
 }

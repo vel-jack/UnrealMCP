@@ -9,12 +9,18 @@
 #include "EdGraphNode_Comment.h"
 #include "Engine/Blueprint.h"
 #include "K2Node_CallFunction.h"
+#include "K2Node_CallArrayFunction.h"
+#include "Kismet/KismetArrayLibrary.h"
 #include "K2Node_IfThenElse.h"
+#include "K2Node_FunctionEntry.h"
 #include "K2Node_Knot.h"
 #include "K2Node_CallParentFunction.h"
 #include "K2Node_Self.h"
 #include "K2Node_DynamicCast.h"
 #include "K2Node_MacroInstance.h"
+#include "K2Node_MakeArray.h"
+#include "K2Node_Message.h"
+#include "K2Node_SwitchName.h"
 #include "K2Node_SwitchString.h"
 #include "K2Node_SwitchEnum.h"
 #include "K2Node_VariableGet.h"
@@ -47,6 +53,7 @@ namespace
         FString Id, Kind, NodeGuid, OwnerClassPath, FunctionName, VariableName, OperatorName, CanonicalOperator;
         FString MacroPath, EnumPath, TargetClassPath;
         TArray<FString> Cases;
+        int32 ArrayInputCount = 1;
         UEdGraph* MacroGraph = nullptr;
         UEnum* Enum = nullptr;
         UClass* TargetClass = nullptr;
@@ -138,7 +145,8 @@ namespace
             FGuid Guid;
             if (!FGuid::Parse(Out.NodeGuid, Guid)) { Error = TEXT("existingNode requires a valid nodeGuid."); return false; }
         }
-        else if (Out.Kind.Equals(TEXT("functionCall"), ESearchCase::IgnoreCase))
+        else if (Out.Kind.Equals(TEXT("functionCall"), ESearchCase::IgnoreCase)
+            || Out.Kind.Equals(TEXT("interfaceMessage"), ESearchCase::IgnoreCase))
         {
             if (Out.OwnerClassPath.IsEmpty() || Out.FunctionName.IsEmpty())
             { Error = TEXT("functionCall requires ownerClassPath and functionName."); return false; }
@@ -156,9 +164,18 @@ namespace
         { if (Out.TargetClassPath.IsEmpty()) { Error = TEXT("cast requires targetClassPath."); return false; } }
         else if (Out.Kind.Equals(TEXT("switchEnum"), ESearchCase::IgnoreCase))
         { if (Out.EnumPath.IsEmpty()) { Error = TEXT("switchEnum requires enumPath."); return false; } }
-        else if (Out.Kind.Equals(TEXT("switchString"), ESearchCase::IgnoreCase))
-        { if (!Object->HasField(TEXT("cases"))) { Error = TEXT("switchString requires cases[]."); return false; }
+        else if (Out.Kind.Equals(TEXT("switchString"), ESearchCase::IgnoreCase)
+            || Out.Kind.Equals(TEXT("switchName"), ESearchCase::IgnoreCase))
+        { if (!Object->HasField(TEXT("cases"))) { Error = TEXT("String and Name switches require cases[]."); return false; }
           if (!UnrealMCP::BlueprintMemberToolUtils::ValidateStringCases(Out.Cases, Error)) return false; }
+        else if (Out.Kind.Equals(TEXT("makeArray"), ESearchCase::IgnoreCase))
+        {
+            double Count = 1;
+            if ((Object->HasField(TEXT("arrayInputCount")) && !Object->TryGetNumberField(TEXT("arrayInputCount"), Count))
+                || !FMath::IsFinite(Count) || Count < 0 || Count > 128 || FMath::FloorToDouble(Count) != Count)
+            { Error = TEXT("arrayInputCount must be an integer from 0 to 128."); return false; }
+            Out.ArrayInputCount = static_cast<int32>(Count);
+        }
         else if (Out.Kind.Equals(TEXT("typedOperator"), ESearchCase::IgnoreCase))
         {
             if (Out.OperatorName.IsEmpty()) { Error = TEXT("typedOperator requires operator."); return false; }
@@ -170,6 +187,7 @@ namespace
         }
         else if (!Out.Kind.Equals(TEXT("self"), ESearchCase::IgnoreCase)
             && !Out.Kind.Equals(TEXT("branch"), ESearchCase::IgnoreCase)
+            && !Out.Kind.Equals(TEXT("arrayAddUnique"), ESearchCase::IgnoreCase)
             && !Out.Kind.Equals(TEXT("reroute"), ESearchCase::IgnoreCase))
         { Error = FString::Printf(TEXT("Unsupported patch node kind '%s'."), *Out.Kind); return false; }
         Out.bHasWidth = Object->HasField(TEXT("width")); Out.bHasHeight = Object->HasField(TEXT("height"));
@@ -283,6 +301,17 @@ namespace
                 Found = Pin;
             }
         }
+        if (!Found)
+        {
+            for (UEdGraphPin* Pin : Node->Pins)
+            {
+                if (!Pin || Pin->Direction != Direction || Pin->bOrphanedPin
+                    || !Node->GetPinDisplayName(Pin).ToString().Equals(Name, ESearchCase::IgnoreCase))
+                    continue;
+                if (Found) { Error = FString::Printf(TEXT("Pin display name '%s' is ambiguous; use the exact pin name."), *Name); return nullptr; }
+                Found = Pin;
+            }
+        }
         if (Found == nullptr) Error = FString::Printf(TEXT("Pin '%s' was not found."), *Name);
         return Found;
     }
@@ -316,17 +345,38 @@ namespace
                 && CastChecked<UK2Node_VariableSet>(Node)->VariableReference.GetMemberName() == FName(*Spec.VariableName)
                 && (!Spec.VariableGuid.IsValid() || CastChecked<UK2Node_VariableSet>(Node)->VariableReference.GetMemberGuid() == Spec.VariableGuid)
                 && (Spec.Variable.IsLocalContext() ? (CastChecked<UK2Node_VariableSet>(Node)->VariableReference.IsLocalScope() && CastChecked<UK2Node_VariableSet>(Node)->VariableReference.GetMemberScopeName() == Spec.Variable.LocalScope) : (Spec.VariableOwner ? CastChecked<UK2Node_VariableSet>(Node)->VariableReference.GetMemberParentClass() == Spec.VariableOwner : CastChecked<UK2Node_VariableSet>(Node)->VariableReference.IsSelfContext()));
+        if (Spec.Kind.Equals(TEXT("arrayAddUnique"), ESearchCase::IgnoreCase))
+        {
+            const auto* ArrayCall = Cast<UK2Node_CallArrayFunction>(Node);
+            return ArrayCall && ArrayCall->GetTargetFunction() == Spec.Function;
+        }
+        if (Spec.Kind.Equals(TEXT("interfaceMessage"), ESearchCase::IgnoreCase))
+        {
+            const auto* Message = Cast<UK2Node_Message>(Node);
+            return Message && Message->GetTargetFunction() == Spec.Function;
+        }
         if (Spec.Kind.Equals(TEXT("parentCall"), ESearchCase::IgnoreCase)) return Node && Node->IsA<UK2Node_CallParentFunction>() && CastChecked<UK2Node_CallParentFunction>(Node)->GetTargetFunction() == Spec.Function;
         if (Spec.Kind.Equals(TEXT("self"), ESearchCase::IgnoreCase)) return Node && Node->IsA<UK2Node_Self>();
         if (Spec.Kind.Equals(TEXT("macro"), ESearchCase::IgnoreCase)) return Node && Node->IsA<UK2Node_MacroInstance>() && CastChecked<UK2Node_MacroInstance>(Node)->GetMacroGraph() == Spec.MacroGraph;
         if (Spec.Kind.Equals(TEXT("cast"), ESearchCase::IgnoreCase)) return Node && Node->IsA<UK2Node_DynamicCast>() && CastChecked<UK2Node_DynamicCast>(Node)->TargetType == Spec.TargetClass && CastChecked<UK2Node_DynamicCast>(Node)->IsNodePure() == Spec.bPure;
         if (Spec.Kind.Equals(TEXT("switchEnum"), ESearchCase::IgnoreCase)) return Node && Node->IsA<UK2Node_SwitchEnum>() && CastChecked<UK2Node_SwitchEnum>(Node)->Enum == Spec.Enum;
-        if (Spec.Kind.Equals(TEXT("switchString"), ESearchCase::IgnoreCase))
+        if (Spec.Kind.Equals(TEXT("switchString"), ESearchCase::IgnoreCase)
+            || Spec.Kind.Equals(TEXT("switchName"), ESearchCase::IgnoreCase))
         {
-            const auto* Switch = Cast<UK2Node_SwitchString>(Node);
-            if (!Switch || Switch->PinNames.Num() != Spec.Cases.Num()) return false;
-            for (int32 I = 0; I < Spec.Cases.Num(); ++I) if (Switch->PinNames[I].ToString() != Spec.Cases[I]) return false;
+            const TArray<FName>* PinNames = nullptr;
+            if (Spec.Kind.Equals(TEXT("switchName"), ESearchCase::IgnoreCase))
+            {
+                if (const auto* Switch = Cast<UK2Node_SwitchName>(Node)) PinNames = &Switch->PinNames;
+            }
+            else if (const auto* Switch = Cast<UK2Node_SwitchString>(Node)) PinNames = &Switch->PinNames;
+            if (!PinNames || PinNames->Num() != Spec.Cases.Num()) return false;
+            for (int32 I = 0; I < Spec.Cases.Num(); ++I) if ((*PinNames)[I] != FName(*Spec.Cases[I])) return false;
             return true;
+        }
+        if (Spec.Kind.Equals(TEXT("makeArray"), ESearchCase::IgnoreCase))
+        {
+            const auto* Array = Cast<UK2Node_MakeArray>(Node);
+            return Array && Array->NumInputs == Spec.ArrayInputCount;
         }
         if (Spec.Kind.Equals(TEXT("comment"), ESearchCase::IgnoreCase)) return Node && Node->IsA<UEdGraphNode_Comment>();
         if (Spec.Kind.Equals(TEXT("branch"), ESearchCase::IgnoreCase)) return Node != nullptr && Node->IsA<UK2Node_IfThenElse>();
@@ -346,6 +396,20 @@ namespace
                 Spec.Kind.Equals(TEXT("variableSet"), ESearchCase::IgnoreCase), bDetached);
         }
         UEdGraphNode* Advanced = nullptr;
+        if (Spec.Kind.Equals(TEXT("arrayAddUnique"), ESearchCase::IgnoreCase))
+        {
+            auto* ArrayCall = NewObject<UK2Node_CallArrayFunction>(Graph);
+            ArrayCall->SetFromFunction(Spec.Function);
+            if (bDetached) ArrayCall->AllocateDefaultPins();
+            return ArrayCall;
+        }
+        if (Spec.Kind.Equals(TEXT("interfaceMessage"), ESearchCase::IgnoreCase))
+        {
+            auto* Message = NewObject<UK2Node_Message>(Graph);
+            Message->SetFromFunction(Spec.Function);
+            if (bDetached) Message->AllocateDefaultPins();
+            return Message;
+        }
         if (Spec.Kind.Equals(TEXT("parentCall"), ESearchCase::IgnoreCase)) return UnrealMCP::BlueprintMemberToolUtils::CreateParentCall(Graph, Spec.Function, bDetached);
         if (Spec.Kind.Equals(TEXT("self"), ESearchCase::IgnoreCase)) Advanced = NewObject<UK2Node_Self>(Graph);
         else if (Spec.Kind.Equals(TEXT("cast"), ESearchCase::IgnoreCase))
@@ -354,8 +418,16 @@ namespace
         { auto* Macro = NewObject<UK2Node_MacroInstance>(Graph); Macro->SetMacroGraph(Spec.MacroGraph); Advanced = Macro; }
         else if (Spec.Kind.Equals(TEXT("switchString"), ESearchCase::IgnoreCase))
         { auto* Switch = NewObject<UK2Node_SwitchString>(Graph); for (const auto& Case : Spec.Cases) Switch->PinNames.Add(FName(*Case)); Switch->bHasDefaultPin = true; Advanced = Switch; }
+        else if (Spec.Kind.Equals(TEXT("switchName"), ESearchCase::IgnoreCase))
+        { auto* Switch = NewObject<UK2Node_SwitchName>(Graph); for (const auto& Case : Spec.Cases) Switch->PinNames.Add(FName(*Case)); Switch->bHasDefaultPin = true; Advanced = Switch; }
         else if (Spec.Kind.Equals(TEXT("switchEnum"), ESearchCase::IgnoreCase))
         { auto* Switch = NewObject<UK2Node_SwitchEnum>(Graph); Switch->SetEnum(Spec.Enum); Switch->bHasDefaultPin = true; Advanced = Switch; }
+        else if (Spec.Kind.Equals(TEXT("makeArray"), ESearchCase::IgnoreCase))
+        {
+            auto* Array = NewObject<UK2Node_MakeArray>(Graph);
+            Array->NumInputs = Spec.ArrayInputCount;
+            Advanced = Array;
+        }
         if (Advanced) { if (bDetached) Advanced->AllocateDefaultPins(); return Advanced; }
         if (Spec.Kind.Equals(TEXT("comment"), ESearchCase::IgnoreCase))
         {
@@ -437,11 +509,12 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
     const TArray<TSharedPtr<FJsonValue>>* ConnectionValues = nullptr;
     const TArray<TSharedPtr<FJsonValue>>* DisconnectionValues = nullptr;
     const TArray<TSharedPtr<FJsonValue>>* SpliceValues = nullptr;
+    const TArray<TSharedPtr<FJsonValue>>* LocalValues = nullptr;
     if (!Request.Params.IsValid()
         || !Request.Params->TryGetStringField(TEXT("objectPath"), ObjectPath)
         || !Request.Params->TryGetStringField(TEXT("patchId"), PatchId)
         || !Request.Params->TryGetArrayField(TEXT("nodes"), NodeValues)
-        || NodeValues == nullptr || NodeValues->IsEmpty() || PatchId.IsEmpty())
+        || NodeValues == nullptr || PatchId.IsEmpty())
         return BuildError(Request, EMCPErrorCode::InvalidParams,
             TEXT("ApplyBlueprintGraphPatch requires objectPath, graph selector, patchId, and non-empty nodes."));
     Request.Params->TryGetStringField(TEXT("graphName"), GraphName);
@@ -455,6 +528,12 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
         return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("spliceExec must be an array of at most 64 operations."));
     if (GraphName.IsEmpty() && GraphGuid.IsEmpty())
         return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("graphName or graphGuid is required."));
+
+    if (Request.Params->HasField(TEXT("locals"))
+        && (!Request.Params->TryGetArrayField(TEXT("locals"), LocalValues) || LocalValues->Num() > 64))
+        return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("locals must be an array of at most 64 declarations."));
+    if (NodeValues->IsEmpty() && (!LocalValues || LocalValues->IsEmpty()))
+        return BuildError(Request, EMCPErrorCode::InvalidParams, TEXT("Provide nodes or local declarations."));
 
     TArray<FPatchNode> Nodes; TSet<FString> NodeIds;
     for (int32 Index = 0; Index < NodeValues->Num(); ++Index)
@@ -541,6 +620,75 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
         if (!ExpectedRevision.IsEmpty() && !ExpectedRevision.Equals(InitialRevision, ESearchCase::IgnoreCase))
         { Error = FString::Printf(TEXT("Graph revision mismatch. expected=%s current=%s"), *ExpectedRevision, *InitialRevision); return false; }
 
+        // Preflight on a transient duplicate so TryCreateConnection can reproduce K2 wildcard
+        // specialization and connection-order effects without touching the live graph.
+        UBlueprint* PreviewBlueprint = NewObject<UBlueprint>(GetTransientPackage(), NAME_None, RF_Transient);
+        PreviewBlueprint->ParentClass = Blueprint->ParentClass;
+        PreviewBlueprint->GeneratedClass = Blueprint->GeneratedClass;
+        PreviewBlueprint->SkeletonGeneratedClass = Blueprint->SkeletonGeneratedClass;
+        PreviewBlueprint->BlueprintType = Blueprint->BlueprintType;
+        PreviewBlueprint->Status = BS_BeingCreated;
+        UEdGraph* SimulationGraph = DuplicateObject<UEdGraph>(Graph, PreviewBlueprint, Graph->GetFName());
+        if (SimulationGraph == nullptr) { Error = TEXT("Could not create a transient graph for patch preflight."); return false; }
+        SimulationGraph->SetFlags(RF_Transient);
+        if (Blueprint->FunctionGraphs.Contains(Graph)) PreviewBlueprint->FunctionGraphs.Add(SimulationGraph);
+        else PreviewBlueprint->UbergraphPages.Add(SimulationGraph);
+        UK2Node_FunctionEntry* LiveEntry = nullptr;
+        TArray<FBPVariableDescription> AddedLocals;
+        if (LocalValues && !LocalValues->IsEmpty())
+        {
+            TArray<UK2Node_FunctionEntry*> LiveEntries, PreviewEntries;
+            Graph->GetNodesOfClass(LiveEntries);
+            SimulationGraph->GetNodesOfClass(PreviewEntries);
+            if (!Blueprint->FunctionGraphs.Contains(Graph) || LiveEntries.Num() != 1 || PreviewEntries.Num() != 1
+                || !FBlueprintEditorUtils::DoesSupportLocalVariables(Graph))
+            {
+                Error = TEXT("Local declarations require a top-level function graph with one entry node.");
+                return false;
+            }
+            LiveEntry = LiveEntries[0];
+            TSet<FName> DeclaredNames;
+            for (const auto& Value : *LocalValues)
+            {
+                const auto Local = Value->AsObject();
+                FString Name, Type, TypeObject, Container, ValueType, ValueObject, Default;
+                if (!Local || !Local->TryGetStringField(TEXT("name"), Name) || FName(*Name).IsNone()
+                    || !Local->TryGetStringField(TEXT("type"), Type) || DeclaredNames.Contains(FName(*Name)))
+                {
+                    Error = TEXT("Each local declaration requires a unique non-empty name and type.");
+                    return false;
+                }
+                DeclaredNames.Add(FName(*Name));
+                Local->TryGetStringField(TEXT("typeObjectPath"), TypeObject);
+                Local->TryGetStringField(TEXT("containerType"), Container);
+                Local->TryGetStringField(TEXT("valueType"), ValueType);
+                Local->TryGetStringField(TEXT("valueTypeObjectPath"), ValueObject);
+                Local->TryGetStringField(TEXT("defaultValue"), Default);
+                FEdGraphPinType PinType;
+                if (!BlueprintEditToolUtils::BuildContainerPinType(
+                    Type, TypeObject, Container.IsEmpty() ? TEXT("none") : Container, ValueType, ValueObject, PinType, Error))
+                    return false;
+                if (const auto* Existing = FBlueprintEditorUtils::FindLocalVariable(Blueprint, Graph, FName(*Name)))
+                {
+                    if (Existing->VarType == PinType && Existing->DefaultValue == Default) continue;
+                    Error = FString::Printf(TEXT("Local '%s' already exists with a different type or default."), *Name);
+                    return false;
+                }
+                if (!FBlueprintEditorUtils::AddLocalVariable(PreviewBlueprint, SimulationGraph, FName(*Name), PinType, Default))
+                {
+                    Error = FString::Printf(TEXT("Unreal rejected local declaration '%s'."), *Name);
+                    return false;
+                }
+                auto* Added = PreviewEntries[0]->LocalVariables.FindByPredicate([&](const FBPVariableDescription& Variable)
+                {
+                    return Variable.VarName == FName(*Name);
+                });
+                if (!Added) { Error = TEXT("Could not resolve the new local declaration."); return false; }
+                Added->VarGuid = MakeDeterministicGuid(ObjectPath, Graph->GraphGuid, PatchId, TEXT("local:") + Name);
+                AddedLocals.Add(*Added);
+            }
+        }
+
         TMap<FString, FPatchNode*> ById;
         int32 AutoIndex = 0, MaxX = 0;
         for (const UEdGraphNode* Node : Graph->Nodes) if (Node != nullptr) MaxX = FMath::Max(MaxX, Node->NodePosX);
@@ -557,10 +705,19 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
             else
             {
                 Spec.DeterministicGuid = MakeDeterministicGuid(ObjectPath, Graph->GraphGuid, PatchId, Spec.Id);
-                if (Spec.Kind.Equals(TEXT("functionCall"), ESearchCase::IgnoreCase))
+                const bool bMessage = Spec.Kind.Equals(TEXT("interfaceMessage"), ESearchCase::IgnoreCase);
+                if (Spec.Kind.Equals(TEXT("arrayAddUnique"), ESearchCase::IgnoreCase))
+                {
+                    Spec.Function = UKismetArrayLibrary::StaticClass()->FindFunctionByName(
+                        GET_FUNCTION_NAME_CHECKED(UKismetArrayLibrary, Array_AddUnique));
+                    if (!Spec.Function) { Error = TEXT("Could not resolve the Kismet Array AddUnique function."); return false; }
+                }
+                else if (bMessage || Spec.Kind.Equals(TEXT("functionCall"), ESearchCase::IgnoreCase))
                 {
                     UClass* Owner = nullptr;
                     if (!BlueprintEditToolUtils::ResolveClass(Spec.OwnerClassPath, Owner, Error)) return false;
+                    if (bMessage && !Owner->HasAnyClassFlags(CLASS_Interface))
+                    { Error = TEXT("interfaceMessage requires an interface owner class."); return false; }
                     Spec.Function = Owner->FindFunctionByName(*Spec.FunctionName, EIncludeSuperFlag::IncludeSuper);
                     if (Spec.Function == nullptr || !Spec.Function->HasAnyFunctionFlags(FUNC_BlueprintCallable | FUNC_BlueprintPure))
                     { Error = FString::Printf(TEXT("Function '%s' is not Blueprint-callable."), *Spec.FunctionName); return false; }
@@ -576,7 +733,10 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
                 else if (Spec.Kind.Equals(TEXT("variableGet"), ESearchCase::IgnoreCase)
                     || Spec.Kind.Equals(TEXT("variableSet"), ESearchCase::IgnoreCase))
                 {
-                    if (!BlueprintMemberToolUtils::ResolveVariable(Blueprint, Graph, Spec.VariableName, Spec.OwnerClassPath,
+                    const bool bDeclaredLocal = Spec.OwnerClassPath.IsEmpty() && AddedLocals.ContainsByPredicate([&](const FBPVariableDescription& Local)
+                        { return Local.VarName == FName(*Spec.VariableName); });
+                    if (!BlueprintMemberToolUtils::ResolveVariable(bDeclaredLocal ? PreviewBlueprint : Blueprint,
+                        bDeclaredLocal ? SimulationGraph : Graph, Spec.VariableName, Spec.OwnerClassPath,
                         Spec.Kind.Equals(TEXT("variableSet"), ESearchCase::IgnoreCase), Spec.Variable, Error)) return false;
                     Spec.VariableGuid = Spec.Variable.Guid; Spec.VariableOwner = Spec.Variable.ExternalOwner;
                 }
@@ -613,19 +773,6 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
             ++AutoIndex;
         }
 
-        // Preflight on a transient duplicate so TryCreateConnection can reproduce K2 wildcard
-        // specialization and connection-order effects without touching the live graph.
-        UBlueprint* PreviewBlueprint = NewObject<UBlueprint>(GetTransientPackage(), NAME_None, RF_Transient);
-        PreviewBlueprint->ParentClass = Blueprint->ParentClass;
-        PreviewBlueprint->GeneratedClass = Blueprint->GeneratedClass;
-        PreviewBlueprint->SkeletonGeneratedClass = Blueprint->SkeletonGeneratedClass;
-        PreviewBlueprint->BlueprintType = Blueprint->BlueprintType;
-        PreviewBlueprint->Status = BS_BeingCreated;
-        UEdGraph* SimulationGraph = DuplicateObject<UEdGraph>(Graph, PreviewBlueprint, Graph->GetFName());
-        if (SimulationGraph == nullptr) { Error = TEXT("Could not create a transient graph for patch preflight."); return false; }
-        SimulationGraph->SetFlags(RF_Transient);
-        if (Blueprint->FunctionGraphs.Contains(Graph)) PreviewBlueprint->FunctionGraphs.Add(SimulationGraph);
-        else PreviewBlueprint->UbergraphPages.Add(SimulationGraph);
         for (FPatchNode& Spec : Nodes)
         {
             if (Spec.Live != nullptr)
@@ -718,9 +865,10 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
 
         for (const FPatchNode& Spec : Nodes)
         {
-            if (!Spec.Kind.Equals(TEXT("functionCall"), ESearchCase::IgnoreCase) || Spec.Function == nullptr
+            const bool bMessage = Spec.Kind.Equals(TEXT("interfaceMessage"), ESearchCase::IgnoreCase);
+            if (!bMessage && (!Spec.Kind.Equals(TEXT("functionCall"), ESearchCase::IgnoreCase) || Spec.Function == nullptr
                 || Spec.Function->HasAnyFunctionFlags(FUNC_Static)
-                || (Blueprint->GeneratedClass != nullptr && Blueprint->GeneratedClass->IsChildOf(Spec.Function->GetOwnerClass()))) continue;
+                || (Blueprint->GeneratedClass != nullptr && Blueprint->GeneratedClass->IsChildOf(Spec.Function->GetOwnerClass())))) continue;
             UEdGraphPin* SelfPin = FindPin(Spec.Preview, UEdGraphSchema_K2::PN_Self.ToString(), EGPD_Input, Error);
             if (SelfPin == nullptr) return false;
             const bool bPlannedTarget = Connections.ContainsByPredicate([&](const FPatchConnection& Connection)
@@ -738,6 +886,12 @@ UnrealMCP::FMCPResponse FApplyBlueprintGraphPatchTool::Execute(const UnrealMCP::
         {
             const FScopedTransaction Transaction(NSLOCTEXT("UnrealMCP", "ApplyBlueprintGraphPatch", "UnrealMCP Apply Blueprint Graph Patch"));
             Blueprint->Modify(); Graph->Modify();
+            if (!AddedLocals.IsEmpty())
+            {
+                LiveEntry->Modify();
+                LiveEntry->LocalVariables.Append(AddedLocals);
+                bChanged = true;
+            }
             for (FPatchNode& Spec : Nodes)
             {
                 if (Spec.Live == nullptr)
@@ -955,11 +1109,17 @@ TSharedPtr<FJsonObject> FApplyBlueprintGraphPatchTool::BuildInputSchema() const
     for (const TCHAR* FieldName : {TEXT("objectPath"), TEXT("graphName"), TEXT("graphGuid"), TEXT("patchId"), TEXT("expectedGraphRevision"), TEXT("operationId")})
         Properties->SetObjectField(FieldName, BuildStringProperty(TEXT("Blueprint, graph, deterministic patch, or revision selector.")));
     TSharedRef<FJsonObject> Nodes = MakeShared<FJsonObject>(); Nodes->SetStringField(TEXT("type"), TEXT("array"));
-    Nodes->SetStringField(TEXT("description"), TEXT("Required node kinds: existingNode, functionCall, variableGet, variableSet, typedOperator, branch, reroute, comment, parentCall, switchString, switchEnum, self, macro, and cast. Nodes may include position, comment, tolerance, and inputDefaults. Comment nodes can be resized and styled by existingNode GUID; omitted styles are preserved."));
+    Nodes->SetStringField(TEXT("description"), TEXT("Required node kinds: existingNode, functionCall, interfaceMessage, variableGet, variableSet, typedOperator, branch, reroute, comment, parentCall, switchString, switchName, switchEnum, makeArray, arrayAddUnique, self, macro, and cast. Nodes may include position, comment, tolerance, and inputDefaults. Comment nodes can be resized and styled by existingNode GUID; omitted styles are preserved."));
     TSharedRef<FJsonObject> NodeItem = MakeShared<FJsonObject>(); NodeItem->SetStringField(TEXT("type"), TEXT("object"));
     TSharedRef<FJsonObject> NodeProperties = MakeShared<FJsonObject>();
     for (const TCHAR* FieldName : {TEXT("id"), TEXT("kind"), TEXT("nodeGuid"), TEXT("ownerClassPath"), TEXT("functionName"), TEXT("variableName"), TEXT("operator"), TEXT("comment"), TEXT("macroPath"), TEXT("enumPath"), TEXT("targetClassPath")})
         NodeProperties->SetObjectField(FieldName, BuildStringProperty(TEXT("Plan-local identity or node-specific selector.")));
+    auto ArrayInputCount = MakeShared<FJsonObject>();
+    ArrayInputCount->SetStringField(TEXT("type"), TEXT("integer"));
+    ArrayInputCount->SetNumberField(TEXT("minimum"), 0);
+    ArrayInputCount->SetNumberField(TEXT("maximum"), 128);
+    ArrayInputCount->SetStringField(TEXT("description"), TEXT("Number of positional inputs for makeArray. Defaults to one."));
+    NodeProperties->SetObjectField(TEXT("arrayInputCount"), ArrayInputCount);
     NodeProperties->SetObjectField(TEXT("variableName"), BuildStringProperty(TEXT("Function-local variable or class property. Without ownerClassPath the selected function's locals take precedence.")));
     NodeProperties->SetObjectField(TEXT("ownerClassPath"), BuildStringProperty(TEXT("Explicit class owner for member variables or function calls; bypasses function locals.")));
     TSharedRef<FJsonObject> Integer = MakeShared<FJsonObject>(); Integer->SetStringField(TEXT("type"), TEXT("integer"));
@@ -1033,6 +1193,20 @@ TSharedPtr<FJsonObject> FApplyBlueprintGraphPatchTool::BuildInputSchema() const
     Properties->SetObjectField(TEXT("dryRun"), BuildBoolProperty(TEXT("Run complete preflight without mutation.")));
     Properties->SetObjectField(TEXT("compileAfterEdit"), BuildBoolProperty(TEXT("Compile the edited Blueprint before any save. Defaults true.")));
     Properties->SetObjectField(TEXT("saveAfterEdit"), BuildBoolProperty(TEXT("Save and partially refresh only after successful compilation. Defaults false.")));
+    auto Locals = MakeShared<FJsonObject>();
+    auto LocalItem = MakeShared<FJsonObject>();
+    auto LocalProperties = MakeShared<FJsonObject>();
+    Locals->SetStringField(TEXT("type"), TEXT("array"));
+    Locals->SetNumberField(TEXT("maxItems"), 64);
+    Locals->SetStringField(TEXT("description"), TEXT("Declare function locals before creating getter/setter nodes. Existing declarations must match."));
+    LocalItem->SetStringField(TEXT("type"), TEXT("object"));
+    for (const TCHAR* Key : {TEXT("name"), TEXT("type"), TEXT("typeObjectPath"), TEXT("containerType"),
+        TEXT("valueType"), TEXT("valueTypeObjectPath"), TEXT("defaultValue")})
+        LocalProperties->SetObjectField(Key, BuildStringProperty(Key));
+    LocalItem->SetObjectField(TEXT("properties"), LocalProperties);
+    LocalItem->SetArrayField(TEXT("required"), {MakeShared<FJsonValueString>(TEXT("name")), MakeShared<FJsonValueString>(TEXT("type"))});
+    Locals->SetObjectField(TEXT("items"), LocalItem);
+    Properties->SetObjectField(TEXT("locals"), Locals);
     Schema->SetObjectField(TEXT("properties"), Properties);
     Schema->SetArrayField(TEXT("required"), {MakeShared<FJsonValueString>(TEXT("objectPath")), MakeShared<FJsonValueString>(TEXT("patchId")), MakeShared<FJsonValueString>(TEXT("nodes"))});
     return Schema;

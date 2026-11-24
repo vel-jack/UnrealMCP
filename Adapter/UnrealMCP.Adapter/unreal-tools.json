@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "capturedUtc": "2026-11-23T18:03:09.7421820Z",
+  "capturedUtc": "2026-11-24T02:51:32.5631419Z",
   "tools": [
     {
       "name": "AddBlueprintArrayOperationNode",
@@ -1844,7 +1844,7 @@
           },
           "nodes": {
             "type": "array",
-            "description": "Required node kinds: existingNode, functionCall, variableGet, variableSet, typedOperator, branch, reroute, comment, parentCall, switchString, switchEnum, self, macro, and cast. Nodes may include position, comment, tolerance, and inputDefaults. Comment nodes can be resized and styled by existingNode GUID; omitted styles are preserved.",
+            "description": "Required node kinds: existingNode, functionCall, interfaceMessage, variableGet, variableSet, typedOperator, branch, reroute, comment, parentCall, switchString, switchName, switchEnum, makeArray, arrayAddUnique, self, macro, and cast. Nodes may include position, comment, tolerance, and inputDefaults. Comment nodes can be resized and styled by existingNode GUID; omitted styles are preserved.",
             "items": {
               "type": "object",
               "properties": {
@@ -1891,6 +1891,12 @@
                 "targetClassPath": {
                   "type": "string",
                   "description": "Plan-local identity or node-specific selector."
+                },
+                "arrayInputCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 128,
+                  "description": "Number of positional inputs for makeArray. Defaults to one."
                 },
                 "positionX": {
                   "type": "integer"
@@ -2116,6 +2122,48 @@
           "saveAfterEdit": {
             "type": "boolean",
             "description": "Save and partially refresh only after successful compilation. Defaults false."
+          },
+          "locals": {
+            "type": "array",
+            "maxItems": 64,
+            "description": "Declare function locals before creating getter/setter nodes. Existing declarations must match.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "name"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "type"
+                },
+                "typeObjectPath": {
+                  "type": "string",
+                  "description": "typeObjectPath"
+                },
+                "containerType": {
+                  "type": "string",
+                  "description": "containerType"
+                },
+                "valueType": {
+                  "type": "string",
+                  "description": "valueType"
+                },
+                "valueTypeObjectPath": {
+                  "type": "string",
+                  "description": "valueTypeObjectPath"
+                },
+                "defaultValue": {
+                  "type": "string",
+                  "description": "defaultValue"
+                }
+              },
+              "required": [
+                "name",
+                "type"
+              ]
+            }
           }
         },
         "required": [
@@ -4604,6 +4652,10 @@
             "type": "string",
             "description": "Optional exact node GUID; implies nodes mode."
           },
+          "expectedRevision": {
+            "type": "string",
+            "description": "Pass the previous page revision to refuse changed graphs or filters."
+          },
           "query": {
             "type": "string",
             "description": "Optional member/title/name substring; implies nodes mode."
@@ -4653,7 +4705,7 @@
     },
     {
       "name": "LayoutBlueprintNodes",
-      "description": "Deterministically lays out an explicit Blueprint node set by execution-flow depth with configurable spacing, collision avoidance, dry-run, and optional save.",
+      "description": "Deterministically lays out an Blueprint graph or explicit node set by execution-flow depth with configurable spacing, collision avoidance, dry-run, and optional save.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4669,9 +4721,13 @@
             "type": "string",
             "description": "Exact graph GUID."
           },
+          "expectedGraphRevision": {
+            "type": "string",
+            "description": "Optional current graph revision required before laying out nodes."
+          },
           "nodeGuids": {
             "type": "array",
-            "description": "Explicit stable node GUIDs to arrange.",
+            "description": "Explicit stable node GUIDs to arrange. Omit to arrange the whole graph.",
             "items": {
               "type": "string"
             },
@@ -4699,8 +4755,7 @@
           }
         },
         "required": [
-          "objectPath",
-          "nodeGuids"
+          "objectPath"
         ]
       }
     },
@@ -5223,6 +5278,91 @@
       }
     },
     {
+      "name": "PruneUnreachableNodes",
+      "description": "Previews or removes unreachable Blueprint nodes while preserving entry points, reachable execution and required data. Apply requires the preview revision and confirm=true.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint."
+          },
+          "graphName": {
+            "type": "string",
+            "description": "Graph name."
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "Exact graph GUID."
+          },
+          "expectedRevision": {
+            "type": "string",
+            "description": "Preview revision required for apply."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Preview only. Defaults to true."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Confirm removal when dryRun=false."
+          }
+        },
+        "required": [
+          "objectPath"
+        ]
+      }
+    },
+    {
+      "name": "ReadBlueprintGraphDsl",
+      "description": "Read a revision-bound UnrealMCP graph patch document and exact node, pin, and link evidence for one resident Blueprint graph.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Exact resident Blueprint or graph object path, including embedded LevelScriptBlueprint objects. Never loads assets."
+          },
+          "portableNodeGuids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "Exact selected node GUID on this page."
+            },
+            "description": "Export selected supported nodes, their local declarations, and explicit boundary links."
+          },
+          "graphPath": {
+            "type": "string",
+            "description": "Optional exact graph object path within the resolved Blueprint."
+          },
+          "nodeGuid": {
+            "type": "string",
+            "description": "Optional exact node GUID; implies nodes mode."
+          },
+          "expectedRevision": {
+            "type": "string",
+            "description": "Pass the previous page revision to refuse changed graphs or filters."
+          },
+          "query": {
+            "type": "string",
+            "description": "Optional member/title/name substring; implies nodes mode."
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Zero-based page offset, default 0."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Page size, default 50, maximum 200."
+          }
+        },
+        "required": [
+          "objectPath",
+          "graphPath"
+        ]
+      }
+    },
+    {
       "name": "RefreshBlueprintCallSites",
       "description": "Finds every same-Blueprint and cross-Blueprint call site of a Blueprint function via the project index and reconstructs each call node to match the function\u0027s current signature, compiling callers without saving.",
       "inputSchema": {
@@ -5256,6 +5396,27 @@
         "required": [
           "ownerBlueprint",
           "functionName"
+        ]
+      }
+    },
+    {
+      "name": "RefreshBlueprintNodes",
+      "description": "Runs Unreal Editor Refresh All Nodes on one Blueprint in an undo transaction. Requires confirm=true; does not save.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "Target Blueprint asset path."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Confirm reconstructing the Blueprint nodes."
+          }
+        },
+        "required": [
+          "objectPath",
+          "confirm"
         ]
       }
     },
@@ -5633,7 +5794,7 @@
     },
     {
       "name": "RetargetBlueprintMemberNode",
-      "description": "Retargets a variable Get/Set or ordinary function-call node, even if its old member no longer resolves. Inherited members use self context. Preserves GUID, position, comment, compatible defaults and direct links; pinMap handles renamed parameters. Dry-run simulates reconstruction. Dropped links are explicit. Requires confirm to apply; compile is opt-in, save forces compile with rollback.",
+      "description": "Retargets a variable Get/Set, ordinary function call, or inherited event override, even if its old member no longer resolves. Inherited members use self context. Preserves GUID, position, comment, compatible defaults and direct links; pinMap handles renamed parameters. Dry-run simulates reconstruction. Dropped links are explicit. Requires confirm to apply; compile is opt-in, save forces compile with rollback.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -5675,7 +5836,7 @@
           },
           "newMemberName": {
             "type": "string",
-            "description": "New variable or callable function name."
+            "description": "New variable, callable function, or inherited event name."
           },
           "newOwnerClassPath": {
             "type": "string",
@@ -5822,7 +5983,7 @@
           },
           "requireUpToDateCompile": {
             "type": "boolean",
-            "description": "Refuse to save a Blueprint whose compile status is not up to date. Defaults to true."
+            "description": "Refuse to save a Blueprint whose compile status is not up to date. Defaults to true. False reports visible broken nodes before writing."
           }
         },
         "required": [
@@ -5868,7 +6029,7 @@
           },
           "requireUpToDateCompile": {
             "type": "boolean",
-            "description": "Refuse to save a dirty asset whose Blueprint status is not up to date. Defaults to true."
+            "description": "Refuse to save a dirty asset whose Blueprint status is not up to date. Defaults to true. False reports visible broken nodes before writing."
           },
           "refreshIndex": {
             "type": "boolean",
@@ -6482,7 +6643,7 @@
     },
     {
       "name": "SetSwitchCases",
-      "description": "Edits Switch on String cases; renames preserve compatible exec links, removed cases report dropped links, and Default is retained. Enum cases are defined by their enum and cannot be arbitrarily renamed here. Dry-run simulates reconstruction. Requires confirm to apply; save forces successful compile.",
+      "description": "Edits Switch on String and Switch on Name cases; renames preserve compatible exec links, removed cases report dropped links, and Default is retained. Enum cases are defined by their enum and cannot be arbitrarily renamed here. Dry-run simulates reconstruction. Requires confirm to apply; save forces successful compile.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -6526,7 +6687,7 @@
             "type": "array",
             "items": {
               "type": "string",
-              "description": "Final string switch label."
+              "description": "Final String or Name switch label."
             },
             "maxItems": 128
           },
@@ -7139,6 +7300,442 @@
         "required": [
           "objectPath",
           "elementTypeObjectPath"
+        ]
+      }
+    },
+    {
+      "name": "WrapWithIsValid",
+      "description": "Atomically inserts an Is Valid branch before a Blueprint execution input, with an optional invalid route. Defaults to dry-run.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "type": "string",
+            "description": "objectPath"
+          },
+          "graphName": {
+            "type": "string",
+            "description": "graphName"
+          },
+          "graphGuid": {
+            "type": "string",
+            "description": "graphGuid"
+          },
+          "nodeGuid": {
+            "type": "string",
+            "description": "nodeGuid"
+          },
+          "execPinName": {
+            "type": "string",
+            "description": "execPinName"
+          },
+          "objectSourceNodeGuid": {
+            "type": "string",
+            "description": "objectSourceNodeGuid"
+          },
+          "objectSourcePinName": {
+            "type": "string",
+            "description": "objectSourcePinName"
+          },
+          "elseNodeGuid": {
+            "type": "string",
+            "description": "elseNodeGuid"
+          },
+          "elseExecPinName": {
+            "type": "string",
+            "description": "elseExecPinName"
+          },
+          "expectedRevision": {
+            "type": "string",
+            "description": "expectedRevision"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Preview only. Defaults to true."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Confirm apply."
+          }
+        },
+        "required": [
+          "objectPath",
+          "nodeGuid",
+          "execPinName",
+          "objectSourceNodeGuid",
+          "objectSourcePinName"
+        ]
+      }
+    },
+    {
+      "name": "WriteBlueprintGraphDsl",
+      "description": "Apply a revision-bound UnrealMCP graph patch document. Defaults to dry run; confirm to apply. Existing graph content is preserved unless explicitly edited.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "document": {
+            "type": "object",
+            "properties": {
+              "objectPath": {
+                "type": "string",
+                "description": "Blueprint, graph, deterministic patch, or revision selector."
+              },
+              "graphGuid": {
+                "type": "string",
+                "description": "Blueprint, graph, deterministic patch, or revision selector."
+              },
+              "patchId": {
+                "type": "string",
+                "description": "Blueprint, graph, deterministic patch, or revision selector."
+              },
+              "expectedGraphRevision": {
+                "type": "string",
+                "description": "Blueprint, graph, deterministic patch, or revision selector."
+              },
+              "nodes": {
+                "type": "array",
+                "description": "Required node kinds: existingNode, functionCall, interfaceMessage, variableGet, variableSet, typedOperator, branch, reroute, comment, parentCall, switchString, switchName, switchEnum, makeArray, arrayAddUnique, self, macro, and cast. Nodes may include position, comment, tolerance, and inputDefaults. Comment nodes can be resized and styled by existingNode GUID; omitted styles are preserved.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "Plan-local identity or node-specific selector."
+                    },
+                    "kind": {
+                      "type": "string",
+                      "description": "Plan-local identity or node-specific selector."
+                    },
+                    "nodeGuid": {
+                      "type": "string",
+                      "description": "Plan-local identity or node-specific selector."
+                    },
+                    "ownerClassPath": {
+                      "type": "string",
+                      "description": "Explicit class owner for member variables or function calls; bypasses function locals."
+                    },
+                    "functionName": {
+                      "type": "string",
+                      "description": "Plan-local identity or node-specific selector."
+                    },
+                    "variableName": {
+                      "type": "string",
+                      "description": "Function-local variable or class property. Without ownerClassPath the selected function\u0027s locals take precedence."
+                    },
+                    "operator": {
+                      "type": "string",
+                      "description": "Plan-local identity or node-specific selector."
+                    },
+                    "comment": {
+                      "type": "string",
+                      "description": "Plan-local identity or node-specific selector."
+                    },
+                    "macroPath": {
+                      "type": "string",
+                      "description": "Plan-local identity or node-specific selector."
+                    },
+                    "enumPath": {
+                      "type": "string",
+                      "description": "Plan-local identity or node-specific selector."
+                    },
+                    "targetClassPath": {
+                      "type": "string",
+                      "description": "Plan-local identity or node-specific selector."
+                    },
+                    "arrayInputCount": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 128,
+                      "description": "Number of positional inputs for makeArray. Defaults to one."
+                    },
+                    "positionX": {
+                      "type": "integer"
+                    },
+                    "positionY": {
+                      "type": "integer"
+                    },
+                    "tolerance": {
+                      "type": "number"
+                    },
+                    "pure": {
+                      "type": "boolean",
+                      "description": "Pure cast; default false."
+                    },
+                    "cases": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "String switch case label."
+                      },
+                      "maxItems": 128
+                    },
+                    "width": {
+                      "type": "integer"
+                    },
+                    "height": {
+                      "type": "integer"
+                    },
+                    "showBubbleWhenZoomed": {
+                      "type": "boolean",
+                      "description": "Comment bubble visibility. Defaults true for comment creation; omitted on existingNode preserves its setting."
+                    },
+                    "color": {
+                      "type": "object",
+                      "properties": {
+                        "r": {
+                          "type": "number"
+                        },
+                        "g": {
+                          "type": "number"
+                        },
+                        "b": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "r",
+                        "g",
+                        "b"
+                      ]
+                    },
+                    "inputDefaults": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "pinName": {
+                            "type": "string",
+                            "description": "Exact input pin and one default source."
+                          },
+                          "defaultValue": {
+                            "type": "string",
+                            "description": "Exact input pin and one default source."
+                          },
+                          "defaultObjectPath": {
+                            "type": "string",
+                            "description": "Exact input pin and one default source."
+                          }
+                        },
+                        "required": [
+                          "pinName"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind"
+                  ]
+                }
+              },
+              "connections": {
+                "type": "array",
+                "description": "Exact output-to-input connections. Occupied data inputs require exact existing source fields plus confirmDataReplacement=true.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sourceNodeId": {
+                      "type": "string",
+                      "description": "Plan node id and exact pin name."
+                    },
+                    "sourcePinName": {
+                      "type": "string",
+                      "description": "Plan node id and exact pin name."
+                    },
+                    "targetNodeId": {
+                      "type": "string",
+                      "description": "Plan node id and exact pin name."
+                    },
+                    "targetPinName": {
+                      "type": "string",
+                      "description": "Plan node id and exact pin name."
+                    },
+                    "existingSourceNodeId": {
+                      "type": "string",
+                      "description": "Plan node id and exact pin name."
+                    },
+                    "existingSourcePinName": {
+                      "type": "string",
+                      "description": "Plan node id and exact pin name."
+                    },
+                    "confirmDataReplacement": {
+                      "type": "boolean",
+                      "description": "Explicitly confirm replacement of the identified occupied data link."
+                    }
+                  },
+                  "required": [
+                    "sourceNodeId",
+                    "sourcePinName",
+                    "targetNodeId",
+                    "targetPinName"
+                  ]
+                }
+              },
+              "disconnections": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sourceNodeId": {
+                      "type": "string",
+                      "description": "Plan node id and exact linked pin name."
+                    },
+                    "sourcePinName": {
+                      "type": "string",
+                      "description": "Plan node id and exact linked pin name."
+                    },
+                    "targetNodeId": {
+                      "type": "string",
+                      "description": "Plan node id and exact linked pin name."
+                    },
+                    "targetPinName": {
+                      "type": "string",
+                      "description": "Plan node id and exact linked pin name."
+                    },
+                    "confirm": {
+                      "type": "boolean",
+                      "description": "Confirm this exact link disconnection."
+                    }
+                  },
+                  "required": [
+                    "sourceNodeId",
+                    "sourcePinName",
+                    "targetNodeId",
+                    "targetPinName"
+                  ]
+                }
+              },
+              "spliceExec": {
+                "type": "array",
+                "description": "Insert a node on an exact existing execution link. Requires confirm=true and preserves other incoming routes.",
+                "maxItems": 64,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sourceNodeId": {
+                      "type": "string",
+                      "description": "Plan node id or exact execution pin name."
+                    },
+                    "sourcePinName": {
+                      "type": "string",
+                      "description": "Plan node id or exact execution pin name."
+                    },
+                    "targetNodeId": {
+                      "type": "string",
+                      "description": "Plan node id or exact execution pin name."
+                    },
+                    "targetPinName": {
+                      "type": "string",
+                      "description": "Plan node id or exact execution pin name."
+                    },
+                    "insertNodeId": {
+                      "type": "string",
+                      "description": "Plan node id or exact execution pin name."
+                    },
+                    "insertInputPinName": {
+                      "type": "string",
+                      "description": "Plan node id or exact execution pin name."
+                    },
+                    "insertOutputPinName": {
+                      "type": "string",
+                      "description": "Plan node id or exact execution pin name."
+                    },
+                    "confirm": {
+                      "type": "boolean",
+                      "description": "Confirm removing the exact original execution link."
+                    }
+                  },
+                  "required": [
+                    "sourceNodeId",
+                    "sourcePinName",
+                    "targetNodeId",
+                    "targetPinName",
+                    "insertNodeId",
+                    "insertInputPinName",
+                    "insertOutputPinName",
+                    "confirm"
+                  ]
+                }
+              },
+              "detailLevel": {
+                "type": "string",
+                "description": "summary (default) returns identities and link results; full includes every node pin."
+              },
+              "compileAfterEdit": {
+                "type": "boolean",
+                "description": "Compile the edited Blueprint before any save. Defaults true."
+              },
+              "locals": {
+                "type": "array",
+                "maxItems": 64,
+                "description": "Declare function locals before creating getter/setter nodes. Existing declarations must match.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "name"
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "type"
+                    },
+                    "typeObjectPath": {
+                      "type": "string",
+                      "description": "typeObjectPath"
+                    },
+                    "containerType": {
+                      "type": "string",
+                      "description": "containerType"
+                    },
+                    "valueType": {
+                      "type": "string",
+                      "description": "valueType"
+                    },
+                    "valueTypeObjectPath": {
+                      "type": "string",
+                      "description": "valueTypeObjectPath"
+                    },
+                    "defaultValue": {
+                      "type": "string",
+                      "description": "defaultValue"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "type"
+                  ]
+                }
+              },
+              "format": {
+                "type": "string",
+                "description": "unrealmcp.graph-patch/1"
+              }
+            },
+            "required": [
+              "format",
+              "objectPath",
+              "graphGuid",
+              "expectedGraphRevision",
+              "patchId",
+              "nodes"
+            ]
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Preview only. Defaults to true."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required when applying."
+          },
+          "arrangeAfterWrite": {
+            "type": "boolean",
+            "description": "Arrange the entire graph after a successful apply. This is a separate undo step and is deferred in dry runs."
+          }
+        },
+        "required": [
+          "document"
         ]
       }
     }

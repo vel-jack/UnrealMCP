@@ -159,6 +159,9 @@ UnrealMCP::FMCPResponse FSaveValidatedBlueprintsTool::Execute(const UnrealMCP::F
                 }
 
                 Item->SetBoolField(TEXT("attempted"), true);
+                const bool bHasBrokenNodes = !bRequireUpToDateCompile
+                    && BlueprintEditToolUtils::DescribeBrokenNodes(Blueprint, *Item);
+                if (!bRequireUpToDateCompile) Item->SetBoolField(TEXT("persistedBrokenNodes"), false);
                 if (bDryRun)
                 {
                     Outcome.Outcome = ESaveOutcome::DryRunWouldSave;
@@ -183,6 +186,7 @@ UnrealMCP::FMCPResponse FSaveValidatedBlueprintsTool::Execute(const UnrealMCP::F
                 FString IndexRefreshError;
                 const bool bIndexRefreshed = bRefreshIndex && BlueprintEditToolUtils::RefreshAssetIndex(ObjectPath, IndexRefreshError);
                 Item->SetBoolField(TEXT("saved"), true);
+                if (!bRequireUpToDateCompile) Item->SetBoolField(TEXT("persistedBrokenNodes"), bHasBrokenNodes);
                 Item->SetStringField(TEXT("savedFilename"), SavedFilename);
                 Item->SetBoolField(TEXT("indexRefreshed"), bIndexRefreshed);
                 Item->SetStringField(TEXT("indexRefreshError"), IndexRefreshError);
@@ -276,7 +280,7 @@ TSharedPtr<FJsonObject> FSaveValidatedBlueprintsTool::BuildInputSchema() const
 
     Properties->SetObjectField(TEXT("dryRun"), BuildBoolProperty(TEXT("Report which assets would be saved without saving any of them.")));
     Properties->SetObjectField(TEXT("continueOnFailure"), BuildBoolProperty(TEXT("Continue attempting later assets after one fails, instead of stopping immediately. Defaults to false.")));
-    Properties->SetObjectField(TEXT("requireUpToDateCompile"), BuildBoolProperty(TEXT("Refuse to save a dirty asset whose Blueprint status is not up to date. Defaults to true.")));
+    Properties->SetObjectField(TEXT("requireUpToDateCompile"), BuildBoolProperty(TEXT("Refuse to save a dirty asset whose Blueprint status is not up to date. Defaults to true. False reports visible broken nodes before writing.")));
     Properties->SetObjectField(TEXT("refreshIndex"), BuildBoolProperty(TEXT("Partially refresh the project index for each asset saved. Defaults to true.")));
     Properties->SetObjectField(TEXT("operationId"), BuildStringProperty(TEXT("Optional client-assigned ID for mutation-request tracking via GetMutationRequestStatus.")));
 

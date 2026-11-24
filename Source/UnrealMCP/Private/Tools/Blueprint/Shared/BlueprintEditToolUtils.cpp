@@ -6,6 +6,8 @@
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraphToken.h"
 #include "Kismet2/CompilerResultsLog.h"
+#include "K2Node_DynamicCast.h"
+#include "K2Node_CallFunction.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Logging/TokenizedMessage.h"
 #include "Misc/UObjectToken.h"
@@ -51,6 +53,49 @@ namespace UnrealMCP::BlueprintEditToolUtils
             return false;
         }
         return true;
+    }
+
+    bool DescribeBrokenNodes(UBlueprint* Blueprint, FJsonObject& Result)
+    {
+        TArray<UEdGraph*> Graphs;
+        Blueprint->GetAllGraphs(Graphs);
+        TArray<TSharedPtr<FJsonValue>> Findings;
+        for (const UEdGraph* Graph : Graphs)
+        {
+            if (!Graph) continue;
+            for (const UEdGraphNode* Node : Graph->Nodes)
+            {
+                if (!Node) continue;
+                TArray<TSharedPtr<FJsonValue>> Reasons;
+                if (const auto* CastNode = Cast<UK2Node_DynamicCast>(Node))
+                    if (!CastNode->TargetType)
+                        Reasons.Add(MakeShared<FJsonValueString>(TEXT("missing_cast_class")));
+                if (const auto* Call = Cast<UK2Node_CallFunction>(Node))
+                    if (!Call->GetTargetFunction())
+                        Reasons.Add(MakeShared<FJsonValueString>(TEXT("unresolved_function")));
+                if (Node->bHasCompilerMessage && Node->ErrorType <= EMessageSeverity::Error)
+                    Reasons.Add(MakeShared<FJsonValueString>(TEXT("compiler_error")));
+                TArray<TSharedPtr<FJsonValue>> OrphanedPins;
+                for (const UEdGraphPin* Pin : Node->Pins)
+                    if (Pin && Pin->bOrphanedPin)
+                        OrphanedPins.Add(MakeShared<FJsonValueString>(Pin->PinName.ToString()));
+                if (!OrphanedPins.IsEmpty())
+                    Reasons.Add(MakeShared<FJsonValueString>(TEXT("orphaned_pins")));
+                if (Reasons.IsEmpty()) continue;
+                auto Finding = MakeShared<FJsonObject>();
+                Finding->SetStringField(TEXT("graphPath"), Graph->GetPathName());
+                Finding->SetStringField(TEXT("nodeGuid"), Node->NodeGuid.ToString(EGuidFormats::DigitsWithHyphensLower));
+                Finding->SetStringField(TEXT("nodeTitle"), Node->GetNodeTitle(ENodeTitleType::ListView).ToString());
+                Finding->SetArrayField(TEXT("reasons"), Reasons);
+                if (!OrphanedPins.IsEmpty()) Finding->SetArrayField(TEXT("orphanedPins"), OrphanedPins);
+                if (Node->bHasCompilerMessage) Finding->SetStringField(TEXT("compilerMessage"), Node->ErrorMsg);
+                Findings.Add(MakeShared<FJsonValueObject>(Finding));
+            }
+        }
+        Result.SetArrayField(TEXT("brokenNodes"), Findings);
+        if (!Findings.IsEmpty())
+            Result.SetStringField(TEXT("brokenNodeWarning"), TEXT("This save can persist broken Blueprint nodes because the compile check was disabled."));
+        return !Findings.IsEmpty();
     }
 
     bool SaveAsset(UObject* Asset, FString& OutFilename, FString& OutError)

@@ -7,6 +7,8 @@
 #include "EdGraph/EdGraph.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
+#include "Editor.h"
+#include "K2Node_Self.h"
 #include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "GameFramework/Actor.h"
@@ -22,6 +24,9 @@
 #include "Misc/ScopeExit.h"
 #include "ObjectTools.h"
 #include "Tools/Blueprint/Graph/ApplyBlueprintGraphPatchTool.h"
+#include "Tools/Blueprint/Graph/PruneUnreachableNodesTool.h"
+#include "Tools/Blueprint/Graph/RefreshBlueprintNodesTool.h"
+#include "Tools/Blueprint/Graph/WrapWithIsValidTool.h"
 #include "Tools/Blueprint/Graph/AddBlueprintCommentNodeTool.h"
 #include "Tools/Blueprint/Members/SetBlueprintComponentDefaultsTool.h"
 #include "EdGraphNode_Comment.h"
@@ -378,7 +383,7 @@ bool FUnrealMCPGraphPatchCompileRollbackTest::RunTest(const FString& Parameters)
     Request.Params->SetStringField(TEXT("graphGuid"), GraphGuid);
     Request.Params->SetStringField(TEXT("patchId"), TEXT("graph-patch-compile-rollback-v1"));
     Request.Params->SetStringField(TEXT("expectedGraphRevision"), InitialRevision);
-    Request.Params->SetArrayField(TEXT("nodes"), {MakeShared<FJsonValueObject>(Node(TEXT("rolledBackBranch"), TEXT("branch")))});
+    Request.Params->SetArrayField(TEXT("nodes"), {MakeShared<FJsonValueObject>(Node(TEXT("rolledBackAddUnique"), TEXT("arrayAddUnique")))});
     Request.Params->SetBoolField(TEXT("compileAfterEdit"), true);
     Request.Params->SetBoolField(TEXT("saveAfterEdit"), true);
 
@@ -600,6 +605,78 @@ bool FUnrealMCPCommentPropertiesTest::RunTest(const FString& Parameters)
             TestTrue(TEXT("Non-comment style rejected"), FApplyBlueprintGraphPatchTool().Execute(Request).Error.IsSet());
             break;
         }
+    return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUnrealMCPGraphToolUndoTest,
+    "UnrealMCP.Blueprint.Authoring.GraphTools.Undo",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FUnrealMCPGraphToolUndoTest::RunTest(const FString& Parameters)
+{
+    using namespace UnrealMCP;
+    namespace GraphEdit = BlueprintGraphEditToolUtils;
+    const FString PackagePath = TEXT("/Game/UnrealMCP_Automation/BP_GraphUndo_") + FGuid::NewGuid().ToString(EGuidFormats::Digits);
+    UBlueprint* Blueprint = CreatePatchFixture(PackagePath);
+    if (!TestNotNull(TEXT("Undo fixture"), Blueprint)) return false;
+    ON_SCOPE_EXIT
+    {
+        ObjectTools::DeleteObjectsUnchecked({Blueprint});
+        if (UPackage* Package = FindPackage(nullptr, *PackagePath)) Package->SetDirtyFlag(false);
+    };
+    if (!GEditor || Blueprint->UbergraphPages.IsEmpty()) return false;
+
+    UEdGraph* Graph = Blueprint->UbergraphPages[0];
+    auto* Entry = NewObject<UK2Node_CustomEvent>(Graph);
+    Entry->CustomFunctionName = TEXT("CheckUndo");
+    auto* Target = NewObject<UK2Node_IfThenElse>(Graph);
+    auto* Orphan = NewObject<UK2Node_IfThenElse>(Graph);
+    auto* Self = NewObject<UK2Node_Self>(Graph);
+    for (UEdGraphNode* NodeToPlace : TArray<UEdGraphNode*>{Entry, Target, Orphan, Self})
+        GraphEdit::PlaceNewNode(Graph, NodeToPlace, {});
+    Entry->FindPinChecked(UEdGraphSchema_K2::PN_Then)->MakeLinkTo(Target->GetExecPin());
+    const FString TargetGuid = GraphEdit::GetNodeGuid(Target);
+    const FString SelfGuid = GraphEdit::GetNodeGuid(Self);
+    const FString SelfPinName = Self->Pins[0]->PinName.ToString();
+    auto MakeRequest = [&]()
+    {
+        FMCPRequest Request;
+        Request.Id = TEXT("graph-tool-undo");
+        Request.Params = MakeShared<FJsonObject>();
+        Request.Params->SetStringField(TEXT("objectPath"), Blueprint->GetPathName());
+        Request.Params->SetStringField(TEXT("graphGuid"), Graph->GraphGuid.ToString());
+        Request.Params->SetBoolField(TEXT("confirm"), true);
+        Request.Params->SetBoolField(TEXT("dryRun"), false);
+        Request.Params->SetStringField(TEXT("expectedRevision"), GraphEdit::ComputeGraphRevision(Graph));
+        return Request;
+    };
+    auto VerifyUndo = [&](const FMCPResponse& Response, const FString& Before, const TCHAR* Label)
+    {
+        if (Response.Error.IsSet()) AddError(Response.Error->Message);
+        if (!TestTrue(Label, Response.Result.IsValid() && Response.Result->GetBoolField(TEXT("success")))) return false;
+        if (!TestTrue(TEXT("Editor undo succeeded"), GEditor->UndoTransaction())) return false;
+        return TestEqual(TEXT("Undo restored graph identity, positions, pins and links"), GraphEdit::ComputeGraphRevision(Graph), Before);
+    };
+
+    FString Before = GraphEdit::ComputeGraphRevision(Graph);
+    const auto Refresh = FRefreshBlueprintNodesTool().Execute(MakeRequest());
+    if (!VerifyUndo(Refresh, Before, TEXT("Refresh All Nodes succeeded"))) return false;
+
+    Before = GraphEdit::ComputeGraphRevision(Graph);
+    const auto Prune = FPruneUnreachableNodesTool().Execute(MakeRequest());
+    if (Prune.Result.IsValid())
+        TestEqual(TEXT("Prune removed disconnected branch and Self"), Prune.Result->GetIntegerField(TEXT("removedCount")), 2);
+    if (!VerifyUndo(Prune, Before, TEXT("Pruning succeeded"))) return false;
+
+    Before = GraphEdit::ComputeGraphRevision(Graph);
+    FMCPRequest Guard = MakeRequest();
+    Guard.Params->SetStringField(TEXT("nodeGuid"), TargetGuid);
+    Guard.Params->SetStringField(TEXT("execPinName"), UEdGraphSchema_K2::PN_Execute.ToString());
+    Guard.Params->SetStringField(TEXT("objectSourceNodeGuid"), SelfGuid);
+    Guard.Params->SetStringField(TEXT("objectSourcePinName"), SelfPinName);
+    const auto Wrap = FWrapWithIsValidTool().Execute(Guard);
+    if (Wrap.Result.IsValid()) TestTrue(TEXT("Guard changed graph"), Wrap.Result->GetBoolField(TEXT("changed")));
+    VerifyUndo(Wrap, Before, TEXT("Validity guard succeeded"));
     return !HasAnyErrors();
 }
 

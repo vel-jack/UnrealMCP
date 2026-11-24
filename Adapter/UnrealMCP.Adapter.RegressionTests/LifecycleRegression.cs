@@ -148,8 +148,8 @@ internal static class LifecycleRegression
 
     private static async Task CheckLaunchOptions(string workspace, string project)
     {
-        Check(new AdapterOptions().LaunchUnattended && AdapterOptions.Parse(["serve"], true).LaunchUnattended,
-            "Automated editor launch defaults to unattended");
+        Check(!new AdapterOptions().LaunchUnattended && !AdapterOptions.Parse(["serve"], true).LaunchUnattended,
+            "Editor launch defaults to interactive");
         Check(!AdapterOptions.Parse(["serve", "--interactive-editor"], true).LaunchUnattended,
             "Interactive-editor option explicitly enables startup dialogs");
         const string executable = @"C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe";

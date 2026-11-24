@@ -8,11 +8,15 @@
 #include "Engine/Blueprint.h"
 #include "Editor.h"
 #include "K2Node_CallFunction.h"
+#include "K2Node_FunctionEntry.h"
+#include "K2Node_MacroInstance.h"
+#include "Serialization/JsonSerializer.h"
 #include "K2Node_IfThenElse.h"
 #include "K2Node_Knot.h"
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "Kismet/KismetStringLibrary.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Misc/SecureHash.h"
 #include "ScopedTransaction.h"
@@ -238,6 +242,14 @@ namespace UnrealMCP::BlueprintGraphEditToolUtils
 
         FName FunctionName;
         bOutSupportsTolerance = false;
+        if (Normalized == TEXT("==") || Normalized == TEXT("stringequal") || Normalized == TEXT("string=="))
+        {
+            OutCanonicalName = TEXT("StringEqual");
+            OutFunction = UKismetStringLibrary::StaticClass()->FindFunctionByName(
+                GET_FUNCTION_NAME_CHECKED(UKismetStringLibrary, EqualEqual_StrStr));
+            if (!OutFunction) OutError = TEXT("Could not resolve case-sensitive string equality.");
+            return OutFunction != nullptr;
+        }
         if (Normalized == TEXT("objectequal") || Normalized == TEXT("objectequals"))
         { OutCanonicalName = TEXT("ObjectEqual"); FunctionName = GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, EqualEqual_ObjectObject); }
         else if (Normalized == TEXT("objectnotequal"))
@@ -261,7 +273,7 @@ namespace UnrealMCP::BlueprintGraphEditToolUtils
         else
         {
             OutError = FString::Printf(
-                TEXT("Unsupported typed operator '%s'. Use ObjectEqual, ObjectNotEqual, BooleanAnd, BooleanOr, BooleanNot, VectorAdd, VectorSubtract, or VectorNearlyEqual."),
+                TEXT("Unsupported typed operator '%s'. Use StringEqual (==), ObjectEqual, ObjectNotEqual, BooleanAnd, BooleanOr, BooleanNot, VectorAdd, VectorSubtract, or VectorNearlyEqual."),
                 *RequestedOperator);
             return false;
         }
@@ -281,10 +293,30 @@ namespace UnrealMCP::BlueprintGraphEditToolUtils
         for (const UEdGraphNode* Node : Graph->Nodes) if (Node != nullptr) Nodes.Add(Node);
         Nodes.Sort([](const UEdGraphNode& A, const UEdGraphNode& B){ return A.NodeGuid < B.NodeGuid; });
         FString Canonical;
+        if (const UEdGraph* Scope = FBlueprintEditorUtils::GetTopLevelGraph(const_cast<UEdGraph*>(Graph)))
+        {
+            TArray<UK2Node_FunctionEntry*> Entries;
+            Scope->GetNodesOfClass(Entries);
+            if (Entries.Num() == 1)
+            {
+                for (const auto& Variable : Entries[0]->LocalVariables)
+                {
+                    auto Local = BlueprintToolUtils::SerializeVariable(Variable);
+                    Local->SetStringField(TEXT("defaultValue"), Variable.DefaultValue);
+                    FString Json;
+                    FJsonSerializer::Serialize(Local, TJsonWriterFactory<>::Create(&Json));
+                    Canonical += TEXT("V|") + Json + TEXT("\n");
+                }
+            }
+        }
         for (const UEdGraphNode* Node : Nodes)
         {
             Canonical += FString::Printf(TEXT("N|%s|%s|%d|%d|%s\n"),
                 *GetNodeGuid(Node), *Node->GetClass()->GetPathName(), Node->NodePosX, Node->NodePosY, *Node->NodeComment);
+            if (const auto* Call = Cast<UK2Node_CallFunction>(Node))
+                if (const UFunction* Function = Call->GetTargetFunction()) Canonical += TEXT("F|") + Function->GetPathName() + TEXT("\n");
+            if (const auto* Macro = Cast<UK2Node_MacroInstance>(Node))
+                if (const UEdGraph* Body = Macro->GetMacroGraph()) Canonical += TEXT("M|") + Body->GetPathName() + TEXT("\n");
             if (const auto* Comment = Cast<UEdGraphNode_Comment>(Node))
                 Canonical += FString::Printf(TEXT("C|%d|%d|%s|%d|%d|%d\n"), Comment->NodeWidth, Comment->NodeHeight,
                     *Comment->CommentColor.ToString(), Comment->bCommentBubbleVisible_InDetailsPanel,

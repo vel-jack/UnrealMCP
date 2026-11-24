@@ -15,7 +15,7 @@
 namespace UnrealMCP::IndexedQueryToolUtils
 {
     template <typename TCallable>
-    bool ExecuteWithProjectIndex(TCallable&& Callable, FString& OutError)
+    bool ExecuteWithProjectIndex(TCallable&& Callable, FString& OutError, const FString& RequiredObjectPath = FString())
     {
         FUnrealMCPProjectIndex& ProjectIndex = FUnrealMCPModule::Get().GetProjectIndex();
         if (!ProjectIndex.GetStatusSnapshot().bDatabaseOpen)
@@ -27,7 +27,8 @@ namespace UnrealMCP::IndexedQueryToolUtils
         bool bSucceeded = false;
         auto Run = [&]()
         {
-            bSucceeded = Callable(ProjectIndex.GetDatabase(), OutError);
+            bSucceeded = ProjectIndex.RefreshBeforeRead(RequiredObjectPath, OutError)
+                && Callable(ProjectIndex.GetDatabase(), OutError);
         };
 
         if (IsInGameThread())

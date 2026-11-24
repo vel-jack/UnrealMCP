@@ -61,6 +61,7 @@ public:
         FRefreshResult& OutResult,
         FString& OutError,
         const TFunction<void(int32, int32, const FString&)>& ProgressCallback = {});
+    bool RefreshBeforeRead(const FString& RequiredObjectPath, FString& OutError);
     FSQLiteDatabase& GetDatabase();
     const FSQLiteDatabase& GetDatabase() const;
 

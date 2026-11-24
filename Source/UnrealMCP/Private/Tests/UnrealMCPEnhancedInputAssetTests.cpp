@@ -1,4 +1,5 @@
 #include "CoreMinimal.h"
+#include "UnrealMCPTestRenameFlags.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -42,7 +43,7 @@ bool FUnrealMCPEnhancedInputAssetsLiveTest::RunTest(const FString& Parameters)
                 Object->ClearFlags(RF_Public | RF_Standalone);
                 const FName TransientName = MakeUniqueObjectName(GetTransientPackage(), Object->GetClass(), Object->GetFName());
                 Object->Rename(*TransientName.ToString(), GetTransientPackage(),
-                    REN_DontCreateRedirectors | REN_NonTransactional | REN_DoNotDirty | REN_ForceNoResetLoaders);
+                    REN_DontCreateRedirectors | REN_NonTransactional | REN_DoNotDirty | UnrealMCPTest::TransientRenameLinkerFlag);
                 TestNull(TEXT("Fixture removed from original asset path"), FindObject<UObject>(nullptr, *Path));
             }
         }

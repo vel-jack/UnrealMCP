@@ -9,10 +9,15 @@
 #include "K2Node_CallFunction.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_Event.h"
+#include "K2Node_FunctionEntry.h"
+#include "Kismet2/BlueprintEditorUtils.h"
 #include "K2Node_Literal.h"
+#include "K2Node_MacroInstance.h"
+#include "Misc/SecureHash.h"
 #include "K2Node_Variable.h"
 #include "Tools/Blueprint/Shared/BlueprintEditToolUtils.h"
 #include "Tools/Blueprint/Shared/BlueprintGraphEditToolUtils.h"
+#include "Tools/Blueprint/Shared/BlueprintToolUtils.h"
 #include "Tools/Editor/WorldToolUtils.h"
 #include "UObject/Package.h"
 
@@ -186,6 +191,23 @@ namespace UnrealMCP::LiveBlueprintToolUtils
         Result->SetStringField(TEXT("graphName"), Graph->GetName());
         Result->SetStringField(TEXT("graphGuid"), Graph->GraphGuid.ToString(EGuidFormats::DigitsWithHyphensLower));
         Result->SetNumberField(TEXT("nodeCount"), Graph->Nodes.Num());
+        if (UEdGraph* Scope = FBlueprintEditorUtils::GetTopLevelGraph(Graph))
+        {
+            Result->SetStringField(TEXT("scopeGraphPath"), Scope->GetPathName());
+            TArray<UK2Node_FunctionEntry*> Entries;
+            Scope->GetNodesOfClass(Entries);
+            if (Entries.Num() == 1)
+            {
+                TArray<TSharedPtr<FJsonValue>> Locals;
+                for (const auto& Variable : Entries[0]->LocalVariables)
+                {
+                    auto Local = BlueprintToolUtils::SerializeVariable(Variable);
+                    Local->SetStringField(TEXT("defaultValue"), Variable.DefaultValue);
+                    Locals.Add(MakeShared<FJsonValueObject>(Local));
+                }
+                Result->SetArrayField(TEXT("localVariables"), Locals);
+            }
+        }
         Result->SetStringField(TEXT("revision"), BlueprintGraphEditToolUtils::ComputeGraphRevision(Graph));
         return Result;
     }
@@ -210,6 +232,37 @@ namespace UnrealMCP::LiveBlueprintToolUtils
         Result->SetStringField(TEXT("pinId"), BlueprintGraphEditToolUtils::GetPinId(Pin));
         Result->SetStringField(TEXT("pinName"), Pin->PinName.ToString());
         return Result;
+    }
+
+    void DescribeMemberOwner(const UEdGraphNode* Node, FJsonObject& Result)
+    {
+        if (const auto* Variable = Cast<UK2Node_Variable>(Node))
+        {
+            Result.SetBoolField(TEXT("selfContext"), Variable->VariableReference.IsSelfContext());
+            if (Variable->VariableReference.IsLocalScope())
+            {
+                Result.SetStringField(TEXT("variableScope"), TEXT("local"));
+                Result.SetStringField(TEXT("localScopeName"), Variable->VariableReference.GetMemberScopeName());
+                Result.SetStringField(TEXT("localDeclarationGuid"),
+                    Variable->VariableReference.GetMemberGuid().ToString(EGuidFormats::DigitsWithHyphensLower));
+                return;
+            }
+            Result.SetStringField(TEXT("variableScope"), TEXT("member"));
+            if (const FProperty* Property = Variable->GetPropertyForVariable())
+                if (const UClass* Owner = Property->GetOwnerClass())
+                    Result.SetStringField(TEXT("memberOwnerClass"), Owner->GetAuthoritativeClass()->GetPathName());
+        }
+        if (const auto* Macro = Cast<UK2Node_MacroInstance>(Node))
+        {
+            const UEdGraph* Body = Macro->GetMacroGraph();
+            Result.SetBoolField(TEXT("macroBodyResolved"), Body != nullptr);
+            if (Body)
+            {
+                Result.SetStringField(TEXT("macroGraphPath"), Body->GetPathName());
+                Result.SetStringField(TEXT("macroGraphGuid"), Body->GraphGuid.ToString(EGuidFormats::DigitsWithHyphensLower));
+                Result.SetNumberField(TEXT("macroNodeCount"), Body->Nodes.Num());
+            }
+        }
     }
 
     TSharedRef<FJsonObject> DescribeNode(UEdGraphNode* Node, bool bIncludePins)
@@ -238,13 +291,7 @@ namespace UnrealMCP::LiveBlueprintToolUtils
                 Result->SetStringField(TEXT("continuation"), Function->HasMetaData(TEXT("Latent")) ? TEXT("deferred_exec_outputs") : TEXT("connected_exec_outputs"));
             }
         }
-        if (const auto* Variable = Cast<UK2Node_Variable>(Node))
-        {
-            UBlueprint* Blueprint = Node->GetTypedOuter<UBlueprint>();
-            UClass* Scope = Blueprint ? Blueprint->GeneratedClass : nullptr;
-            if (UClass* Owner = Variable->VariableReference.GetMemberParentClass(Scope)) Result->SetStringField(TEXT("memberOwnerClass"), Owner->GetPathName());
-            Result->SetBoolField(TEXT("selfContext"), Variable->VariableReference.IsSelfContext());
-        }
+        DescribeMemberOwner(Node, *Result);
         if (const auto* Literal = Cast<UK2Node_Literal>(Node))
         {
             if (AActor* Actor = Literal->GetReferencedLevelActor())
@@ -278,6 +325,7 @@ namespace UnrealMCP::LiveBlueprintToolUtils
     TSharedRef<FJsonObject> DescribeCompactNode(UEdGraphNode* Node)
     {
         auto Result = MakeShared<FJsonObject>();
+        DescribeMemberOwner(Node, *Result);
         Result->SetStringField(TEXT("nodeGuid"), BlueprintGraphEditToolUtils::GetNodeGuid(Node));
         Result->SetStringField(TEXT("graphPath"), Node->GetGraph()->GetPathName());
         Result->SetStringField(TEXT("title"), Node->GetNodeTitle(ENodeTitleType::ListView).ToString());
@@ -336,6 +384,19 @@ namespace UnrealMCP::LiveBlueprintToolUtils
             Error = TEXT("invalid_node_guid: nodeGuid must be a GUID.");
             return false;
         }
+        FString RevisionInput = Target.Graphs.IsEmpty() ? TEXT("empty") : Target.Graphs[0]->GetPathName();
+        RevisionInput += FString::Printf(TEXT("\n%d:%d:%s:%s"), bNodes ? 1 : 0, OutputMode == TEXT("compact") ? 1 : 0, *Guid, *Query);
+        for (const UEdGraph* Graph : Target.Graphs)
+            RevisionInput += TEXT("\n") + Graph->GetPathName() + TEXT(":") + BlueprintGraphEditToolUtils::ComputeGraphRevision(Graph);
+        const FTCHARToUTF8 RevisionBytes(*RevisionInput);
+        const FString Revision = FMD5::HashBytes(reinterpret_cast<const uint8*>(RevisionBytes.Get()), RevisionBytes.Length());
+        FString ExpectedRevision;
+        if (Params && Params->HasField(TEXT("expectedRevision"))
+            && (!Params->TryGetStringField(TEXT("expectedRevision"), ExpectedRevision) || ExpectedRevision != Revision))
+        {
+            Error = TEXT("stale_live_revision: The graph or query changed. Restart inspection at offset 0.");
+            return false;
+        }
         TArray<TSharedPtr<FJsonValue>> Items;
         int32 Matched = 0, Scanned = 0;
         for (UEdGraph* Graph : Target.Graphs)
@@ -359,6 +420,8 @@ namespace UnrealMCP::LiveBlueprintToolUtils
             }
         }
         Result = DescribeTarget(Target);
+        Result->SetStringField(TEXT("revision"), Revision);
+        if (Target.Graphs.Num() == 1) Result->SetObjectField(TEXT("selectedGraph"), DescribeGraph(Target.Graphs[0]));
         Result->SetArrayField(bNodes ? TEXT("nodes") : TEXT("graphs"), Items);
         Result->SetStringField(TEXT("outputMode"), OutputMode == TEXT("compact") ? TEXT("compact") : TEXT("full"));
         Result->SetNumberField(TEXT("scannedCount"), Scanned);

@@ -16,6 +16,8 @@ UnrealMCP::FMCPResponse FSaveBlueprintTool::Execute(const UnrealMCP::FMCPRequest
     const bool bRequireUpToDateCompile = UnrealMCP::BlueprintEditToolUtils::GetOptionalBool(
         Request.Params, TEXT("requireUpToDateCompile"), true);
 
+    auto Diagnostics = MakeShared<FJsonObject>();
+    bool bHasBrokenNodes = false;
     bool bWasDirty = false;
     bool bIsDirty = false;
     bool bSaved = false;
@@ -45,6 +47,8 @@ UnrealMCP::FMCPResponse FSaveBlueprintTool::Execute(const UnrealMCP::FMCPRequest
             return false;
         }
 
+        if (!bRequireUpToDateCompile)
+            bHasBrokenNodes = UnrealMCP::BlueprintEditToolUtils::DescribeBrokenNodes(Blueprint, *Diagnostics);
         if (!UnrealMCP::BlueprintEditToolUtils::SaveAsset(Blueprint, Filename, OutError)) return false;
         bSaved = true;
         // Measure the result instead of asserting it: a save that reports success but leaves the
@@ -72,7 +76,7 @@ UnrealMCP::FMCPResponse FSaveBlueprintTool::Execute(const UnrealMCP::FMCPRequest
             Response.Result = Result;
             return Response;
         }
-        return BuildError(Request, UnrealMCP::EMCPErrorCode::InternalError, ExecutionError);
+        return BuildError(Request, UnrealMCP::EMCPErrorCode::InternalError, ExecutionError, Diagnostics);
     }
 
     UnrealMCP::FMCPResponse Response; Response.Id = Request.Id;
@@ -81,6 +85,13 @@ UnrealMCP::FMCPResponse FSaveBlueprintTool::Execute(const UnrealMCP::FMCPRequest
     Result->SetBoolField(TEXT("wasDirty"), bWasDirty); Result->SetBoolField(TEXT("isDirty"), bIsDirty); Result->SetBoolField(TEXT("saved"), bSaved);
     Result->SetBoolField(TEXT("validated"), bValidated); Result->SetStringField(TEXT("blueprintStatus"), BlueprintStatus);
     Result->SetBoolField(TEXT("indexRefreshed"), bIndexRefreshed); Result->SetStringField(TEXT("indexRefreshError"), IndexRefreshError);
+    if (!bRequireUpToDateCompile)
+    {
+        Result->SetArrayField(TEXT("brokenNodes"), Diagnostics->GetArrayField(TEXT("brokenNodes")));
+        Result->SetBoolField(TEXT("persistedBrokenNodes"), bSaved && bHasBrokenNodes);
+        if (bHasBrokenNodes)
+            Result->SetStringField(TEXT("brokenNodeWarning"), Diagnostics->GetStringField(TEXT("brokenNodeWarning")));
+    }
     if (bSaved && bIsDirty)
     {
         Result->SetStringField(TEXT("errorCode"), TEXT("asset_still_dirty_after_save"));
@@ -94,6 +105,6 @@ TSharedPtr<FJsonObject> FSaveBlueprintTool::BuildInputSchema() const
     TSharedRef<FJsonObject> Schema = MakeShared<FJsonObject>(); Schema->SetStringField(TEXT("type"), TEXT("object"));
     TSharedRef<FJsonObject> Properties = MakeShared<FJsonObject>();
     Properties->SetObjectField(TEXT("objectPath"), UnrealMCP::BlueprintEditToolUtils::BuildStringProperty(TEXT("Blueprint object path.")));
-    Properties->SetObjectField(TEXT("requireUpToDateCompile"), UnrealMCP::BlueprintEditToolUtils::BuildBoolProperty(TEXT("Refuse to save a Blueprint whose compile status is not up to date. Defaults to true.")));
+    Properties->SetObjectField(TEXT("requireUpToDateCompile"), UnrealMCP::BlueprintEditToolUtils::BuildBoolProperty(TEXT("Refuse to save a Blueprint whose compile status is not up to date. Defaults to true. False reports visible broken nodes before writing.")));
     Schema->SetObjectField(TEXT("properties"), Properties); TArray<TSharedPtr<FJsonValue>> Required{MakeShared<FJsonValueString>(TEXT("objectPath"))}; Schema->SetArrayField(TEXT("required"), Required); return Schema;
 }

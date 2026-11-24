@@ -1,4 +1,5 @@
 #include "CoreMinimal.h"
+#include "UnrealMCPTestRenameFlags.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -13,6 +14,8 @@
 #include "Misc/PackageName.h"
 #include "Misc/ScopeExit.h"
 #include "Tools/Blueprint/Inspection/SaveBlueprintTool.h"
+#include "Tools/Blueprint/Inspection/SaveValidatedBlueprintsTool.h"
+#include "K2Node_DynamicCast.h"
 #include "Tools/Editor/DiscardDirtyPackagesForShutdownTool.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -40,7 +43,7 @@ bool FUnrealMCPSaveBlueprintTest::RunTest(const FString& Parameters)
             Blueprint->ClearFlags(RF_Public | RF_Standalone);
             const FName TransientName = MakeUniqueObjectName(GetTransientPackage(), Blueprint->GetClass(), Blueprint->GetFName());
             Blueprint->Rename(*TransientName.ToString(), GetTransientPackage(),
-                REN_DontCreateRedirectors | REN_NonTransactional | REN_DoNotDirty | REN_ForceNoResetLoaders);
+                REN_DontCreateRedirectors | REN_NonTransactional | REN_DoNotDirty | UnrealMCPTest::TransientRenameLinkerFlag);
         }
         FString PackageFilename;
         if (FPackageName::DoesPackageExist(PackagePath, &PackageFilename))
@@ -103,6 +106,33 @@ bool FUnrealMCPSaveBlueprintTest::RunTest(const FString& Parameters)
     }
     TestFalse(TEXT("Refused save creates no package file"), FPackageName::DoesPackageExist(PackagePath));
 
+    UEdGraph* Graph = Blueprint->UbergraphPages[0];
+    auto* BrokenCast = NewObject<UK2Node_DynamicCast>(Graph);
+    BrokenCast->CreateNewGuid();
+    Graph->AddNode(BrokenCast, false, false);
+    const FString BrokenGuid = BrokenCast->NodeGuid.ToString(EGuidFormats::DigitsWithHyphensLower);
+
+    UnrealMCP::FMCPRequest Preview;
+    Preview.Id = TEXT("save-broken-preview");
+    Preview.Params = MakeShared<FJsonObject>();
+    Preview.Params->SetArrayField(TEXT("objectPaths"), {MakeShared<FJsonValueString>(ObjectPath)});
+    Preview.Params->SetBoolField(TEXT("requireUpToDateCompile"), false);
+    Preview.Params->SetBoolField(TEXT("dryRun"), true);
+    const auto PreviewResponse = FSaveValidatedBlueprintsTool().Execute(Preview);
+    if (TestTrue(TEXT("Batch preview returns results"), PreviewResponse.Result.IsValid()))
+    {
+        const auto& Items = PreviewResponse.Result->GetArrayField(TEXT("results"));
+        if (TestEqual(TEXT("One preview item"), Items.Num(), 1))
+        {
+            const auto& Item = Items[0]->AsObject();
+            const auto& Findings = Item->GetArrayField(TEXT("brokenNodes"));
+            if (TestEqual(TEXT("Preview detects broken cast"), Findings.Num(), 1))
+                TestEqual(TEXT("Preview locates exact cast"), Findings[0]->AsObject()->GetStringField(TEXT("nodeGuid")), BrokenGuid);
+            TestFalse(TEXT("Preview reports nothing persisted"), Item->GetBoolField(TEXT("persistedBrokenNodes")));
+        }
+    }
+    TestFalse(TEXT("Preview writes no package"), FPackageName::DoesPackageExist(PackagePath));
+
     UnrealMCP::FMCPRequest OverrideRequest;
     OverrideRequest.Id = TEXT("save-blueprint-override");
     OverrideRequest.Params = MakeShared<FJsonObject>();
@@ -114,6 +144,7 @@ bool FUnrealMCPSaveBlueprintTest::RunTest(const FString& Parameters)
     {
         TestTrue(TEXT("Explicit override saves successfully"), Override.Result->GetBoolField(TEXT("success")));
         TestTrue(TEXT("Explicit override reports saved"), Override.Result->GetBoolField(TEXT("saved")));
+        TestTrue(TEXT("Explicit save reports persisted broken cast"), Override.Result->GetBoolField(TEXT("persistedBrokenNodes")));
         TestFalse(TEXT("Post-save dirty state is measured clean"), Override.Result->GetBoolField(TEXT("isDirty")));
         TestFalse(TEXT("Override does not pretend the stale compile state was validated"), Override.Result->GetBoolField(TEXT("validated")));
     }

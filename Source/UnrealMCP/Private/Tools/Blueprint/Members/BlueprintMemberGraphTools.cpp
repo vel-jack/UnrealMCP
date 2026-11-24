@@ -7,8 +7,10 @@
 #include "K2Node.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_CallParentFunction.h"
+#include "K2Node_Event.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
+#include "K2Node_SwitchName.h"
 #include "K2Node_SwitchString.h"
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
@@ -144,8 +146,8 @@ namespace
 FBlueprintMemberGraphTool::FBlueprintMemberGraphTool(EBlueprintMemberGraphEdit InEdit)
     : FMCPToolBase(InEdit == EBlueprintMemberGraphEdit::RetargetMember ? TEXT("RetargetBlueprintMemberNode") : TEXT("SetSwitchCases"),
         InEdit == EBlueprintMemberGraphEdit::RetargetMember
-            ? TEXT("Retargets a variable Get/Set or ordinary function-call node, even if its old member no longer resolves. Inherited members use self context. Preserves GUID, position, comment, compatible defaults and direct links; pinMap handles renamed parameters. Dry-run simulates reconstruction. Dropped links are explicit. Requires confirm to apply; compile is opt-in, save forces compile with rollback.")
-            : TEXT("Edits Switch on String cases; renames preserve compatible exec links, removed cases report dropped links, and Default is retained. Enum cases are defined by their enum and cannot be arbitrarily renamed here. Dry-run simulates reconstruction. Requires confirm to apply; save forces successful compile.")), Edit(InEdit) {}
+            ? TEXT("Retargets a variable Get/Set, ordinary function call, or inherited event override, even if its old member no longer resolves. Inherited members use self context. Preserves GUID, position, comment, compatible defaults and direct links; pinMap handles renamed parameters. Dry-run simulates reconstruction. Dropped links are explicit. Requires confirm to apply; compile is opt-in, save forces compile with rollback.")
+            : TEXT("Edits Switch on String and Switch on Name cases; renames preserve compatible exec links, removed cases report dropped links, and Default is retained. Enum cases are defined by their enum and cannot be arbitrarily renamed here. Dry-run simulates reconstruction. Requires confirm to apply; save forces successful compile.")), Edit(InEdit) {}
 
 UnrealMCP::FMCPResponse FBlueprintMemberGraphTool::Execute(const UnrealMCP::FMCPRequest& Request) const
 {
@@ -177,15 +179,17 @@ UnrealMCP::FMCPResponse FBlueprintMemberGraphTool::Execute(const UnrealMCP::FMCP
         UFunction* Function = nullptr; TArray<FName> Cases;
         if (Edit == EBlueprintMemberGraphEdit::SwitchCases)
         {
-            auto* Switch = Cast<UK2Node_SwitchString>(Node);
-            if (!Switch) { OutError = TEXT("SetSwitchCases edits Switch on String; enum cases must follow the enum definition."); return false; }
+            const auto* StringSwitch = Cast<UK2Node_SwitchString>(Node);
+            const auto* NameSwitch = Cast<UK2Node_SwitchName>(Node);
+            if (!StringSwitch && !NameSwitch) { OutError = TEXT("SetSwitchCases edits Switch on String and Switch on Name. Enum cases must follow the enum definition."); return false; }
+            const TArray<FName>& ExistingCases = StringSwitch ? StringSwitch->PinNames : NameSwitch->PinNames;
             const TArray<TSharedPtr<FJsonValue>>* Values = nullptr; TArray<FString> TextCases;
             if (!Request.Params->TryGetArrayField(TEXT("cases"), Values)) { OutError = TEXT("cases[] is required."); return false; }
             for (const auto& V : *Values) { FString Text; if (!V || !V->TryGetString(Text)) { OutError = TEXT("cases must be strings."); return false; } TextCases.Add(Text); }
             if (!Member::ValidateStringCases(TextCases, OutError)) return false;
             for (const auto& Text : TextCases) Cases.Add(FName(*Text));
             for (const auto& Pair : Mapping)
-                if (!Switch->PinNames.Contains(Pair.Key) || !Cases.Contains(Pair.Value))
+                if (!ExistingCases.Contains(Pair.Key) || !Cases.Contains(Pair.Value))
                 { OutError = TEXT("Case renames must map an existing case to a requested case."); return false; }
         }
         else if (auto* V = Cast<UK2Node_Variable>(Node))
@@ -198,6 +202,41 @@ UnrealMCP::FMCPResponse FBlueprintMemberGraphTool::Execute(const UnrealMCP::FMCP
             Result->SetStringField(TEXT("scopeName"), Variable.LocalScope);
             Result->SetBoolField(TEXT("selfContext"), Variable.IsSelfContext()); Result->SetStringField(TEXT("declaredIn"), Variable.DeclarationPath);
         }
+        else if (Node->GetClass() == UK2Node_Event::StaticClass() && CastChecked<UK2Node_Event>(Node)->bOverrideFunction)
+        {
+            UClass* Owner = BP->ParentClass;
+            if (!OwnerPath.IsEmpty() && !Utils::ResolveClass(OwnerPath, Owner, OutError)) return false;
+            Function = Owner ? Owner->FindFunctionByName(*MemberName) : nullptr;
+            if (!BP->ParentClass || !Owner || !BP->ParentClass->IsChildOf(Owner) || !Function
+                || !Function->HasAnyFunctionFlags(FUNC_BlueprintEvent) || Function->HasAnyFunctionFlags(FUNC_Final)
+                || Function->HasAnyFunctionFlags(FUNC_HasOutParms) || !BP->UbergraphPages.Contains(Graph))
+            {
+                OutError = TEXT("Select an overridable inherited Blueprint event with no output parameters in the Event Graph.");
+                return false;
+            }
+            TArray<UEdGraph*> Graphs;
+            BP->GetAllGraphs(Graphs);
+            for (const UEdGraph* OtherGraph : Graphs)
+            {
+                if (OtherGraph->GetFName() == Function->GetFName())
+                {
+                    OutError = TEXT("The Blueprint already defines a graph for the target event.");
+                    return false;
+                }
+                for (const UEdGraphNode* OtherNode : OtherGraph->Nodes)
+                {
+                    const auto* OtherEvent = Cast<UK2Node_Event>(OtherNode);
+                    if (OtherEvent && OtherNode != Node && OtherEvent->bOverrideFunction
+                        && OtherEvent->EventReference.GetMemberName() == Function->GetFName())
+                    {
+                        OutError = TEXT("The Blueprint already overrides the target event.");
+                        return false;
+                    }
+                }
+            }
+            Result->SetBoolField(TEXT("selfContext"), true);
+            Result->SetStringField(TEXT("declaredIn"), Function->GetOwnerClass()->GetAuthoritativeClass()->GetPathName());
+        }
         else if (Node->IsA<UK2Node_CallFunction>() && !Node->IsA<UK2Node_CallParentFunction>())
         {
             UClass* Owner = BP->SkeletonGeneratedClass ? BP->SkeletonGeneratedClass : BP->GeneratedClass;
@@ -207,16 +246,19 @@ UnrealMCP::FMCPResponse FBlueprintMemberGraphTool::Execute(const UnrealMCP::FMCP
             { OutError = TEXT("newMemberName must identify a Blueprint-callable function."); return false; }
             Result->SetBoolField(TEXT("selfContext"), Member::IsSelfOrAncestor(BP, Owner)); Result->SetStringField(TEXT("declaredIn"), Function->GetOwnerClass()->GetAuthoritativeClass()->GetPathName());
         }
-        else { OutError = TEXT("Supported member nodes are variable Get/Set and ordinary function calls."); return false; }
+        else { OutError = TEXT("Supported member nodes are variable Get/Set, ordinary function calls, and inherited event overrides."); return false; }
         auto Configure = [&](UEdGraphNode* Target, FString&) -> bool
         {
             if (auto* Switch = Cast<UK2Node_SwitchString>(Target)) { Switch->PinNames = Cases; Switch->bHasDefaultPin = true; }
+            else if (auto* NameSwitch = Cast<UK2Node_SwitchName>(Target)) { NameSwitch->PinNames = Cases; NameSwitch->bHasDefaultPin = true; }
             else if (auto* V = Cast<UK2Node_Variable>(Target))
             {
                 if (Variable.IsLocalContext()) V->VariableReference.SetLocalMember(Variable.Name, Variable.LocalScope, Variable.Guid);
                 else if (Variable.ExternalOwner) V->VariableReference.SetExternalMember(Variable.Name, Variable.ExternalOwner, Variable.Guid);
                 else V->VariableReference.SetSelfMember(Variable.Name, Variable.Guid);
             }
+            else if (auto* Event = Cast<UK2Node_Event>(Target))
+                Event->EventReference.SetExternalMember(Function->GetFName(), Function->GetOwnerClass()->GetAuthoritativeClass());
             else CastChecked<UK2Node_CallFunction>(Target)->SetFromFunction(Function);
             return true;
         };
@@ -290,13 +332,13 @@ TSharedPtr<FJsonObject> FBlueprintMemberGraphTool::BuildInputSchema() const
     TArray<TSharedPtr<FJsonValue>> Required = {MakeShared<FJsonValueString>(TEXT("objectPath")), MakeShared<FJsonValueString>(TEXT("nodeGuid"))};
     if (Edit == EBlueprintMemberGraphEdit::RetargetMember)
     {
-        P->SetObjectField(TEXT("newMemberName"), BuildStringProperty(TEXT("New variable or callable function name.")));
+        P->SetObjectField(TEXT("newMemberName"), BuildStringProperty(TEXT("New variable, callable function, or inherited event name.")));
         P->SetObjectField(TEXT("newOwnerClassPath"), BuildStringProperty(TEXT("Optional owner; self/ancestor uses self context, unrelated class uses external context.")));
         P->SetObjectField(TEXT("pinMap"), Map); Required.Add(MakeShared<FJsonValueString>(TEXT("newMemberName")));
     }
     else
     {
-        auto Cases = MakeShared<FJsonObject>(); Cases->SetStringField(TEXT("type"), TEXT("array")); Cases->SetObjectField(TEXT("items"), BuildStringProperty(TEXT("Final string switch label."))); Cases->SetNumberField(TEXT("maxItems"), 128);
+        auto Cases = MakeShared<FJsonObject>(); Cases->SetStringField(TEXT("type"), TEXT("array")); Cases->SetObjectField(TEXT("items"), BuildStringProperty(TEXT("Final String or Name switch label."))); Cases->SetNumberField(TEXT("maxItems"), 128);
         P->SetObjectField(TEXT("cases"), Cases); P->SetObjectField(TEXT("renames"), Map); Required.Add(MakeShared<FJsonValueString>(TEXT("cases")));
     }
     S->SetObjectField(TEXT("properties"), P); S->SetArrayField(TEXT("required"), Required); return S;

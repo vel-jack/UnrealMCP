@@ -1,4 +1,5 @@
 #include "CoreMinimal.h"
+#include "UnrealMCPTestRenameFlags.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -71,7 +72,7 @@ namespace
         Blueprint->ClearFlags(RF_Standalone | RF_Public);
         const FName TransientName = MakeUniqueObjectName(GetTransientPackage(), Blueprint->GetClass(), Blueprint->GetFName());
         Blueprint->Rename(*TransientName.ToString(), GetTransientPackage(),
-            REN_DontCreateRedirectors | REN_NonTransactional | REN_DoNotDirty | REN_ForceNoResetLoaders);
+            REN_DontCreateRedirectors | REN_NonTransactional | REN_DoNotDirty | UnrealMCPTest::TransientRenameLinkerFlag);
         if (OriginalPackage != nullptr)
         {
             OriginalPackage->SetDirtyFlag(false);

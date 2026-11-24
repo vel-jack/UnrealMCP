@@ -162,7 +162,7 @@ internal sealed partial class McpRequestDispatcher(
                 CreateObjectSchema(
                     ("projectPath", "string", "Optional absolute path to a .uproject file. When provided it becomes the active project.", false),
                     ("engineExe", "string", "Optional UnrealEditor.exe override for this launch request.", false),
-                    ("unattended", "boolean", "Defaults true: suppress startup dialogs including Zen wait prompts. False enables interactive editor dialogs. Applies only when launching a new editor.", false))),
+                    ("unattended", "boolean", "Defaults false. Set true to suppress editor dialogs for this launch. Applies only when launching a new editor.", false))),
             new McpToolDefinition(
                 "unreal.adapter.AttachToUnrealProject",
                 "Attaches to the selected Unreal project if it is already running.",

@@ -62,6 +62,10 @@
 #include "Tools/Input/CreateInputActionTool.h"
 #include "Tools/Input/CreateInputMappingContextTool.h"
 #include "Tools/Blueprint/Graph/DeleteBlueprintNodeTool.h"
+#include "Tools/Blueprint/Graph/PruneUnreachableNodesTool.h"
+#include "Tools/Blueprint/Graph/RefreshBlueprintNodesTool.h"
+#include "Tools/Blueprint/Graph/BlueprintGraphDslTool.h"
+#include "Tools/Blueprint/Graph/WrapWithIsValidTool.h"
 #include "Tools/Input/GetInputMappingContextMappingsTool.h"
 #include "Tools/Input/SetInputMappingContextMappingKeyTool.h"
 #include "Tools/Input/RemoveInputMappingContextMappingTool.h"
@@ -407,6 +411,11 @@ void FUnrealMCPModule::RegisterCoreTools()
     Registry.RegisterTool(MakeShared<FSetBlueprintPinDefaultObjectTool>());
     Registry.RegisterTool(MakeShared<FSetBlueprintPinDefaultValueTool>());
     Registry.RegisterTool(MakeShared<FDeleteBlueprintNodeTool>());
+    Registry.RegisterTool(MakeShared<FPruneUnreachableNodesTool>());
+    Registry.RegisterTool(MakeShared<FRefreshBlueprintNodesTool>());
+    Registry.RegisterTool(MakeShared<FBlueprintGraphDslTool>(false));
+    Registry.RegisterTool(MakeShared<FBlueprintGraphDslTool>(true));
+    Registry.RegisterTool(MakeShared<FWrapWithIsValidTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintSequenceNodeTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintCustomEventNodeTool>());
     Registry.RegisterTool(MakeShared<FAddBlueprintFunctionCallNodeTool>());
